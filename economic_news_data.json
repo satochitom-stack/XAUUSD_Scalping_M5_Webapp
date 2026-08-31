@@ -1,0 +1,66 @@
+{
+  "enabled": true,
+  "last_sync": "2026-08-31T17:51:59.517512",
+  "events": [
+    {
+      "id": "cpi_20260902",
+      "name": "US Core CPI Inflation (MoM / YoY)",
+      "impact": "HIGH",
+      "currency": "USD",
+      "datetime": "2026-09-02 19:30:00",
+      "forecast": "0.2%",
+      "previous": "0.3%",
+      "volatility_pts": 750.0
+    },
+    {
+      "id": "jobless_20260903",
+      "name": "US Initial Jobless Claims",
+      "impact": "MEDIUM",
+      "currency": "USD",
+      "datetime": "2026-09-03 19:30:00",
+      "forecast": "225K",
+      "previous": "231K",
+      "volatility_pts": 350.0
+    },
+    {
+      "id": "nfp_20260904",
+      "name": "US Non-Farm Payrolls & Unemployment Rate",
+      "impact": "HIGH",
+      "currency": "USD",
+      "datetime": "2026-09-04 19:30:00",
+      "forecast": "165K",
+      "previous": "114K",
+      "volatility_pts": 850.0
+    },
+    {
+      "id": "cpi_20260909",
+      "name": "US Core CPI Inflation (MoM / YoY)",
+      "impact": "HIGH",
+      "currency": "USD",
+      "datetime": "2026-09-09 19:30:00",
+      "forecast": "0.2%",
+      "previous": "0.3%",
+      "volatility_pts": 750.0
+    },
+    {
+      "id": "jobless_20260910",
+      "name": "US Initial Jobless Claims",
+      "impact": "MEDIUM",
+      "currency": "USD",
+      "datetime": "2026-09-10 19:30:00",
+      "forecast": "225K",
+      "previous": "231K",
+      "volatility_pts": 350.0
+    },
+    {
+      "id": "nfp_20260911",
+      "name": "US Non-Farm Payrolls & Unemployment Rate",
+      "impact": "HIGH",
+      "currency": "USD",
+      "datetime": "2026-09-11 19:30:00",
+      "forecast": "165K",
+      "previous": "114K",
+      "volatility_pts": 850.0
+    }
+  ]
+}

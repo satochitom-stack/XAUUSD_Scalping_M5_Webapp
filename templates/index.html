@@ -1,0 +1,1892 @@
+<!DOCTYPE html>
+<html lang="th" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XAUUSD Scalping & Trend Hub Pro - Real MT5 Trade Analytics</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        gold: {
+                            400: '#FBBF24',
+                            500: '#F59E0B',
+                            600: '#D97706',
+                        },
+                        line: {
+                            500: '#06C755',
+                            600: '#05B34C'
+                        },
+                        dark: {
+                            950: '#05080F',
+                            900: '#070B13',
+                            800: '#0E1726',
+                            700: '#162235',
+                            600: '#1E2F48'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'Prompt', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #05080F;
+            color: #E2E8F0;
+        }
+        .glass-card {
+            background: rgba(14, 23, 38, 0.8);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgba(14, 23, 38, 0.5);
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(245, 158, 11, 0.3);
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col font-sans selection:bg-gold-500 selection:text-black">
+
+    <!-- ==================== TOKEN LOGIN MODAL ==================== -->
+    <div id="authModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md transition-opacity">
+        <div class="glass-card max-w-md w-full mx-4 p-8 rounded-2xl shadow-2xl border border-gold-500/30 text-center relative overflow-hidden">
+            <div class="absolute -right-12 -top-12 w-32 h-32 bg-gold-500/10 rounded-full blur-2xl"></div>
+            
+            <div class="w-16 h-16 mx-auto mb-4 bg-gradient-to-tr from-gold-600 to-yellow-400 rounded-2xl flex items-center justify-center shadow-lg shadow-gold-500/20">
+                <svg class="w-8 h-8 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                </svg>
+            </div>
+
+            <h2 class="text-2xl font-bold text-white tracking-wide">Multi-Account Hub Pro</h2>
+            <p class="text-sm text-gray-400 mt-1 mb-6">กรุณากรอก Access Token เพื่อเข้าสู่ระบบศูนย์กลางควบคุมพอร์ต</p>
+
+            <div class="space-y-4">
+                <div class="text-left">
+                    <label class="text-xs font-semibold text-gray-300 uppercase tracking-wider block mb-1">Access Token</label>
+                    <input type="password" id="inputToken" placeholder="กรอก Token..." 
+                           class="w-full bg-dark-900 border border-gray-700 focus:border-gold-500 rounded-xl px-4 py-3 text-white outline-none">
+                </div>
+
+                <div class="text-xs text-gray-400 bg-dark-900/60 p-2.5 rounded-lg border border-gray-800 flex justify-between items-center">
+                    <span>Default Key: <code class="text-gold-400 font-mono">GOLD_VIP_2026</code></span>
+                    <button onclick="fillDefaultToken()" class="text-xs text-gold-400 hover:text-gold-300 underline">ใช้งาน</button>
+                </div>
+
+                <p id="authError" class="text-xs text-rose-400 hidden"></p>
+
+                <button onclick="submitToken()" class="w-full bg-gradient-to-r from-gold-500 to-yellow-500 hover:from-gold-600 text-black font-bold py-3.5 rounded-xl shadow-lg transition">
+                    ปลดล็อกเข้าสู่ระบบ
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== ADD / EDIT ACCOUNT MODAL ==================== -->
+    <div id="accountModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md hidden">
+        <div class="glass-card max-w-lg w-full mx-4 p-7 rounded-2xl shadow-2xl border border-gray-700 relative custom-scrollbar max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-5 pb-3 border-b border-gray-800">
+                <h3 class="text-lg font-bold text-white flex items-center gap-2" id="modalTitle">
+                    <span>➕</span> เพิ่มบัญชีเทรดใหม่
+                </h3>
+                <button onclick="closeAccountModal()" class="text-gray-400 hover:text-white text-xl font-bold">&times;</button>
+            </div>
+
+            <form id="accountForm" onsubmit="submitAccountForm(event)" class="space-y-4 text-xs">
+                <input type="hidden" id="modalAccId">
+
+                <div>
+                    <label class="text-gray-300 block mb-1 font-semibold">ชื่อเรียกบัญชี (Account Label)</label>
+                    <input type="text" id="modalAccName" placeholder="เช่น Exness Cent Scalper หรือ พอร์ตเทรดมือ" required
+                           class="w-full bg-dark-900 border border-gray-700 rounded-lg p-2.5 text-white outline-none focus:border-gold-500">
+                </div>
+
+                <div>
+                    <label class="text-gray-300 block mb-1 font-semibold">ประเภทบัญชี (Account Type)</label>
+                    <select id="modalAccType" class="w-full bg-dark-900 border border-gray-700 rounded-lg p-2.5 text-white outline-none focus:border-gold-500">
+                        <option value="BOT">🤖 บัญชีบอทอัตโนมัติ (Auto Bot Execution)</option>
+                        <option value="MANUAL">✋ บัญชีเทรดมือ (Manual Monitor & Line Alert Only)</option>
+                    </select>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-gray-300 block mb-1 font-semibold">MT5 Login (เลขบัญชี)</label>
+                        <input type="number" id="modalAccLogin" placeholder="เว้นว่างเพื่อดึงจาก MT5 อัตโนมัติ"
+                               class="w-full bg-dark-900 border border-gray-700 rounded-lg p-2.5 text-white outline-none focus:border-gold-500">
+                    </div>
+                    <div>
+                        <label class="text-gray-300 block mb-1 font-semibold">MT5 Password</label>
+                        <input type="password" id="modalAccPassword" placeholder="รหัสผ่านเทรด (ถ้ามี)"
+                               class="w-full bg-dark-900 border border-gray-700 rounded-lg p-2.5 text-white outline-none focus:border-gold-500">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="text-gray-300 block mb-1 font-semibold">Server Name (ชื่อเซิร์ฟเวอร์โบรกเกอร์)</label>
+                    <input type="text" id="modalAccServer" placeholder="เช่น Exness-MT5Real20 หรือ XMGlobal-MT5"
+                           class="w-full bg-dark-900 border border-gray-700 rounded-lg p-2.5 text-white outline-none focus:border-gold-500">
+                </div>
+
+                <div>
+                    <label class="text-gray-300 block mb-1 font-semibold">MT5 Terminal Path (ตัวเลือกเสริมสำหรับรันหลายจอ)</label>
+                    <input type="text" id="modalAccPath" placeholder="เช่น C:\Program Files\MetaTrader 5 EXNESS\terminal64.exe"
+                           class="w-full bg-dark-900 border border-gray-700 rounded-lg p-2.5 text-white outline-none font-mono text-[11px]">
+                    <span class="text-[10px] text-gray-500 mt-0.5 block">*เว้นว่างไว้เพื่อเชื่อมต่อ MT5 ที่เปิดอยู่บน Windows อัตโนมัติ</span>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3 pt-1">
+                    <div>
+                        <label class="text-gray-300 block mb-1 font-semibold">Symbol</label>
+                        <input type="text" id="modalAccSymbol" value="XAUUSDc" class="w-full bg-dark-900 border border-gray-700 rounded-lg p-2 text-white outline-none">
+                    </div>
+                    <div>
+                        <label class="text-gray-300 block mb-1 font-semibold">Magic Number</label>
+                        <input type="number" id="modalAccMagic" value="555888" class="w-full bg-dark-900 border border-gray-700 rounded-lg p-2 text-white outline-none">
+                    </div>
+                </div>
+
+                <div class="pt-3 flex gap-3">
+                    <button type="button" onclick="closeAccountModal()" class="flex-1 py-2.5 bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold rounded-xl transition">
+                        ยกเลิก
+                    </button>
+                    <button type="submit" id="btnSubmitAccount" class="flex-1 py-2.5 bg-gold-500 hover:bg-gold-600 text-black font-bold rounded-xl shadow-lg transition">
+                        บันทึกบัญชี
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ==================== MAIN APPLICATION ==================== -->
+    <div id="mainDashboard" class="flex-1 flex flex-col hidden">
+        <!-- Top Navbar -->
+        <header class="glass-card border-b border-gray-800 sticky top-0 z-30 px-6 py-3 flex flex-wrap justify-between items-center gap-4">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-gradient-to-tr from-gold-500 to-yellow-300 rounded-xl flex items-center justify-center font-black text-black text-xl shadow-md">
+                    Au
+                </div>
+                <div>
+                    <h1 class="text-base font-bold text-white flex items-center gap-2">
+                        XAUUSD Scalping & Trend 
+                        <span class="text-[10px] px-2 py-0.5 rounded bg-gold-500/20 text-gold-400 border border-gold-500/30 font-bold">Real Live Hub</span>
+                    </h1>
+                    <p class="text-[11px] text-gray-400" id="serverClock">Server Time: --:--:--</p>
+                </div>
+            </div>
+
+            <!-- Global Portfolio Bar & Actions -->
+            <div class="flex items-center gap-3 sm:gap-4 flex-wrap">
+                <!-- Master Controls -->
+                <div class="flex items-center gap-1.5 bg-dark-900/90 p-1 rounded-xl border border-gray-800 text-xs">
+                    <button onclick="masterStartAll()" class="px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500 text-emerald-400 hover:text-white rounded-lg font-bold transition flex items-center gap-1">
+                        <span>▶</span> Start All Bots
+                    </button>
+                    <button onclick="masterStopAll()" class="px-3 py-1.5 bg-rose-500/20 hover:bg-rose-500 text-rose-400 hover:text-white rounded-lg font-bold transition flex items-center gap-1">
+                        <span>⏹</span> Stop All
+                    </button>
+                </div>
+
+                <!-- Add Account Button -->
+                <button onclick="openAddAccountModal()" class="px-3.5 py-1.5 bg-gold-500 hover:bg-gold-600 text-black font-bold rounded-xl text-xs flex items-center gap-1.5 shadow transition">
+                    <span>➕</span> เพิ่มบัญชีใหม่
+                </button>
+
+                <!-- LINE Badge -->
+                <div class="flex items-center gap-1.5 bg-dark-900/90 px-3 py-1.5 rounded-xl border border-gray-800 text-xs">
+                    <span id="lineDot" class="w-2 h-2 rounded-full bg-gray-500"></span>
+                    <span id="lineBadgeText" class="text-gray-400 font-medium text-[11px]">LINE Off</span>
+                </div>
+
+                <!-- Logout -->
+                <button onclick="logoutToken()" class="p-2 rounded-lg bg-dark-700 hover:bg-dark-600 text-gray-400 hover:text-white transition" title="Change Token">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Workspace -->
+        <main class="flex-1 p-6 max-w-7xl w-full mx-auto space-y-6">
+
+            <!-- Total Portfolio Summary Strip -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div class="glass-card p-4 rounded-xl border-l-4 border-l-gold-500">
+                    <div class="text-[11px] font-semibold text-gray-400 uppercase">Live Account Balance</div>
+                    <div class="text-xl font-black text-white mt-0.5 font-mono" id="totalPortBalance">กำลังโหลด...</div>
+                    <div class="text-[10px] text-gray-500 mt-0.5" id="liveBalanceSub">ยอดเงินจริงใน MT5</div>
+                </div>
+
+                <div class="glass-card p-4 rounded-xl border-l-4 border-l-emerald-500">
+                    <div class="text-[11px] font-semibold text-gray-400 uppercase">Live Account Equity</div>
+                    <div class="text-xl font-black text-emerald-400 mt-0.5 font-mono" id="totalPortEquity">$0.00</div>
+                    <div class="text-[10px] text-gray-500 mt-0.5">มูลค่าพอร์ตปัจจุบัน</div>
+                </div>
+
+                <div class="glass-card p-4 rounded-xl border-l-4 border-l-cyan-500">
+                    <div class="text-[11px] font-semibold text-gray-400 uppercase">Total Floating PnL</div>
+                    <div class="text-xl font-black text-white mt-0.5 font-mono" id="totalPortPnL">$0.00</div>
+                    <div class="text-[10px] text-gray-500 mt-0.5">กำไร/ขาดทุนที่กำลังวิ่ง</div>
+                </div>
+
+                <div class="glass-card p-4 rounded-xl border-l-4 border-l-purple-500">
+                    <div class="text-[11px] font-semibold text-gray-400 uppercase">MT5 Status</div>
+                    <div class="text-xl font-black text-white mt-0.5 font-mono" id="activeBotsCount">CONNECTED</div>
+                    <div class="text-[10px] text-emerald-400 mt-0.5" id="mt5ModeText">Live Attached</div>
+                </div>
+            </div>
+
+            <!-- Account Selector Tabs / Strip -->
+            <div class="space-y-2">
+                <div class="flex justify-between items-center">
+                    <span class="text-xs font-bold text-gray-400 uppercase tracking-wider">บัญชีเทรดของคุณ (คลิกเพื่อสลับดูข้อมูล & ควบคุม):</span>
+                </div>
+                <div id="accountsTabsContainer" class="flex gap-3 overflow-x-auto pb-2 custom-scrollbar">
+                    <!-- Dynamic Account Cards will render here -->
+                </div>
+            </div>
+
+            <!-- Selected Account Details & Hero Controls -->
+            <div class="glass-card p-6 rounded-2xl flex flex-wrap items-center justify-between gap-6 border-l-4 border-l-gold-500">
+                <div>
+                    <div class="flex items-center gap-2">
+                        <span id="selectedAccBadge" class="text-xs px-2.5 py-0.5 rounded-full font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">BOT</span>
+                        <h2 class="text-xl font-bold text-white" id="selectedAccName">กำลังโหลด...</h2>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-1" id="selectedAccSubInfo">Login: -- | Server: --</p>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-3" id="accountControlButtons">
+                    <button onclick="startActiveBot()" id="btnStartActive" class="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 text-white font-bold text-xs shadow-lg transition">
+                        <span>▶</span> START BOT
+                    </button>
+                    <button onclick="stopActiveBot()" id="btnStopActive" class="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-600 text-white font-bold text-xs shadow-lg transition">
+                        <span>⏹</span> STOP BOT
+                    </button>
+                    <button onclick="closeAllActive()" class="px-3.5 py-2.5 rounded-xl border border-rose-500/50 hover:bg-rose-500/20 text-rose-400 font-semibold text-xs transition">
+                        Close All
+                    </button>
+                    <button onclick="deleteActiveAccount()" class="p-2.5 rounded-xl bg-dark-900 border border-gray-700 hover:border-rose-500 text-gray-400 hover:text-rose-400 text-xs transition" title="ลบบัญชีนี้">
+                        🗑️
+                    </button>
+                </div>
+            </div>
+
+            <!-- ==================== 📊 100% REAL MT5 STRATEGY PERFORMANCE & SETUP ANALYTICS ==================== -->
+            <div class="space-y-4">
+                <div class="flex flex-wrap justify-between items-center gap-3 border-b border-gray-800 pb-3">
+                    <div>
+                        <h2 class="text-base font-bold text-white flex items-center gap-2">
+                            <span>🤖</span> สถิติเฉพาะออเดอร์ที่บอทเทรดจริง (Bot Executed Deals Only)
+                            <span class="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold">⚡ 100% Real Bot Deals</span>
+                        </h2>
+                        <p class="text-xs text-gray-400">คำนวณและบันทึกอัตโนมัติเฉพาะไม้ที่เปิด-ปิดโดย EA บอทเทรดใน MT5 (ตัดออเดอร์เทรดมือออก 100%)</p>
+                    </div>
+
+                    <!-- Category Filter Tabs -->
+                    <div class="flex gap-1.5 bg-dark-900 p-1 rounded-xl border border-gray-800 text-xs">
+                        <button onclick="filterStrategyCards('ALL')" id="filterBtn_ALL" class="px-3 py-1 bg-gold-500 text-black font-bold rounded-lg transition">
+                            🌟 ทั้งหมด
+                        </button>
+                        <button onclick="filterStrategyCards('SCALPING')" id="filterBtn_SCALPING" class="px-3 py-1 hover:bg-dark-700 text-gray-400 hover:text-white rounded-lg transition font-medium">
+                            ⚡ Scalp M5
+                        </button>
+                        <button onclick="filterStrategyCards('TREND_FOLLOWING')" id="filterBtn_TREND_FOLLOWING" class="px-3 py-1 hover:bg-dark-700 text-gray-400 hover:text-white rounded-lg transition font-medium">
+                            📈 Trend H1/M5
+                        </button>
+                        <button onclick="filterStrategyCards('MEAN_REVERSION')" id="filterBtn_MEAN_REVERSION" class="px-3 py-1 hover:bg-dark-700 text-gray-400 hover:text-white rounded-lg transition font-medium">
+                            ⛩️ ตลาดเอเชีย
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Real Performance Summary KPI Highlights Bar -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div class="glass-card p-3.5 rounded-xl border border-gray-800 flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-gold-500/20 flex items-center justify-center text-xl" id="kpiBestIcon">🎯</div>
+                        <div>
+                            <div class="text-[10px] text-gray-400 font-semibold uppercase">กลยุทธ์ Winrate สูงสุด</div>
+                            <div class="text-xs font-bold text-white truncate max-w-[140px]" id="kpiBestName">SMC Sweep</div>
+                            <div class="text-[11px] text-emerald-400 font-mono font-black" id="kpiBestWR">100% Winrate</div>
+                        </div>
+                    </div>
+
+                    <div class="glass-card p-3.5 rounded-xl border border-gray-800 flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center text-xl">📊</div>
+                        <div>
+                            <div class="text-[10px] text-gray-400 font-semibold uppercase">Winrate รวมบัญชีจริง</div>
+                            <div class="text-base font-black text-emerald-400 font-mono" id="kpiAvgWinrate">0.0%</div>
+                            <div class="text-[10px] text-gray-500" id="kpiWinLossRatio">0 Wins / 0 Losses</div>
+                        </div>
+                    </div>
+
+                    <div class="glass-card p-3.5 rounded-xl border border-gray-800 flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-cyan-500/20 flex items-center justify-center text-xl">⚡</div>
+                        <div>
+                            <div class="text-[10px] text-gray-400 font-semibold uppercase">Total Real Closed Deals</div>
+                            <div class="text-base font-black text-cyan-400 font-mono" id="kpiTotalTrades">0 Deals</div>
+                            <div class="text-[10px] text-gray-500">ประวัติเทรดจริงใน MT5</div>
+                        </div>
+                    </div>
+
+                    <div class="glass-card p-3.5 rounded-xl border border-gray-800 flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center text-xl">💰</div>
+                        <div>
+                            <div class="text-[10px] text-gray-400 font-semibold uppercase">Real Net Profit</div>
+                            <div class="text-base font-black font-mono" id="kpiNetProfit">$0.00</div>
+                            <div class="text-[10px] text-gray-500" id="kpiAvgPF">PF: 0.00</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 🧠 AI Real-Time Strategy Learning & Self-Tuning Optimizer Card -->
+                <div class="glass-card p-6 rounded-2xl space-y-4 border border-indigo-500/30 bg-gradient-to-br from-dark-900 via-dark-800 to-indigo-950/20">
+                    <div class="flex flex-wrap justify-between items-center gap-3">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-xl animate-pulse">
+                                🧠
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
+                                    AI Real-Time Win/Loss Learning & Strategy Self-Tuning
+                                    <span id="aiLearningBadge" class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-mono">ONLINE LEARNING ACTIVE</span>
+                                </h3>
+                                <p class="text-xs text-gray-400">วิเคราะห์จุดกำไร-ขาดทุนจริงจาก MT5 ปรับ Dynamic R:R, Lot Multiplier, และ Stop Loss Buffer แบบเรียลไทม์</p>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <button onclick="syncNewsCalendar()" class="px-3 py-1.5 bg-dark-700 hover:bg-gold-500/20 text-gray-300 hover:text-gold-400 font-semibold text-xs rounded-xl transition border border-gray-700 hover:border-gold-500/30 flex items-center gap-1.5" title="อัปเดตปฏิทินข่าวเศรษฐกิจสด">
+                                <span>📰</span> ซิงค์ข่าวสด
+                            </button>
+                            <button onclick="toggleAILearning()" id="btnToggleAILearn" class="px-3 py-1.5 bg-indigo-600/80 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition border border-indigo-400/30 flex items-center gap-1.5">
+                                <span>⚡</span> โหมดเรียนรู้สด: เปิด
+                            </button>
+                            <button onclick="resetAILearning()" class="px-3 py-1.5 bg-dark-700 hover:bg-rose-500/20 text-gray-300 hover:text-rose-400 font-semibold text-xs rounded-xl transition border border-gray-700 hover:border-rose-500/30 flex items-center gap-1.5" title="รีเซ็ตความจำและน้ำหนักกลับสู่ค่าโรงงาน">
+                                <span>🔄</span> รีเซ็ตความจำ
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Economic News Radar & Proximity Impact Bar -->
+                    <div class="p-3.5 rounded-xl bg-gradient-to-r from-dark-900 via-dark-800 to-dark-900 border border-gold-500/30 flex flex-wrap justify-between items-center gap-3">
+                        <div class="flex items-center gap-3">
+                            <div class="text-2xl animate-bounce">📡</div>
+                            <div>
+                                <div class="text-[10px] text-gold-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                                    <span>ECONOMIC NEWS RADAR</span>
+                                    <span id="newsProximityBadge" class="px-2 py-0.2 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[9px] font-mono font-bold">🟢 CALM (NO NEWS)</span>
+                                </div>
+                                <div class="text-xs font-bold text-white mt-0.5" id="newsCurrentStatusLabel">กำลังตรวจจับปฏิทินข่าวเศรษฐกิจสหรัฐฯ...</div>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center gap-4 text-xs font-mono">
+                            <div class="bg-dark-900/80 px-3 py-1.5 rounded-lg border border-gray-800 flex items-center gap-2">
+                                <span class="text-gray-400 font-sans text-[11px]">⏳ ข่าวถัดไป:</span>
+                                <span id="newsNextCountdown" class="text-gold-400 font-bold">คำนวณ...</span>
+                            </div>
+                            <div class="bg-dark-900/80 px-3 py-1.5 rounded-lg border border-gray-800 flex items-center gap-2">
+                                <span class="text-gray-400 font-sans text-[11px]">🛡️ กลยุทธ์ป้องกันข่าว:</span>
+                                <span id="newsShieldStatus" class="text-emerald-400 font-bold">Auto-Shield พร้อม</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 🎯 Institutional Market Regime & Liquidity Filter Score Widget (0-100 Confluence Engine) -->
+                    <div class="p-4 rounded-xl bg-gradient-to-r from-dark-900 via-dark-800 to-dark-900 border border-cyan-500/30 space-y-3">
+                        <div class="flex flex-wrap justify-between items-center gap-3">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center text-xl">
+                                    🎯
+                                </div>
+                                <div>
+                                    <div class="flex items-center gap-2">
+                                        <h4 class="text-xs font-black text-white uppercase tracking-wider">Institutional Liquidity & Regime Radar</h4>
+                                        <span id="regimeQualityGradeBadge" class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-mono font-bold">GRADE A+ (92/100)</span>
+                                    </div>
+                                    <p class="text-[11px] text-gray-300 mt-0.5" id="regimeQualityTitle">🌟 Institutional A+ Prime Setup (Highest Conviction)</p>
+                                </div>
+                            </div>
+
+                            <div class="flex items-center gap-3">
+                                <div class="bg-dark-900/90 px-3 py-1.5 rounded-xl border border-rose-500/30 flex items-center gap-2 text-xs font-mono">
+                                    <span class="text-gray-400 font-sans text-[11px]">🛡️ สัญญาณหลอกที่เซฟทุน:</span>
+                                    <span id="regimeSavedTradesCount" class="text-rose-400 font-black">0 ไม้</span>
+                                </div>
+                                <div class="flex items-center gap-1.5 bg-dark-900/90 px-2.5 py-1.5 rounded-xl border border-gray-800 text-xs">
+                                    <span class="text-gray-400 text-[10px] uppercase font-bold">เกณฑ์ขั้นต่ำ:</span>
+                                    <select id="selectRegimeThreshold" onchange="updateRegimeThreshold(this.value)" class="bg-dark-800 text-gold-400 font-mono font-bold text-xs rounded border border-gray-700 px-1.5 py-0.5 focus:outline-none">
+                                        <option value="60">60 pts (ผ่อนปรน)</option>
+                                        <option value="65">65 pts (สมดุล)</option>
+                                        <option value="70" selected>70 pts (A/A+ มาตรฐาน)</option>
+                                        <option value="80">80 pts (A+ เข้มงวดสุด)</option>
+                                    </select>
+                                </div>
+                                <button onclick="toggleRegimeScorer()" id="btnToggleRegimeScorer" class="px-2.5 py-1.5 bg-dark-700 hover:bg-cyan-500/20 text-gray-300 hover:text-cyan-300 font-semibold text-xs rounded-xl transition border border-gray-700 hover:border-cyan-500/30">
+                                    <span>⚙️</span> กรอง: เปิด
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 4 Pillars Breakdown Cards -->
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 pt-1 font-mono">
+                            <div class="bg-dark-900/90 p-2.5 rounded-lg border border-gray-800">
+                                <div class="text-[10px] text-gray-400 font-sans uppercase flex justify-between">
+                                    <span>🏛️ Session & Timing</span>
+                                    <span id="pillarSessionScore" class="text-cyan-400 font-bold">25/25</span>
+                                </div>
+                                <div class="text-xs font-bold text-white mt-1 truncate" id="pillarSessionDesc">LONDON SESSION</div>
+                            </div>
+
+                            <div class="bg-dark-900/90 p-2.5 rounded-lg border border-gray-800">
+                                <div class="text-[10px] text-gray-400 font-sans uppercase flex justify-between">
+                                    <span>📊 Volume Flow</span>
+                                    <span id="pillarVolumeScore" class="text-gold-400 font-bold">22/25</span>
+                                </div>
+                                <div class="text-xs font-bold text-white mt-1 truncate" id="pillarVolumeDesc">Surge (1.45x avg)</div>
+                            </div>
+
+                            <div class="bg-dark-900/90 p-2.5 rounded-lg border border-gray-800">
+                                <div class="text-[10px] text-gray-400 font-sans uppercase flex justify-between">
+                                    <span>⚡ Trend & ADX Power</span>
+                                    <span id="pillarTrendScore" class="text-indigo-400 font-bold">20/25</span>
+                                </div>
+                                <div class="text-xs font-bold text-white mt-1 truncate" id="pillarTrendDesc">Strong Trend Flow</div>
+                            </div>
+
+                            <div class="bg-dark-900/90 p-2.5 rounded-lg border border-gray-800">
+                                <div class="text-[10px] text-gray-400 font-sans uppercase flex justify-between">
+                                    <span>🛡️ Spread Safety</span>
+                                    <span id="pillarSpreadScore" class="text-emerald-400 font-bold">25/25</span>
+                                </div>
+                                <div class="text-xs font-bold text-white mt-1 truncate" id="pillarSpreadDesc">Tight (14.0 pts)</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Live Market Regime & Adaptation Bar -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+                        <div class="bg-dark-900/80 p-3 rounded-xl border border-gray-800 flex items-center justify-between">
+                            <div>
+                                <div class="text-[10px] text-gray-400 uppercase font-semibold">Market Regime (สภาวะตลาดสด)</div>
+                                <div class="text-xs font-bold text-cyan-400 mt-0.5" id="aiRegimeLabel">Analyzing Market...</div>
+                            </div>
+                            <span class="text-xl" id="aiRegimeIcon">⚡</span>
+                        </div>
+
+                        <div class="bg-dark-900/80 p-3 rounded-xl border border-gray-800 flex items-center justify-between">
+                            <div>
+                                <div class="text-[10px] text-gray-400 uppercase font-semibold">ATR Volatility Ratio</div>
+                                <div class="text-xs font-bold font-mono text-white mt-0.5" id="aiVolatilityRatio">1.00x (Normal)</div>
+                            </div>
+                            <span class="text-xs text-indigo-400 font-mono" id="aiAtrVal">ATR: 2.50</span>
+                        </div>
+
+                        <div class="bg-dark-900/80 p-3 rounded-xl border border-gray-800 flex items-center justify-between">
+                            <div>
+                                <div class="text-[10px] text-gray-400 uppercase font-semibold">Recommended Setups (เหมาะสมสุด)</div>
+                                <div class="text-xs font-bold text-emerald-400 mt-0.5 truncate max-w-[200px]" id="aiRecSetups">All Confluence</div>
+                            </div>
+                            <span class="text-xs px-2 py-0.5 bg-emerald-500/20 text-emerald-400 rounded-md font-bold">SYNERGY</span>
+                        </div>
+                    </div>
+
+                    <!-- AI Adaptive Tuning Table -->
+                    <div class="overflow-x-auto custom-scrollbar">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-dark-900/90 text-gray-400 border-b border-gray-800">
+                                <tr>
+                                    <th class="py-2.5 px-3">กลยุทธ์ (Setup)</th>
+                                    <th class="py-2.5 px-2">Streak ล่าสุด</th>
+                                    <th class="py-2.5 px-2">Dynamic Target R:R</th>
+                                    <th class="py-2.5 px-2">Lot Weight</th>
+                                    <th class="py-2.5 px-2">SL Buffer (Loss Guard)</th>
+                                    <th class="py-2.5 px-2">Strictness</th>
+                                    <th class="py-2.5 px-3">AI Diagnostic & Calibration Note</th>
+                                </tr>
+                            </thead>
+                            <tbody id="aiLearningTableBody" class="divide-y divide-gray-800/60 font-mono">
+                                <tr>
+                                    <td colspan="7" class="text-center py-4 text-gray-500 font-sans">กำลังคำนวณการปรับปรุงกลยุทธ์สด...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- AI Exit Strategy A/B Benchmark Card (Trailing Stop vs Multi-Stage TP1/2/3) -->
+                <div class="glass-card p-6 rounded-2xl space-y-4 border border-gold-500/30">
+                    <div class="flex flex-wrap justify-between items-center gap-3">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-xl">
+                                ⚖️
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
+                                    Exit Strategy A/B Benchmark (Trailing Stop vs TP1/TP2/TP3)
+                                    <span id="exitModeBadge" class="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/40 font-mono">EXEC: TRAILING STOP</span>
+                                </h3>
+                                <p class="text-xs text-gray-400">เข้าออเดอร์เดียว แต่เปรียบเทียบสถิติจริงคู่ขนานระหว่าง Trailing Stop กับการแบ่งเก็บ TP1/TP2/TP3</p>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <button onclick="toggleExitBenchmarkMode()" id="btnToggleExitMode" class="px-3 py-1.5 bg-dark-700 hover:bg-gold-500 text-gray-200 hover:text-black font-bold text-xs rounded-xl transition border border-gray-700 hover:border-gold-500 flex items-center gap-1.5">
+                                <span>🔄</span> สลับโหมดเทรดจริง
+                            </button>
+                            <button onclick="resetExitBenchmark()" class="px-3 py-1.5 bg-dark-700 hover:bg-rose-500/20 text-gray-300 hover:text-rose-400 font-semibold text-xs rounded-xl transition border border-gray-700 hover:border-rose-500/30 flex items-center gap-1.5" title="รีเซ็ตสถิติเปรียบเทียบ">
+                                <span>🧹</span> ล้างสถิติ
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Comparison KPI Scorecards -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+                        <div class="bg-dark-900/80 p-3.5 rounded-xl border border-indigo-500/30 flex flex-col justify-between">
+                            <div class="flex justify-between items-start">
+                                <span class="text-[11px] text-gray-400 font-bold uppercase">⚡ Trailing Stop & BE</span>
+                                <span class="text-[10px] text-indigo-400 bg-indigo-500/10 px-1.5 py-0.5 rounded">โหมดปัจจุบัน</span>
+                            </div>
+                            <div class="mt-2 flex justify-between items-baseline">
+                                <div class="text-base font-black font-mono text-white" id="benchTrailingProfit">$0.00</div>
+                                <div class="text-xs font-mono text-emerald-400 font-bold" id="benchTrailingWR">0.0% WR</div>
+                            </div>
+                            <div class="text-[10px] text-gray-500 mt-1" id="benchTrailingTrades">0 ไม้ชนะ / 0 ไม้ทั้งหมด</div>
+                        </div>
+
+                        <div class="bg-dark-900/80 p-3.5 rounded-xl border border-gold-500/30 flex flex-col justify-between">
+                            <div class="flex justify-between items-start">
+                                <span class="text-[11px] text-gold-400 font-bold uppercase">🎯 Multi-Stage TP1/2/3</span>
+                                <span class="text-[10px] text-gold-400 bg-gold-500/10 px-1.5 py-0.5 rounded">Shadow จำลอง</span>
+                            </div>
+                            <div class="mt-2 flex justify-between items-baseline">
+                                <div class="text-base font-black font-mono text-white" id="benchMultiTPProfit">$0.00</div>
+                                <div class="text-xs font-mono text-emerald-400 font-bold" id="benchMultiTPWR">0.0% WR</div>
+                            </div>
+                            <div class="text-[10px] text-gray-500 mt-1" id="benchMultiTPTrades">0 ไม้ชนะ / 0 ไม้ทั้งหมด</div>
+                        </div>
+
+                        <div class="bg-dark-900/80 p-3.5 rounded-xl border border-gray-800 flex flex-col justify-between">
+                            <div class="flex justify-between items-start">
+                                <span class="text-[11px] text-gray-400 font-bold uppercase">🏆 AI Leader & Verdict</span>
+                                <span class="text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded" id="benchLeaderTag">COMPARISON</span>
+                            </div>
+                            <div class="text-xs font-bold text-white mt-1.5 line-clamp-2" id="benchVerdict">กำลังเก็บสถิติเปรียบเทียบเพื่อหาผู้ชนะ...</div>
+                            <div class="text-[10px] text-gold-400 font-mono mt-1" id="benchLeadMargin">Gap Margin: $0.00</div>
+                        </div>
+                    </div>
+
+                    <!-- Per-Strategy Breakdown Table -->
+                    <div class="overflow-x-auto custom-scrollbar">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-dark-900/90 text-gray-400 border-b border-gray-800">
+                                <tr>
+                                    <th class="py-2 px-3">กลยุทธ์ (Strategy)</th>
+                                    <th class="py-2 px-2">จำนวนไม้เปรียบเทียบ</th>
+                                    <th class="py-2 px-2">กำไร Trailing Stop</th>
+                                    <th class="py-2 px-2">กำไร Multi-Stage TP</th>
+                                    <th class="py-2 px-2">ส่วนต่างกำไร (Diff)</th>
+                                    <th class="py-2 px-3">AI Recommendation (วิธีที่ทำกำไรดีกว่า)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="exitBenchmarkTableBody" class="divide-y divide-gray-800/60 font-mono">
+                                <tr>
+                                    <td colspan="6" class="text-center py-4 text-gray-500 font-sans">กำลังบันทึกและประมวลผลสถิติเปรียบเทียบ...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Strategy Cards Grid -->
+                <div id="strategyCardsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <!-- Real Setup Cards Render Here -->
+                </div>
+
+                <!-- Live Closed Deals Journal from MT5 -->
+                <div class="glass-card p-6 rounded-2xl space-y-3 border border-gray-800">
+                    <div class="flex justify-between items-center">
+                        <h3 class="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                            <span>📖</span> สมุดบันทึกประวัติการเทรดจริง (Live Trade Journal from MT5)
+                        </h3>
+                        <span class="text-[11px] text-emerald-400 font-semibold">ซิงค์สดจาก MT5 History</span>
+                    </div>
+
+                    <div class="overflow-x-auto custom-scrollbar max-h-[300px]">
+                        <table class="w-full text-left text-xs">
+                            <thead class="sticky top-0 bg-dark-900 border-b border-gray-800 text-gray-400">
+                                <tr>
+                                    <th class="py-2 px-2">Ticket</th>
+                                    <th class="py-2 px-2">Time (เวลาปิด)</th>
+                                    <th class="py-2 px-2">Symbol</th>
+                                    <th class="py-2 px-2">Type</th>
+                                    <th class="py-2 px-2">Volume</th>
+                                    <th class="py-2 px-2">Strategy Setup</th>
+                                    <th class="py-2 px-2">Close Comment</th>
+                                    <th class="py-2 px-2 text-right">Net Profit</th>
+                                </tr>
+                            </thead>
+                            <tbody id="realDealsJournalBody" class="divide-y divide-gray-800/60 font-mono">
+                                <tr>
+                                    <td colspan="8" class="text-center py-6 text-gray-500 font-sans">กำลังดึงประวัติการเทรดจาก MT5...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Selected Account Technical & Trend Scanner -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-2">
+                <!-- Market Trend Card -->
+                <div class="glass-card p-6 rounded-2xl space-y-4">
+                    <div class="flex justify-between items-center">
+                        <h3 class="text-xs font-bold text-gray-300 uppercase tracking-wider">M5/H1 Trend & Indicators</h3>
+                        <span id="trendBadge" class="text-xs font-bold px-3 py-1 rounded-full bg-gray-800 text-gray-400 border border-gray-700">ANALYZING</span>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3 pt-1">
+                        <div class="bg-dark-900/80 p-3 rounded-xl border border-gray-800">
+                            <div class="text-[10px] text-cyan-400 font-semibold">Fast EMA 50</div>
+                            <div class="text-base font-bold font-mono text-white mt-0.5" id="valFastEMA">0.00</div>
+                            <div class="text-[11px] text-gray-400" id="valFastSlope">Slope: 0.0 pts</div>
+                        </div>
+
+                        <div class="bg-dark-900/80 p-3 rounded-xl border border-gray-800">
+                            <div class="text-[10px] text-yellow-400 font-semibold">Slow EMA 150</div>
+                            <div class="text-base font-bold font-mono text-white mt-0.5" id="valSlowEMA">0.00</div>
+                            <div class="text-[11px] text-gray-400" id="valSlowSlope">Slope: 0.0 pts</div>
+                        </div>
+                    </div>
+
+                    <div class="text-xs text-gray-400 bg-dark-900/50 p-2.5 rounded-xl border border-gray-800 flex justify-between">
+                        <span>สเปรดปัจจุบัน: <strong id="tickerSpread" class="text-white font-mono">-- pts</strong></span>
+                        <span>สัญญาณล่าสุด: <strong id="lastSignalText" class="text-gold-400 font-semibold">None</strong></span>
+                    </div>
+                </div>
+
+                <!-- Live Open Positions Table -->
+                <div class="glass-card p-6 rounded-2xl lg:col-span-2 flex flex-col justify-between">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-xs font-bold text-gray-300 uppercase tracking-wider">Active Positions (ออเดอร์ที่กำลังเปิดอยู่)</h3>
+                        <span class="text-[11px] text-gray-400">ดึงสดจาก MT5</span>
+                    </div>
+
+                    <div class="overflow-x-auto flex-1 custom-scrollbar">
+                        <table class="w-full text-left text-xs">
+                            <thead>
+                                <tr class="border-b border-gray-800 text-gray-400">
+                                    <th class="pb-2">Ticket</th>
+                                    <th class="pb-2">Type</th>
+                                    <th class="pb-2">Lot</th>
+                                    <th class="pb-2">Open</th>
+                                    <th class="pb-2">SL</th>
+                                    <th class="pb-2">TP</th>
+                                    <th class="pb-2">Profit</th>
+                                    <th class="pb-2 text-right">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="positionsTableBody" class="divide-y divide-gray-800/60 font-mono">
+                                <tr>
+                                    <td colspan="8" class="text-center py-6 text-gray-500 font-sans">ไม่มีออเดอร์เปิดอยู่ในขณะนี้</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Grid: LINE Notification & Account Specific Strategy Settings & Logs -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- LINE Notification Card -->
+                <div class="glass-card p-6 rounded-2xl space-y-4 border-t-2 border-t-line-500">
+                    <div class="flex justify-between items-center">
+                        <h3 class="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full bg-line-500"></span>
+                            LINE Notification
+                        </h3>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="lineEnabled" class="sr-only peer" onchange="saveLineConfig()">
+                            <div class="w-9 h-5 bg-gray-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-line-500 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all"></div>
+                        </label>
+                    </div>
+
+                    <form id="lineForm" onsubmit="saveLineConfig(event)" class="space-y-3 text-xs">
+                        <div>
+                            <label class="text-gray-400 block mb-1">LINE Channel Access Token</label>
+                            <input type="password" id="lineChannelToken" placeholder="วาง Channel Access Token..." class="w-full bg-dark-900 border border-gray-700 rounded-lg p-2 text-white outline-none">
+                        </div>
+
+                        <div>
+                            <label class="text-gray-400 block mb-1">Your LINE User ID / Group ID</label>
+                            <input type="text" id="lineUserId" placeholder="เช่น Ua1b2c3d4e5f6..." class="w-full bg-dark-900 border border-gray-700 rounded-lg p-2 text-white outline-none">
+                        </div>
+
+                        <div class="pt-1 flex gap-2">
+                            <button type="submit" class="flex-1 py-2 bg-line-500 hover:bg-line-600 text-white font-bold rounded-lg transition">
+                                บันทึก LINE
+                            </button>
+                            <button type="button" onclick="testLineAlert()" class="px-3 py-2 bg-dark-700 hover:bg-dark-600 text-line-400 font-semibold rounded-lg border border-line-500/40 transition">
+                                🔔 ทดสอบ
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- High Winrate Scalping Strategy Engine Form -->
+                <div class="glass-card p-6 rounded-2xl">
+                    <h3 class="text-xs font-bold text-gold-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                        <span>🎯</span> Scalping Strategy Mode
+                    </h3>
+                    
+                    <form id="strategyForm" onsubmit="saveAccountStrategy(event)" class="space-y-3 text-xs">
+                        <div>
+                            <label class="text-gray-300 block mb-1 font-semibold">เลือกกลยุทธ์เข้าทำกำไร (Entry Strategy)</label>
+                            <select id="cfgStratMode" class="w-full bg-dark-900 border border-gray-700 rounded-lg p-2 text-white outline-none focus:border-gold-500 font-semibold">
+                                <option value="ALL">🌟 รวมทุกกลยุทธ์ (All Confluence - สลับตาม Session อัตโนมัติ)</option>
+                                <option value="NEWS_MOMENTUM_EXPANSION">⚡ High-Impact News Momentum Breakout (เทรดช่วงข่าว)</option>
+                                <option value="EMA50_3CANDLES_H1">📈 EMA 50 + 3 Confirmation Candles Trend (H1 Pro)</option>
+                                <option value="ASIAN_RANGE_SNIPER">⛩️ Asian Range Sniper: Mean Reversion</option>
+                                <option value="SMC_SWEEP">🎯 SMC Liquidity Sweep & Rejection</option>
+                                <option value="EMA_RIBBON">🌊 EMA Ribbon 20/50/100/200 + RSI Momentum</option>
+                                <option value="BB_SQUEEZE">💥 Bollinger Band Squeeze Breakout</option>
+                                <option value="SECRET_EMA_PULLBACK">📈 Classic Secret EMA 50/150 Pullback</option>
+                            </select>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3 pt-1">
+                            <div>
+                                <label class="text-gray-400 block mb-1">Risk % per Trade</label>
+                                <input type="number" step="0.1" id="cfgRiskPct" class="w-full bg-dark-900 border border-gray-700 rounded-lg p-2 text-white outline-none">
+                            </div>
+                            <div>
+                                <label class="text-gray-400 block mb-1">Daily Target %</label>
+                                <input type="number" step="0.5" id="cfgDailyTarget" class="w-full bg-dark-900 border border-gray-700 rounded-lg p-2 text-white outline-none">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="text-gray-400 block mb-1">Fast EMA</label>
+                                <input type="number" id="cfgFastEMA" class="w-full bg-dark-900 border border-gray-700 rounded-lg p-2 text-white outline-none">
+                            </div>
+                            <div>
+                                <label class="text-gray-400 block mb-1">Slow EMA</label>
+                                <input type="number" id="cfgSlowEMA" class="w-full bg-dark-900 border border-gray-700 rounded-lg p-2 text-white outline-none">
+                            </div>
+                        </div>
+
+                        <div class="pt-2">
+                            <button type="submit" class="w-full py-2 bg-gradient-to-r from-gold-500 to-yellow-500 hover:from-gold-600 text-black font-bold rounded-lg shadow transition">
+                                บันทึกการตั้งค่ากลยุทธ์
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Live Logs Terminal -->
+                <div class="glass-card p-6 rounded-2xl flex flex-col">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-xs font-bold text-gray-300 uppercase tracking-wider flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-gold-400"></span>
+                            Live Execution Logs
+                        </h3>
+                        <span class="text-[10px] text-gray-500">Real-time</span>
+                    </div>
+
+                    <div id="logsContainer" class="flex-1 bg-dark-900/90 rounded-xl p-3 border border-gray-800 font-mono text-[11px] overflow-y-auto max-h-[220px] space-y-1.5 custom-scrollbar">
+                        <div class="text-gray-500">Waiting for live events...</div>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- JavaScript Multi-Account Hub Engine & Real Trade Analytics -->
+    <script>
+        let currentToken = localStorage.getItem('XAUUSD_BOT_TOKEN') || '';
+        let pollTimer = null;
+        let activeAccountId = null;
+        let cachedSetups = [];
+        let activeCategoryFilter = 'ALL';
+
+        window.addEventListener('DOMContentLoaded', () => {
+            if (currentToken) {
+                checkAuth(currentToken);
+            } else {
+                document.getElementById('authModal').classList.remove('hidden');
+            }
+        });
+
+        function fillDefaultToken() {
+            document.getElementById('inputToken').value = 'GOLD_VIP_2026';
+        }
+
+        async function submitToken() {
+            const token = document.getElementById('inputToken').value.trim();
+            if (!token) return;
+            await checkAuth(token);
+        }
+
+        async function checkAuth(token) {
+            try {
+                const res = await fetch('/api/auth/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: token })
+                });
+
+                if (res.ok) {
+                    currentToken = token;
+                    localStorage.setItem('XAUUSD_BOT_TOKEN', token);
+                    document.getElementById('authModal').classList.add('hidden');
+                    document.getElementById('mainDashboard').classList.remove('hidden');
+                    loadConfig();
+                    startPolling();
+                } else {
+                    const err = document.getElementById('authError');
+                    err.textContent = 'Token ไม่ถูกต้อง';
+                    err.classList.remove('hidden');
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function logoutToken() {
+            localStorage.removeItem('XAUUSD_BOT_TOKEN');
+            currentToken = '';
+            stopPolling();
+            document.getElementById('mainDashboard').classList.add('hidden');
+            document.getElementById('authModal').classList.remove('hidden');
+        }
+
+        function startPolling() {
+            fetchStatus();
+            pollTimer = setInterval(fetchStatus, 2500);
+        }
+
+        function stopPolling() {
+            if (pollTimer) clearInterval(pollTimer);
+        }
+
+        async function fetchStatus() {
+            if (!currentToken) return;
+
+            try {
+                const res = await fetch('/api/status', {
+                    headers: { 'x-access-token': currentToken }
+                });
+
+                if (res.status === 401) {
+                    logoutToken();
+                    return;
+                }
+
+                const data = await res.json();
+                renderMultiAccountDashboard(data);
+            } catch (e) {
+                console.error("Poll error:", e);
+            }
+        }
+
+        function renderMultiAccountDashboard(data) {
+            if (!data || !data.profile) return;
+            activeAccountId = data.profile.id;
+
+            // Update Clock
+            document.getElementById('serverClock').textContent = 'Live: ' + new Date().toLocaleTimeString();
+
+            const curr = (data.account && data.account.currency) ? data.account.currency : 'USC';
+            const bal = (data.account && data.account.balance !== undefined) ? data.account.balance : (data.portfolio.total_balance || 0);
+            const eq = (data.account && data.account.equity !== undefined) ? data.account.equity : (data.portfolio.total_equity || 0);
+            const pnl = (data.account && data.account.profit !== undefined) ? data.account.profit : (data.portfolio.total_profit || 0);
+
+            // Live Real Balance
+            document.getElementById('totalPortBalance').textContent = bal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' ' + curr;
+            document.getElementById('totalPortEquity').textContent = eq.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' ' + curr;
+            
+            const pnlEl = document.getElementById('totalPortPnL');
+            pnlEl.textContent = (pnl >= 0 ? '+' : '-') + Math.abs(pnl).toFixed(2) + ' ' + curr;
+            pnlEl.className = 'text-xl font-black mt-0.5 font-mono ' + (pnl >= 0 ? 'text-emerald-400' : 'text-rose-400');
+
+            const isConn = data.account && data.account.connected;
+            document.getElementById('activeBotsCount').textContent = isConn ? 'LIVE ATTACHED' : 'OFFLINE';
+            document.getElementById('activeBotsCount').className = 'text-xl font-black mt-0.5 font-mono ' + (isConn ? 'text-emerald-400' : 'text-rose-400');
+            document.getElementById('mt5ModeText').textContent = isConn ? ('Login: #' + data.account.login) : 'Please open MT5';
+
+            // Render Account Switcher Tabs
+            renderAccountTabs(data.accounts_list || [], activeAccountId, curr);
+
+            // Render 100% Real MT5 Strategy Analytics Section
+            if (data.strategy_stats) {
+                renderStrategyAnalytics(data.strategy_stats, curr);
+            }
+
+            // Selected Account Hero
+            const prof = data.profile;
+            document.getElementById('selectedAccName').textContent = prof.name;
+            document.getElementById('selectedAccSubInfo').textContent = `Login: #${data.account ? data.account.login : prof.login} | Server: ${data.account ? data.account.server : prof.server} | Symbol: ${prof.symbol}`;
+            
+            const badge = document.getElementById('selectedAccBadge');
+            badge.textContent = prof.type === 'BOT' ? '🤖 AUTO BOT' : '✋ MANUAL';
+            badge.className = prof.type === 'BOT' ? 'text-xs px-2.5 py-0.5 rounded-full font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'text-xs px-2.5 py-0.5 rounded-full font-bold bg-purple-500/20 text-purple-400 border border-purple-500/30';
+
+            // Selected Account Bot Status & Buttons
+            const isBotRunning = data.bot && data.bot.is_running;
+            const btnStart = document.getElementById('btnStartActive');
+            const btnStop = document.getElementById('btnStopActive');
+            if (prof.type === 'MANUAL') {
+                btnStart.classList.add('hidden');
+                btnStop.classList.add('hidden');
+            } else {
+                btnStart.classList.remove('hidden');
+                btnStop.classList.remove('hidden');
+                if (isBotRunning) {
+                    btnStart.classList.add('opacity-40', 'cursor-not-allowed');
+                    btnStop.classList.remove('opacity-40', 'cursor-not-allowed');
+                } else {
+                    btnStart.classList.remove('opacity-40', 'cursor-not-allowed');
+                    btnStop.classList.add('opacity-40', 'cursor-not-allowed');
+                }
+            }
+
+            // Market & Technical data for selected account
+            if (data.market) {
+                document.getElementById('tickerSpread').textContent = (data.market.spread || 0).toFixed(1) + ' pts';
+            }
+            if (data.bot) {
+                const trend = data.bot.latest_trend || 'ANALYZING';
+                const trendBadge = document.getElementById('trendBadge');
+                trendBadge.textContent = trend;
+                if (trend.includes('BULLISH') || trend.includes('BUY')) trendBadge.className = 'text-xs font-bold px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+                else if (trend.includes('BEARISH') || trend.includes('SELL')) trendBadge.className = 'text-xs font-bold px-3 py-1 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30';
+                else trendBadge.className = 'text-xs font-bold px-3 py-1 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30';
+
+                document.getElementById('valFastEMA').textContent = (data.bot.fast_ema || 0).toFixed(2);
+                document.getElementById('valSlowEMA').textContent = (data.bot.slow_ema || 0).toFixed(2);
+                document.getElementById('valFastSlope').textContent = 'Slope: ' + (data.bot.fast_slope || 0) + ' pts';
+                document.getElementById('valSlowSlope').textContent = 'Slope: ' + (data.bot.slow_slope || 0) + ' pts';
+                document.getElementById('lastSignalText').textContent = data.bot.last_signal || 'None';
+            }
+
+            // LINE Badge
+            const lineActive = data.line && data.line.enabled;
+            document.getElementById('lineDot').className = 'w-2 h-2 rounded-full ' + (lineActive ? 'bg-line-500 animate-pulse' : 'bg-gray-500');
+            document.getElementById('lineBadgeText').textContent = lineActive ? 'LINE Active' : 'LINE Off';
+
+            // Render Positions & Logs
+            renderPositions(data.positions || [], curr);
+            renderLogs(data.logs || []);
+
+            // Render AI Real-Time Learning Scorecard
+            if (data.learning_stats) {
+                renderRealTimeLearning(data.learning_stats);
+            }
+
+            // Render Exit Strategy A/B Benchmark Scorecard
+            if (data.benchmark_stats) {
+                renderExitBenchmark(data.benchmark_stats, curr);
+            }
+
+            // Render Market Regime & Liquidity Score Radar
+            if (data.regime_score) {
+                renderRegimeScore(data.regime_score);
+            }
+        }
+
+        // --- 🧠 RENDER AI REAL-TIME WIN/LOSS LEARNING & SELF-TUNING SCORECARD ---
+        function renderRealTimeLearning(learnData) {
+            if (!learnData) return;
+
+            // Update Status Badge & Toggle Button
+            const isEnabled = learnData.enabled !== false;
+            const badge = document.getElementById('aiLearningBadge');
+            const toggleBtn = document.getElementById('btnToggleAILearn');
+            if (badge) {
+                badge.textContent = isEnabled ? 'ONLINE LEARNING ACTIVE' : 'LEARNING PAUSED';
+                badge.className = isEnabled ? 
+                    'text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-mono' :
+                    'text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/40 font-mono';
+            }
+            if (toggleBtn) {
+                toggleBtn.innerHTML = isEnabled ? '<span>⚡</span> โหมดเรียนรู้สด: เปิด' : '<span>⏸️</span> โหมดเรียนรู้สด: พัก';
+                toggleBtn.className = isEnabled ? 
+                    'px-3 py-1.5 bg-indigo-600/80 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition border border-indigo-400/30 flex items-center gap-1.5' :
+                    'px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 font-bold text-xs rounded-xl transition border border-gray-600 flex items-center gap-1.5';
+            }
+
+            // Economic News Radar Intelligence
+            const newsIntel = learnData.news_intelligence;
+            if (newsIntel && newsIntel.status) {
+                const ns = newsIntel.status;
+                const badgeEl = document.getElementById('newsProximityBadge');
+                const labelEl = document.getElementById('newsCurrentStatusLabel');
+                const cdEl = document.getElementById('newsNextCountdown');
+                const shieldEl = document.getElementById('newsShieldStatus');
+
+                if (labelEl) labelEl.textContent = ns.label || '🟢 Calm Market Session';
+
+                if (badgeEl) {
+                    if (ns.state === 'NEWS_RELEASE_IMPACT') {
+                        badgeEl.className = 'px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/40 text-[9px] font-mono font-bold animate-pulse';
+                        badgeEl.textContent = '⚡ LIVE NEWS SPIKE';
+                    } else if (ns.state === 'PRE_NEWS') {
+                        badgeEl.className = 'px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/40 text-[9px] font-mono font-bold animate-pulse';
+                        badgeEl.textContent = '⚠️ PRE-NEWS RADAR';
+                    } else if (ns.state === 'POST_NEWS_DIGEST') {
+                        badgeEl.className = 'px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/40 text-[9px] font-mono font-bold';
+                        badgeEl.textContent = '🔵 POST-NEWS DIGEST';
+                    } else {
+                        badgeEl.className = 'px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[9px] font-mono font-bold';
+                        badgeEl.textContent = '🟢 CALM (NO NEWS)';
+                    }
+                }
+
+                if (cdEl) {
+                    if (ns.nearest_event) {
+                        const mins = ns.mins_to_event;
+                        if (mins > 60) {
+                            cdEl.textContent = `${ns.nearest_event.name} (${Math.floor(mins/60)}h ${Math.floor(mins%60)}m)`;
+                        } else if (mins > 0) {
+                            cdEl.textContent = `${ns.nearest_event.name} (${Math.floor(mins)}m)`;
+                        } else if (mins >= -15) {
+                            cdEl.textContent = `🔴 ${ns.nearest_event.name} (LIVE NOW)`;
+                        } else {
+                            cdEl.textContent = `${ns.nearest_event.name} (${Math.abs(Math.floor(mins))}m ago)`;
+                        }
+                    } else {
+                        cdEl.textContent = 'ไม่มีข่าวใหญ่ใน 48 ชม.';
+                    }
+                }
+
+                if (shieldEl) {
+                    if (ns.blocked_strategies && ns.blocked_strategies.length > 0) {
+                        shieldEl.textContent = `🛡️ Auto-Paused ${ns.blocked_strategies.length} Setups`;
+                        shieldEl.className = 'text-amber-400 font-bold';
+                    } else {
+                        shieldEl.textContent = '✅ All Systems Safe';
+                        shieldEl.className = 'text-emerald-400 font-bold';
+                    }
+                }
+            }
+
+            // Market Regime Data
+            const regime = learnData.market_regime;
+            if (regime) {
+                document.getElementById('aiRegimeLabel').textContent = regime.label || 'Analyzing...';
+                document.getElementById('aiVolatilityRatio').textContent = (regime.volatility_ratio || 1.0) + 'x (' + (regime.volatility_ratio >= 1.4 ? 'High Expansion' : 'Normal') + ')';
+                document.getElementById('aiAtrVal').textContent = 'ATR: ' + (regime.atr || 2.50).toFixed(2);
+                
+                const recList = (regime.recommended_strategies || []).map(r => r.replace('_', ' ')).join(', ');
+                document.getElementById('aiRecSetups').textContent = recList || 'All Setups';
+            }
+
+            // Render Table of Strategies
+            const tbody = document.getElementById('aiLearningTableBody');
+            if (tbody && learnData.strategies) {
+                const strats = Object.values(learnData.strategies);
+                const blockedList = (newsIntel && newsIntel.status && newsIntel.status.blocked_strategies) || [];
+
+                tbody.innerHTML = strats.map(s => {
+                    const streak = s.streak || 0;
+                    let streakBadge = '<span class="text-gray-400 font-mono">0 (Neutral)</span>';
+                    if (streak > 0) {
+                        streakBadge = `<span class="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold font-mono">🔥 +${streak} Wins</span>`;
+                    } else if (streak < 0) {
+                        streakBadge = `<span class="px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-400 border border-rose-500/30 font-bold font-mono">🛡️ ${streak} Losses</span>`;
+                    }
+
+                    const dynamicRR = (s.current_dynamic_rr || s.base_rr || 1.5).toFixed(2) + 'R';
+                    const weight = (s.weight || 1.0).toFixed(2) + 'x';
+                    const slMult = (s.atr_sl_multiplier || 1.0).toFixed(2) + 'x';
+                    
+                    let strictnessBadge = '<span class="text-gray-400 text-[10px] font-bold">NORMAL</span>';
+                    if (blockedList.includes(s.id)) {
+                        strictnessBadge = '<span class="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/40 text-[10px] font-bold">🚫 NEWS BLOCKED</span>';
+                    } else if (s.id === 'NEWS_MOMENTUM_EXPANSION') {
+                        strictnessBadge = '<span class="px-1.5 py-0.5 rounded bg-gold-500/20 text-gold-400 border border-gold-500/40 text-[10px] font-bold">⚡ NEWS SPECIALIST</span>';
+                    } else if (s.strictness_level === 'STRICT') {
+                        strictnessBadge = '<span class="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[10px] font-bold">STRICT FILTER</span>';
+                    } else if (s.strictness_level === 'ULTRA_STRICT') {
+                        strictnessBadge = '<span class="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[10px] font-bold">COOLDOWN</span>';
+                    }
+
+                    return `
+                        <tr class="hover:bg-dark-900/50 transition">
+                            <td class="py-2.5 px-3">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-base">${s.icon || '📈'}</span>
+                                    <div>
+                                        <div class="font-bold text-white text-xs">${s.name}</div>
+                                        <div class="text-[10px] text-gray-500 font-sans font-normal">${s.trades} ไม้จริง (${s.wins}W - ${s.losses}L) | WR: ${s.winrate}%</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="py-2.5 px-2">${streakBadge}</td>
+                            <td class="py-2.5 px-2 font-bold text-gold-400 text-xs">${dynamicRR}</td>
+                            <td class="py-2.5 px-2 text-cyan-400 font-bold text-xs">${weight}</td>
+                            <td class="py-2.5 px-2 text-indigo-400 text-xs font-semibold">${slMult}</td>
+                            <td class="py-2.5 px-2">${strictnessBadge}</td>
+                            <td class="py-2.5 px-3 text-gray-300 font-sans text-xs">${s.learning_note || 'Balanced Calibration'}</td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+        }
+
+        async function syncNewsCalendar() {
+            try {
+                const res = await fetch('/api/news/sync', {
+                    method: 'POST',
+                    headers: { 'x-access-token': currentToken }
+                });
+                const data = await res.json();
+                if (data.status) {
+                    alert('ซิงค์ปฏิทินข่าวเศรษฐกิจเรียบร้อยแล้ว!');
+                    fetchStatus();
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function toggleAILearning() {
+            try {
+                const res = await fetch('/api/strategy/learning/toggle', {
+                    method: 'POST',
+                    headers: { 'x-access-token': currentToken }
+                });
+                const data = await res.json();
+                if (data.status) {
+                    fetchStatus();
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function resetAILearning() {
+            if (!confirm('ยืนยันการรีเซ็ตข้อมูลความจำและการเรียนรู้ของ AI ทั้งหมดกลับสู่ค่าโรงงานเริ่มต้น?')) {
+                return;
+            }
+            try {
+                const res = await fetch('/api/strategy/learning/reset', {
+                    method: 'POST',
+                    headers: { 'x-access-token': currentToken }
+                });
+                const data = await res.json();
+                if (data.status) {
+                    alert('รีเซ็ตความจำการเรียนรู้ของ AI เรียบร้อยแล้ว!');
+                    fetchStatus();
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        // --- ⚖️ RENDER AI EXIT STRATEGY A/B BENCHMARK (Trailing Stop vs Multi-Stage TP) ---
+        function renderExitBenchmark(benchData, curr = 'USC') {
+            if (!benchData) return;
+
+            const mode = benchData.execution_exit_mode || 'TRAILING_STOP';
+            const badgeEl = document.getElementById('exitModeBadge');
+            const toggleBtn = document.getElementById('btnToggleExitMode');
+
+            if (badgeEl) {
+                if (mode === 'TRAILING_STOP') {
+                    badgeEl.textContent = 'EXEC: TRAILING STOP & BE';
+                    badgeEl.className = 'text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/40 font-mono font-bold';
+                } else {
+                    badgeEl.textContent = 'EXEC: MULTI-STAGE TP1-3';
+                    badgeEl.className = 'text-[10px] px-2 py-0.5 rounded-full bg-gold-500/20 text-gold-400 border border-gold-500/40 font-mono font-bold animate-pulse';
+                }
+            }
+
+            if (toggleBtn) {
+                toggleBtn.innerHTML = mode === 'TRAILING_STOP' ? 
+                    '<span>🎯</span> สลับเป็นโหมด Multi-TP' : 
+                    '<span>⚡</span> สลับเป็นโหมด Trailing Stop';
+            }
+
+            const comp = benchData.comparison;
+            if (comp) {
+                // Trailing Stop KPI
+                const trProf = comp.trailing_stop.total_profit || 0;
+                const trProfEl = document.getElementById('benchTrailingProfit');
+                if (trProfEl) {
+                    trProfEl.textContent = (trProf >= 0 ? '+' : '') + trProf.toFixed(2) + ' ' + curr;
+                    trProfEl.className = 'text-base font-black font-mono ' + (trProf >= 0 ? 'text-emerald-400' : 'text-rose-400');
+                }
+                const trWREl = document.getElementById('benchTrailingWR');
+                if (trWREl) trWREl.textContent = (comp.trailing_stop.winrate || 0) + '% WR';
+                const trTradesEl = document.getElementById('benchTrailingTrades');
+                if (trTradesEl) trTradesEl.textContent = `${comp.trailing_stop.wins || 0} ชนะ / ${benchData.total_benchmark_trades || 0} ไม้เปรียบเทียบ`;
+
+                // Multi-Stage TP KPI
+                const mtpProf = comp.multi_stage_tp.total_profit || 0;
+                const mtpProfEl = document.getElementById('benchMultiTPProfit');
+                if (mtpProfEl) {
+                    mtpProfEl.textContent = (mtpProf >= 0 ? '+' : '') + mtpProf.toFixed(2) + ' ' + curr;
+                    mtpProfEl.className = 'text-base font-black font-mono ' + (mtpProf >= 0 ? 'text-emerald-400' : 'text-rose-400');
+                }
+                const mtpWREl = document.getElementById('benchMultiTPWR');
+                if (mtpWREl) mtpWREl.textContent = (comp.multi_stage_tp.winrate || 0) + '% WR';
+                const mtpTradesEl = document.getElementById('benchMultiTPTrades');
+                if (mtpTradesEl) mtpTradesEl.textContent = `${comp.multi_stage_tp.wins || 0} ชนะ / ${benchData.total_benchmark_trades || 0} ไม้เปรียบเทียบ`;
+
+                // Leader & Verdict
+                const verdictEl = document.getElementById('benchVerdict');
+                if (verdictEl) {
+                    if (benchData.total_benchmark_trades === 0) {
+                        verdictEl.textContent = 'บอทกำลังเก็บข้อมูลคู่ขนานของออเดอร์ใหม่...';
+                    } else if (comp.leader === 'MULTI_STAGE_TP') {
+                        verdictEl.textContent = `🎯 Multi-Stage TP1/2/3 ทำกำไรได้สูงกว่า Trailing Stop (+${comp.lead_margin} ${curr})`;
+                    } else if (comp.leader === 'TRAILING_STOP') {
+                        verdictEl.textContent = `⚡ Trailing Stop ทำกำไรได้สูงกว่า Multi-Stage TP (+${comp.lead_margin} ${curr})`;
+                    } else {
+                        verdictEl.textContent = '⚖️ ทั้งสองวิธีให้ผลตอบแทนใกล้เคียงกัน';
+                    }
+                }
+                const leadMarginEl = document.getElementById('benchLeadMargin');
+                if (leadMarginEl) leadMarginEl.textContent = `Gap Margin: ${comp.lead_margin || 0.0} ${curr}`;
+                const leaderTagEl = document.getElementById('benchLeaderTag');
+                if (leaderTagEl) {
+                    leaderTagEl.textContent = comp.leader === 'MULTI_STAGE_TP' ? 'MULTI-TP LEADING' : 'TRAILING LEADING';
+                    leaderTagEl.className = comp.leader === 'MULTI_STAGE_TP' ? 
+                        'text-[10px] text-gold-400 bg-gold-500/10 px-1.5 py-0.5 rounded font-bold' : 
+                        'text-[10px] text-indigo-400 bg-indigo-500/10 px-1.5 py-0.5 rounded font-bold';
+                }
+            }
+
+            // Strategy Breakdown Table
+            const tbody = document.getElementById('exitBenchmarkTableBody');
+            if (tbody) {
+                const breakdown = Object.values(benchData.strategy_breakdown || {});
+                if (breakdown.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-gray-500 font-sans">กำลังบันทึกและประมวลผลสถิติเปรียบเทียบเมื่อมีออเดอร์ปิด...</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = breakdown.map(item => {
+                    const trP = item.trailing_profit || 0;
+                    const mtpP = item.multi_tp_profit || 0;
+                    const diff = (mtpP - trP);
+                    const diffClass = diff > 0 ? 'text-emerald-400 font-bold' : (diff < 0 ? 'text-rose-400 font-bold' : 'text-gray-400');
+                    
+                    let recBadge = '<span class="text-gray-400 text-xs">⚖️ Balanced Data</span>';
+                    if (item.winner === 'MULTI_STAGE_TP') {
+                        recBadge = '<span class="px-2 py-0.5 rounded bg-gold-500/20 text-gold-400 border border-gold-500/30 text-xs font-bold font-sans">🎯 Multi-Stage TP1/2/3 ดีกว่า</span>';
+                    } else if (item.winner === 'TRAILING_STOP') {
+                        recBadge = '<span class="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 text-xs font-bold font-sans">⚡ Trailing Stop ดีกว่า</span>';
+                    }
+
+                    return `
+                        <tr class="hover:bg-dark-900/50 transition">
+                            <td class="py-2.5 px-3 font-bold text-white text-xs">${item.strategy}</td>
+                            <td class="py-2.5 px-2 text-gray-300 font-mono">${item.trades} ไม้</td>
+                            <td class="py-2.5 px-2 font-mono ${trP >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${trP >= 0 ? '+' : ''}${trP.toFixed(2)} ${curr}</td>
+                            <td class="py-2.5 px-2 font-mono ${mtpP >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${mtpP >= 0 ? '+' : ''}${mtpP.toFixed(2)} ${curr}</td>
+                            <td class="py-2.5 px-2 font-mono ${diffClass}">${diff > 0 ? '+' : ''}${diff.toFixed(2)} ${curr}</td>
+                            <td class="py-2.5 px-3">${recBadge}</td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+        }
+
+        async function toggleExitBenchmarkMode() {
+            try {
+                const res = await fetch('/api/benchmark/toggle_mode', {
+                    method: 'POST',
+                    headers: { 'x-access-token': currentToken }
+                });
+                const data = await res.json();
+                if (data.status) {
+                    alert('สลับโหมดเทรดจริงเป็น: ' + data.execution_exit_mode + ' เรียบร้อยแล้ว!');
+                    fetchStatus();
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function resetExitBenchmark() {
+            if (!confirm('ยืนยันการล้างประวัติสถิติเปรียบเทียบ Exit Strategy ทั้งหมด?')) {
+                return;
+            }
+            try {
+                const res = await fetch('/api/benchmark/reset', {
+                    method: 'POST',
+                    headers: { 'x-access-token': currentToken }
+                });
+                const data = await res.json();
+                if (data.status) {
+                    alert('ล้างสถิติเปรียบเทียบเรียบร้อยแล้ว!');
+                    fetchStatus();
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        // --- 🎯 RENDER MARKET REGIME & LIQUIDITY QUALITY SCORE RADAR ---
+        function renderRegimeScore(regimeData) {
+            if (!regimeData) return;
+
+            const score = regimeData.score || 0;
+            const grade = regimeData.grade || 'A';
+            const gradeColor = regimeData.grade_color || 'emerald';
+            const isAllowed = regimeData.is_allowed !== false;
+            const isEnabled = regimeData.is_enabled !== false;
+
+            // Grade Badge & Title
+            const badgeEl = document.getElementById('regimeQualityGradeBadge');
+            if (badgeEl) {
+                badgeEl.textContent = `GRADE ${grade} (${score}/100)`;
+                if (grade === 'A+') badgeEl.className = 'text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-mono font-black animate-pulse';
+                else if (grade === 'A') badgeEl.className = 'text-[10px] px-2 py-0.5 rounded-full bg-gold-500/20 text-gold-400 border border-gold-500/40 font-mono font-bold';
+                else if (grade === 'B') badgeEl.className = 'text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/40 font-mono font-bold';
+                else badgeEl.className = 'text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/40 font-mono font-bold';
+            }
+
+            const titleEl = document.getElementById('regimeQualityTitle');
+            if (titleEl) titleEl.textContent = regimeData.grade_title || 'Quality Evaluation';
+
+            // Saved Junk Trades Counter
+            const savedEl = document.getElementById('regimeSavedTradesCount');
+            if (savedEl) savedEl.textContent = `${regimeData.saved_junk_trades_count || 0} ไม้`;
+
+            // Threshold dropdown sync
+            const selectEl = document.getElementById('selectRegimeThreshold');
+            if (selectEl && regimeData.threshold) {
+                selectEl.value = String(regimeData.threshold);
+            }
+
+            // Toggle Filter button
+            const toggleBtn = document.getElementById('btnToggleRegimeScorer');
+            if (toggleBtn) {
+                toggleBtn.innerHTML = isEnabled ? '<span>⚙️</span> กรอง: เปิด' : '<span>⏸️</span> กรอง: พัก';
+                toggleBtn.className = isEnabled ? 
+                    'px-2.5 py-1.5 bg-dark-700 hover:bg-cyan-500/20 text-gray-300 hover:text-cyan-300 font-semibold text-xs rounded-xl transition border border-gray-700 hover:border-cyan-500/30' :
+                    'px-2.5 py-1.5 bg-dark-800 text-gray-500 font-semibold text-xs rounded-xl transition border border-gray-800';
+            }
+
+            // 4 Pillars Breakdown
+            const pil = regimeData.pillars || {};
+            if (pil.session) {
+                const sScore = document.getElementById('pillarSessionScore');
+                if (sScore) sScore.textContent = `${pil.session.score}/${pil.session.max}`;
+                const sDesc = document.getElementById('pillarSessionDesc');
+                if (sDesc) sDesc.textContent = pil.session.name || pil.session.desc;
+            }
+            if (pil.volume) {
+                const vScore = document.getElementById('pillarVolumeScore');
+                if (vScore) vScore.textContent = `${pil.volume.score}/${pil.volume.max}`;
+                const vDesc = document.getElementById('pillarVolumeDesc');
+                if (vDesc) vDesc.textContent = pil.volume.desc;
+            }
+            if (pil.trend) {
+                const tScore = document.getElementById('pillarTrendScore');
+                if (tScore) tScore.textContent = `${pil.trend.score}/${pil.trend.max}`;
+                const tDesc = document.getElementById('pillarTrendDesc');
+                if (tDesc) tDesc.textContent = pil.trend.desc;
+            }
+            if (pil.spread) {
+                const spScore = document.getElementById('pillarSpreadScore');
+                if (spScore) spScore.textContent = `${pil.spread.score}/${pil.spread.max}`;
+                const spDesc = document.getElementById('pillarSpreadDesc');
+                if (spDesc) spDesc.textContent = pil.spread.desc;
+            }
+        }
+
+        async function updateRegimeThreshold(newVal) {
+            try {
+                const res = await fetch('/api/regime/threshold', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'x-access-token': currentToken 
+                    },
+                    body: JSON.stringify({ threshold: parseInt(newVal) })
+                });
+                const data = await res.json();
+                if (data.status) {
+                    fetchStatus();
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function toggleRegimeScorer() {
+            try {
+                const res = await fetch('/api/regime/toggle', {
+                    method: 'POST',
+                    headers: { 'x-access-token': currentToken }
+                });
+                const data = await res.json();
+                if (data.status) {
+                    fetchStatus();
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function renderStrategyAnalytics(statsData, curr) {
+            if (!statsData) return;
+
+            const ov = statsData.overview;
+            if (ov) {
+                document.getElementById('kpiBestName').textContent = ov.best_setup_name || 'N/A';
+                document.getElementById('kpiBestWR').textContent = (ov.best_setup_winrate || 0) + '% Winrate';
+                document.getElementById('kpiBestIcon').textContent = ov.best_setup_icon || '🎯';
+
+                document.getElementById('kpiAvgWinrate').textContent = (ov.overall_winrate_pct || 0) + '%';
+                document.getElementById('kpiWinLossRatio').textContent = `${ov.total_wins || 0} Wins / ${ov.total_losses || 0} Losses`;
+
+                document.getElementById('kpiTotalTrades').textContent = (ov.total_trades || 0) + ' Deals';
+                
+                const netProf = ov.total_net_profit || 0;
+                const netEl = document.getElementById('kpiNetProfit');
+                netEl.textContent = (netProf >= 0 ? '+' : '-') + Math.abs(netProf).toFixed(2) + ' ' + curr;
+                netEl.className = 'text-base font-black font-mono ' + (netProf >= 0 ? 'text-emerald-400' : 'text-rose-400');
+                
+                document.getElementById('kpiAvgPF').textContent = 'PF: ' + (ov.profit_factor || 0).toFixed(2);
+            }
+
+            cachedSetups = statsData.setups || [];
+            drawStrategyCards(cachedSetups, curr);
+            drawRealDealsJournal(statsData.real_deals_journal || [], curr);
+        }
+
+        function filterStrategyCards(category) {
+            activeCategoryFilter = category;
+            ['ALL', 'SCALPING', 'TREND_FOLLOWING', 'MEAN_REVERSION'].forEach(c => {
+                const btn = document.getElementById('filterBtn_' + c);
+                if (btn) {
+                    if (c === category) {
+                        btn.className = 'px-3 py-1 bg-gold-500 text-black font-bold rounded-lg transition';
+                    } else {
+                        btn.className = 'px-3 py-1 hover:bg-dark-700 text-gray-400 hover:text-white rounded-lg transition font-medium';
+                    }
+                }
+            });
+            drawStrategyCards(cachedSetups);
+        }
+
+        function drawStrategyCards(setups, curr = 'USC') {
+            const container = document.getElementById('strategyCardsGrid');
+            if (!setups || setups.length === 0) {
+                container.innerHTML = '<div class="text-gray-500 text-xs py-4">ไม่มีข้อมูลสถิติ</div>';
+                return;
+            }
+
+            const filtered = setups.filter(s => {
+                if (activeCategoryFilter === 'ALL') return true;
+                return s.category === activeCategoryFilter;
+            });
+
+            container.innerHTML = filtered.map(s => {
+                const wr = s.winrate_pct || 0;
+                const trades = s.total_trades || 0;
+                const netPnl = s.total_profit_money || 0;
+                
+                let wrColor = 'text-gray-400';
+                let barColor = 'bg-gray-700';
+                if (trades > 0) {
+                    if (wr >= 60) {
+                        wrColor = 'text-emerald-400';
+                        barColor = 'bg-gradient-to-r from-emerald-500 to-teal-400';
+                    } else {
+                        wrColor = 'text-amber-400';
+                        barColor = 'bg-gradient-to-r from-amber-500 to-yellow-400';
+                    }
+                }
+
+                const isStatusActive = s.status.includes('ACTIVE') || s.status.includes('🟢');
+                const statusBadge = isStatusActive ? 
+                    '<span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold animate-pulse">' + s.status + '</span>' :
+                    '<span class="text-[10px] px-2 py-0.5 rounded-full bg-gray-800 text-gray-400 border border-gray-700 font-medium">' + s.status + '</span>';
+
+                return `
+                    <div class="glass-card p-5 rounded-2xl border border-gray-800 hover:border-gold-500/40 transition flex flex-col justify-between space-y-4">
+                        <div>
+                            <div class="flex justify-between items-start gap-2">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-2xl">${s.icon}</span>
+                                    <div>
+                                        <h4 class="font-bold text-xs text-white">${s.name}</h4>
+                                        <span class="text-[10px] text-gray-400">${s.timeframe} • ${s.category}</span>
+                                    </div>
+                                </div>
+                                ${statusBadge}
+                            </div>
+                            <p class="text-[11px] text-gray-400 mt-2.5 line-clamp-2 leading-relaxed">${s.description}</p>
+                        </div>
+
+                        <!-- Real Winrate Bar & Real Stats -->
+                        <div class="space-y-2 bg-dark-900/60 p-3.5 rounded-xl border border-gray-800/80">
+                            <div class="flex justify-between items-baseline">
+                                <span class="text-[11px] text-gray-400 font-semibold">Real Winrate</span>
+                                <span class="text-base font-black font-mono ${wrColor}">${trades > 0 ? wr + '%' : '0.0% (รอไม้จริง)'}</span>
+                            </div>
+                            <div class="w-full bg-gray-800 rounded-full h-2 overflow-hidden">
+                                <div class="${barColor} h-2 rounded-full transition-all duration-700" style="width: ${trades > 0 ? wr : 0}%"></div>
+                            </div>
+
+                            <div class="grid grid-cols-3 gap-2 pt-2 text-center">
+                                <div class="bg-dark-800/50 p-1.5 rounded-lg">
+                                    <div class="text-[9px] text-gray-500 uppercase">Real Trades</div>
+                                    <div class="text-xs font-mono font-bold text-white">${trades} <span class="text-[10px] text-emerald-400">(${s.wins}W)</span></div>
+                                </div>
+                                <div class="bg-dark-800/50 p-1.5 rounded-lg">
+                                    <div class="text-[9px] text-gray-500 uppercase">Profit Factor</div>
+                                    <div class="text-xs font-mono font-bold text-gold-400">${s.profit_factor}</div>
+                                </div>
+                                <div class="bg-dark-800/50 p-1.5 rounded-lg">
+                                    <div class="text-[9px] text-gray-500 uppercase">Real Net PnL</div>
+                                    <div class="text-xs font-mono font-bold ${netPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${netPnl >= 0 ? '+' : ''}${netPnl.toFixed(1)} ${curr}</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Session Info & Quick Apply Button -->
+                        <div class="flex items-center justify-between gap-2 pt-1">
+                            <span class="text-[10px] text-gray-500 truncate max-w-[170px]" title="${s.best_session}">⏱ ${s.best_session}</span>
+                            <button onclick="quickApplyStrategy('${s.id}')" class="px-3 py-1.5 bg-dark-700 hover:bg-gold-500 text-gray-300 hover:text-black font-bold text-[10px] rounded-lg transition flex items-center gap-1 border border-gray-700 hover:border-gold-500">
+                                <span>⚡</span> เลือกใช้
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function drawRealDealsJournal(deals, curr) {
+            const tbody = document.getElementById('realDealsJournalBody');
+            if (!deals || deals.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center py-6 text-gray-500 font-sans">ยังไม่มีประวัติการปิดออเดอร์ใน MT5</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = deals.map(d => {
+                const pnl = d.net_profit || 0;
+                const pnlClass = pnl >= 0 ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold';
+                const stratLabel = d.strategy_id ? d.strategy_id.replace('STRAT_', '').replace('_', ' ') : 'MANUAL';
+
+                return `
+                    <tr class="hover:bg-dark-900/60 transition">
+                        <td class="py-2 px-2 text-gray-300 font-mono">#${d.ticket}</td>
+                        <td class="py-2 px-2 text-gray-400 font-sans text-[11px]">${d.time}</td>
+                        <td class="py-2 px-2 text-white font-semibold">${d.symbol}</td>
+                        <td class="py-2 px-2 ${d.type === 'BUY' ? 'text-emerald-400' : 'text-rose-400'} font-bold">${d.type}</td>
+                        <td class="py-2 px-2 text-gray-200">${d.volume}</td>
+                        <td class="py-2 px-2"><span class="text-[10px] px-2 py-0.5 rounded bg-dark-800 text-gold-400 border border-gray-700 font-mono">${stratLabel}</span></td>
+                        <td class="py-2 px-2 text-gray-400 font-mono text-[11px]">${d.comment || '-'}</td>
+                        <td class="py-2 px-2 text-right ${pnlClass}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)} ${curr}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        async function quickApplyStrategy(strategyId) {
+            if (!activeAccountId) {
+                alert('กรุณาเลือกบัญชีเทรดก่อน');
+                return;
+            }
+            document.getElementById('cfgStratMode').value = strategyId;
+            const payload = {
+                strategy: {
+                    strategy_mode: strategyId
+                }
+            };
+            await fetch(`/api/accounts/update/${activeAccountId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-access-token': currentToken },
+                body: JSON.stringify(payload)
+            });
+            alert('สลับมาใช้กลยุทธ์ ' + strategyId + ' เรียบร้อยแล้ว!');
+            fetchStatus();
+        }
+
+        function renderAccountTabs(accounts, selectedId, curr) {
+            const container = document.getElementById('accountsTabsContainer');
+            container.innerHTML = accounts.map(a => {
+                const isSelected = a.id === selectedId;
+                const isBot = a.type === 'BOT';
+                const statusDot = isBot ? (a.is_running ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500') : 'bg-purple-400';
+                const borderClass = isSelected ? 'border-gold-500 glow-gold bg-dark-800' : 'border-gray-800 bg-dark-900/70 hover:border-gray-700';
+                const accCurr = a.currency || curr;
+
+                return `
+                    <div onclick="selectAccount('${a.id}')" class="min-w-[200px] p-3 rounded-xl border ${borderClass} cursor-pointer transition flex flex-col justify-between select-none">
+                        <div class="flex justify-between items-start">
+                            <span class="font-bold text-xs text-white truncate max-w-[130px]">${a.name}</span>
+                            <span class="w-2 h-2 rounded-full ${statusDot}"></span>
+                        </div>
+                        <div class="mt-2 flex justify-between items-baseline">
+                            <span class="text-[10px] text-gray-400">${isBot ? (a.is_running ? 'RUNNING' : 'STOPPED') : 'MANUAL'}</span>
+                            <span class="text-xs font-mono font-bold text-white">${(a.balance || 0).toLocaleString()} ${accCurr}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderPositions(positions, curr) {
+            const tbody = document.getElementById('positionsTableBody');
+            if (!positions || positions.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center py-6 text-gray-500 font-sans">ไม่มีออเดอร์เปิดอยู่ในขณะนี้</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = positions.map(p => `
+                <tr class="hover:bg-dark-900/40">
+                    <td class="py-2 text-gray-300">#${p.ticket}</td>
+                    <td class="py-2 ${p.type === 'BUY' ? 'text-emerald-400' : 'text-rose-400'} font-bold">${p.type}</td>
+                    <td class="py-2 text-white">${p.volume}</td>
+                    <td class="py-2 text-gray-300">${p.price_open.toFixed(2)}</td>
+                    <td class="py-2 text-rose-300">${p.sl.toFixed(2)}</td>
+                    <td class="py-2 text-emerald-300">${p.tp ? p.tp.toFixed(2) : 'Runner (Trail)'}</td>
+                    <td class="py-2 font-bold ${p.profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${p.profit >= 0 ? '+' : ''}${p.profit.toFixed(2)} ${curr}</td>
+                    <td class="py-2 text-right">
+                        <button onclick="closePosition(${p.ticket})" class="px-2 py-0.5 bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white rounded text-[10px] transition">Close</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function renderLogs(logs) {
+            const container = document.getElementById('logsContainer');
+            if (!logs || logs.length === 0) return;
+
+            container.innerHTML = logs.map(l => {
+                let col = 'text-gray-400';
+                if (l.level === 'SUCCESS') col = 'text-emerald-400';
+                if (l.level === 'WARNING') col = 'text-amber-400';
+                if (l.level === 'ERROR') col = 'text-rose-400';
+                return `<div class="leading-relaxed"><span class="text-gray-500">[${l.time}]</span> <span class="${col}">${l.message}</span></div>`;
+            }).join('');
+        }
+
+        async function selectAccount(accId) {
+            await fetch(`/api/accounts/select/${accId}`, { method: 'POST', headers: { 'x-access-token': currentToken } });
+            fetchStatus();
+            loadActiveAccountStrategy();
+        }
+
+        async function startActiveBot() {
+            if (!activeAccountId) return;
+            await fetch(`/api/accounts/${activeAccountId}/start`, { method: 'POST', headers: { 'x-access-token': currentToken } });
+            fetchStatus();
+        }
+
+        async function stopActiveBot() {
+            if (!activeAccountId) return;
+            await fetch(`/api/accounts/${activeAccountId}/stop`, { method: 'POST', headers: { 'x-access-token': currentToken } });
+            fetchStatus();
+        }
+
+        async function masterStartAll() {
+            await fetch('/api/accounts/start_all', { method: 'POST', headers: { 'x-access-token': currentToken } });
+            fetchStatus();
+        }
+
+        async function masterStopAll() {
+            await fetch('/api/accounts/stop_all', { method: 'POST', headers: { 'x-access-token': currentToken } });
+            fetchStatus();
+        }
+
+        async function closeAllActive() {
+            if (!activeAccountId) return;
+            if (confirm('คุณต้องการปิดออเดอร์ทั้งหมดของบัญชีนี้ใช่หรือไม่?')) {
+                await fetch(`/api/accounts/${activeAccountId}/close_all`, { method: 'POST', headers: { 'x-access-token': currentToken } });
+                fetchStatus();
+            }
+        }
+
+        async function deleteActiveAccount() {
+            if (!activeAccountId) return;
+            if (confirm('คุณต้องการลบบัญชีนี้ออกจากระบบใช่หรือไม่?')) {
+                await fetch(`/api/accounts/${activeAccountId}`, { method: 'DELETE', headers: { 'x-access-token': currentToken } });
+                fetchStatus();
+            }
+        }
+
+        async function closePosition(ticket) {
+            await fetch(`/api/positions/close/${ticket}`, { method: 'POST', headers: { 'x-access-token': currentToken } });
+            fetchStatus();
+        }
+
+        // --- ADD / EDIT ACCOUNT MODAL ---
+        function openAddAccountModal() {
+            document.getElementById('modalAccId').value = '';
+            document.getElementById('modalAccName').value = '';
+            document.getElementById('modalAccLogin').value = '';
+            document.getElementById('modalAccPassword').value = '';
+            document.getElementById('modalAccServer').value = '';
+            document.getElementById('modalAccPath').value = '';
+            document.getElementById('modalAccType').value = 'BOT';
+            document.getElementById('modalAccSymbol').value = 'XAUUSDc';
+            document.getElementById('modalAccMagic').value = '555888';
+            document.getElementById('modalTitle').innerHTML = '<span>➕</span> เพิ่มบัญชีเทรดใหม่';
+            document.getElementById('accountModal').classList.remove('hidden');
+        }
+
+        function closeAccountModal() {
+            document.getElementById('accountModal').classList.add('hidden');
+        }
+
+        async function submitAccountForm(e) {
+            e.preventDefault();
+            const btn = document.getElementById('btnSubmitAccount');
+            btn.disabled = true;
+            btn.textContent = 'กำลังบันทึก...';
+
+            const rawLogin = document.getElementById('modalAccLogin').value.trim();
+            const rawMagic = document.getElementById('modalAccMagic').value.trim();
+
+            const payload = {
+                name: document.getElementById('modalAccName').value.trim() || 'New Account',
+                type: document.getElementById('modalAccType').value || 'BOT',
+                login: rawLogin ? parseInt(rawLogin) : 0,
+                password: document.getElementById('modalAccPassword').value.trim() || '',
+                server: document.getElementById('modalAccServer').value.trim() || '',
+                path: document.getElementById('modalAccPath').value.trim() || '',
+                symbol: document.getElementById('modalAccSymbol').value.trim() || 'XAUUSDc',
+                magic_number: rawMagic ? parseInt(rawMagic) : 555888,
+            };
+
+            try {
+                const res = await fetch('/api/accounts/add', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-access-token': currentToken },
+                    body: JSON.stringify(payload)
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    closeAccountModal();
+                    await selectAccount(data.account.id);
+                } else {
+                    const errData = await res.json();
+                    alert('เกิดข้อผิดพลาดในการเพิ่มบัญชี:\n' + (errData.detail || JSON.stringify(errData)));
+                }
+            } catch (err) {
+                alert('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์: ' + err);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'บันทึกบัญชี';
+            }
+        }
+
+        async function loadConfig() {
+            try {
+                const res = await fetch('/api/config', { headers: { 'x-access-token': currentToken } });
+                if (res.ok) {
+                    const cfg = await res.json();
+                    if (cfg.line_notification) {
+                        document.getElementById('lineEnabled').checked = cfg.line_notification.enabled || false;
+                        document.getElementById('lineChannelToken').value = cfg.line_notification.channel_access_token || '';
+                        document.getElementById('lineUserId').value = cfg.line_notification.user_id || '';
+                    }
+                }
+                loadActiveAccountStrategy();
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function loadActiveAccountStrategy() {
+            try {
+                const res = await fetch('/api/status', { headers: { 'x-access-token': currentToken } });
+                const data = await res.json();
+                if (data.profile && data.profile.strategy) {
+                    const st = data.profile.strategy;
+                    document.getElementById('cfgStratMode').value = st.strategy_mode || 'ALL';
+                    document.getElementById('cfgRiskPct').value = st.risk_percent || 1.0;
+                    document.getElementById('cfgDailyTarget').value = st.daily_target_percent || 5.0;
+                    document.getElementById('cfgFastEMA').value = st.fast_ema || 50;
+                    document.getElementById('cfgSlowEMA').value = st.slow_ema || 150;
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function saveAccountStrategy(e) {
+            e.preventDefault();
+            if (!activeAccountId) return;
+
+            const payload = {
+                strategy: {
+                    strategy_mode: document.getElementById('cfgStratMode').value,
+                    risk_percent: parseFloat(document.getElementById('cfgRiskPct').value),
+                    daily_target_percent: parseFloat(document.getElementById('cfgDailyTarget').value),
+                    fast_ema: parseInt(document.getElementById('cfgFastEMA').value),
+                    slow_ema: parseInt(document.getElementById('cfgSlowEMA').value),
+                }
+            };
+
+            await fetch(`/api/accounts/update/${activeAccountId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-access-token': currentToken },
+                body: JSON.stringify(payload)
+            });
+
+            alert('บันทึกการตั้งค่ากลยุทธ์เรียบร้อย');
+        }
+
+        async function saveLineConfig(e) {
+            if (e) e.preventDefault();
+            const payload = {
+                enabled: document.getElementById('lineEnabled').checked,
+                channel_access_token: document.getElementById('lineChannelToken').value.trim(),
+                user_id: document.getElementById('lineUserId').value.trim(),
+                notify_on_open: true,
+                notify_on_close: true,
+                notify_on_be: true,
+                notify_on_safety: true
+            };
+
+            await fetch('/api/line/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-access-token': currentToken },
+                body: JSON.stringify(payload)
+            });
+
+            fetchStatus();
+        }
+
+        async function testLineAlert() {
+            const res = await fetch('/api/line/test', {
+                method: 'POST',
+                headers: { 'x-access-token': currentToken }
+            });
+            const data = await res.json();
+            if (res.ok && data.status) alert('ส่งข้อความทดสอบเข้า LINE สำเร็จแล้ว!');
+            else alert('ส่งข้อความไม่สำเร็จ: ' + (data.message || 'กรุณาตรวจสอบ Token'));
+        }
+    </script>
+</body>
+</html>

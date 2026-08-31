@@ -1,0 +1,131 @@
+{
+  "enabled": true,
+  "last_updated": "2026-08-31T16:45:46.971852",
+  "strategy_stats": {
+    "SMC_SWEEP": {
+      "name": "SMC Liquidity Sweep",
+      "trades": 0,
+      "wins": 0,
+      "losses": 0,
+      "winrate": 78.0,
+      "profit": 0.0,
+      "profit_factor": 1.8,
+      "streak": 0,
+      "weight": 1.15,
+      "base_rr": 1.6,
+      "current_dynamic_rr": 1.6,
+      "trailing_type": "TIGHT_LOCK",
+      "active": true
+    },
+    "EMA_RIBBON": {
+      "name": "EMA Ribbon Momentum",
+      "trades": 0,
+      "wins": 0,
+      "losses": 0,
+      "winrate": 70.0,
+      "profit": 0.0,
+      "profit_factor": 1.8,
+      "streak": 0,
+      "weight": 1.0,
+      "base_rr": 1.35,
+      "current_dynamic_rr": 1.35,
+      "trailing_type": "EMA_TRAIL",
+      "active": true
+    },
+    "BB_SQUEEZE": {
+      "name": "BB Squeeze Volatility Breakout",
+      "trades": 0,
+      "wins": 0,
+      "losses": 0,
+      "winrate": 68.0,
+      "profit": 0.0,
+      "profit_factor": 1.8,
+      "streak": 0,
+      "weight": 1.0,
+      "base_rr": 1.8,
+      "current_dynamic_rr": 1.8,
+      "trailing_type": "WIDE_ATR",
+      "active": true
+    },
+    "SECRET_EMA_PULLBACK": {
+      "name": "Secret EMA 50/150 Pullback",
+      "trades": 6,
+      "wins": 2,
+      "losses": 4,
+      "winrate": 33.3,
+      "profit": -23.3,
+      "profit_factor": 1.8,
+      "streak": -4,
+      "weight": 0.7,
+      "base_rr": 1.25,
+      "current_dynamic_rr": 1.25,
+      "trailing_type": "SWING_TRAIL",
+      "active": true
+    },
+    "ALL_CONFLUENCE": {
+      "name": "Multi-Strategy Confluence",
+      "trades": 0,
+      "wins": 0,
+      "losses": 0,
+      "winrate": 82.0,
+      "profit": 0.0,
+      "profit_factor": 1.8,
+      "streak": 0,
+      "weight": 1.15,
+      "base_rr": 2.0,
+      "current_dynamic_rr": 2.0,
+      "trailing_type": "CONFLUENCE_STAGE",
+      "active": true
+    }
+  },
+  "trade_history": [
+    {
+      "ticket": 3859671394,
+      "time": "2026-08-28 20:30:28",
+      "strategy": "SECRET_EMA_PULLBACK",
+      "profit": 16.1,
+      "pips": 16.0,
+      "reason": "EMA 50 Secret Pullback TP1 Hit"
+    },
+    {
+      "ticket": 3859814067,
+      "time": "2026-08-28 20:30:28",
+      "strategy": "SECRET_EMA_PULLBACK",
+      "profit": 0.3,
+      "pips": 3.0,
+      "reason": "EMA 50 Secret Pullback Runner Break-Even"
+    },
+    {
+      "ticket": 3867892477,
+      "time": "2026-08-31 16:45:46",
+      "strategy": "SECRET_EMA_PULLBACK",
+      "profit": -14.8,
+      "pips": 0.0,
+      "reason": "[sl 4439.11700]"
+    },
+    {
+      "ticket": 3867892503,
+      "time": "2026-08-31 16:45:46",
+      "strategy": "SECRET_EMA_PULLBACK",
+      "profit": -14.8,
+      "pips": 0.0,
+      "reason": "[sl 4439.11700]"
+    },
+    {
+      "ticket": 3868655405,
+      "time": "2026-08-31 16:45:46",
+      "strategy": "SECRET_EMA_PULLBACK",
+      "profit": -5.1,
+      "pips": 0.0,
+      "reason": "[sl 4448.87100]"
+    },
+    {
+      "ticket": 3868655429,
+      "time": "2026-08-31 16:45:46",
+      "strategy": "SECRET_EMA_PULLBACK",
+      "profit": -5.0,
+      "pips": 0.0,
+      "reason": "[sl 4448.871]"
+    }
+  ]
+}
