@@ -58,6 +58,7 @@ class GoldScalpingBot:
         self.magic_number = mt5_cfg.get("magic_number", 555888)
         self.magic_pos1 = self.magic_number + 1
         self.magic_pos2 = self.magic_number + 2
+        self.magic_pos3 = self.magic_number + 3
 
     def add_log(self, message: str, level: str = "INFO"):
         entry = {
@@ -160,7 +161,7 @@ class GoldScalpingBot:
 
         # 2. Check Active Positions Limit
         positions = self.connector.get_open_positions(symbol)
-        ea_positions = [p for p in positions if p.get('magic') in [self.magic_number, self.magic_pos1, self.magic_pos2]]
+        ea_positions = [p for p in positions if p.get('magic') in [self.magic_number, self.magic_pos1, self.magic_pos2, self.magic_pos3]]
         if len(ea_positions) > 0:
             return
 
@@ -596,14 +597,40 @@ class GoldScalpingBot:
 
         return False, False, ""
 
+    def should_run_trend(self, strat_id: str, df: pd.DataFrame, session: str) -> Tuple[bool, str]:
+        """
+        AI Trend Intelligence Classifier:
+        Analyzes whether the current setup and market structure warrant an uncapped Trend Runner (Trailing Stop)
+        or should take Fixed Targets (TP1, TP2, TP3) without trailing.
+        """
+        # 1. Asian Session / Mean Reversion -> Strict Fixed TP (No Trailing)
+        if strat_id == "ASIAN_RANGE_SNIPER" or session == "ASIAN SESSION":
+            return False, "Fixed TP (Asian Sideways - No Trailing)"
+
+        # 2. News Expansion -> High Momentum Trend Runner
+        if strat_id == "NEWS_MOMENTUM_EXPANSION":
+            return True, "AI Trend Trail (News Expansion)"
+
+        # 3. EMA 50 + 3 Confirmation Candles H1 -> Macro Trend Runner
+        if strat_id == "EMA50_3CANDLES_H1":
+            return True, "AI Trend Trail (H1 Macro Trend)"
+
+        # 4. TKT SMC Gold Pro M15 or Captain SMC Confirmed Break: Check Market Dynamics
+        regime = self.optimizer.classify_market_regime(df)
+        if "TREND" in regime.get("regime", "") or regime.get("volatility_ratio", 1.0) >= 1.25:
+            return True, f"AI Trend Trail ({regime.get('label', 'Trending Expansion')})"
+
+        return False, "Fixed TP (Normal S/R Targets)"
+
     def execute_buy(self, df: pd.DataFrame, symbol: str, reason: str, is_asian_scalp: bool = False, opt_params: Optional[dict] = None):
         ask = self.connector.get_market_info(symbol).get("ask", 0.0)
         if ask <= 0: return
 
         opt = opt_params or {}
         sl_mult = opt.get("atr_sl_multiplier", 1.0)
-        dynamic_rr = opt.get("tp_ratio", 1.60 if not is_asian_scalp else 1.25)
+        dynamic_rr = opt.get("tp_ratio", 1.50 if not is_asian_scalp else 1.20)
         lot_mult = opt.get("lot_multiplier", 1.0)
+        session = self.get_current_session()
 
         if is_asian_scalp:
             lowest_low = df['low'].iloc[-4:-1].min()
@@ -614,7 +641,9 @@ class GoldScalpingBot:
             if sl_dist > 3.50: sl = ask - 3.50; sl_dist = 3.50
             
             bb_mid = float(df['sma20'].iloc[-2])
-            tp1 = max(ask + 1.50, bb_mid) if bb_mid > ask else (ask + sl_dist * dynamic_rr)
+            tp1 = max(ask + 1.20, bb_mid) if bb_mid > ask else (ask + sl_dist * 1.0)
+            tp2 = ask + (sl_dist * 1.8)
+            tp3 = ask + (sl_dist * 2.5)
         else:
             lowest_low = df['low'].iloc[-8:-1].min()
             sl_buffer = 0.50 * sl_mult
@@ -622,23 +651,43 @@ class GoldScalpingBot:
             sl_dist = ask - sl
             if sl_dist < 1.50: sl = ask - 1.50; sl_dist = 1.50
             if sl_dist > 10.0: sl = ask - 10.0; sl_dist = 10.0
-            tp1 = ask + (sl_dist * dynamic_rr)
+            tp1 = ask + (sl_dist * 1.0)
+            tp2 = ask + (sl_dist * 1.8)
+            tp3 = ask + (sl_dist * 2.8)
+
+        strat_id = "CAPTAIN_SMC_DUAL"
+        for k in ["NEWS_MOMENTUM_EXPANSION", "EMA50_3CANDLES_H1", "ASIAN_RANGE_SNIPER", "TKT_SMC_GOLD_PRO_M15", "CAPTAIN_SMC_DUAL"]:
+            if k in reason: strat_id = k; break
+
+        is_trend_runner, runner_reason = self.should_run_trend(strat_id, df, session)
+        final_tp3 = 0.0 if is_trend_runner else tp3
 
         total_lot = self.calculate_lot_size(sl_dist, lot_mult)
-        lot1 = max(0.01, round(total_lot * 0.50, 2))
-        lot2 = max(0.01, round(total_lot * 0.50, 2))
 
-        res1 = self.connector.open_order(symbol, "BUY", lot1, sl, tp1, self.magic_pos1, f"Gold_P1_{reason[:8]}")
-        res2 = self.connector.open_order(symbol, "BUY", lot2, sl, 0.0, self.magic_pos2, f"Gold_P2_{reason[:8]}")
+        if total_lot >= 0.03:
+            lot1 = max(0.01, round(total_lot * 0.35, 2))
+            lot2 = max(0.01, round(total_lot * 0.35, 2))
+            lot3 = max(0.01, round(total_lot - lot1 - lot2, 2))
 
-        t1 = res1.get("ticket", 0) if isinstance(res1, dict) else 0
-        t2 = res2.get("ticket", 0) if isinstance(res2, dict) else 0
-        strat_id = "SECRET_EMA_PULLBACK"
-        for k in ["NEWS_MOMENTUM_EXPANSION", "EMA50_3CANDLES_H1", "ASIAN_RANGE_SNIPER", "SMC_SWEEP", "EMA_RIBBON", "BB_SQUEEZE", "SECRET_EMA_PULLBACK", "ALL_CONFLUENCE"]:
-            if k in reason: strat_id = k; break
-        self.benchmark_tracker.register_trade(t1, t2, symbol, "BUY", ask, sl, total_lot, strat_id)
+            res1 = self.connector.open_order(symbol, "BUY", lot1, sl, tp1, self.magic_pos1, f"Gold_TP1_{reason[:6]}")
+            res2 = self.connector.open_order(symbol, "BUY", lot2, sl, tp2, self.magic_pos2, f"Gold_TP2_{reason[:6]}")
+            res3 = self.connector.open_order(symbol, "BUY", lot3, sl, final_tp3, self.magic_pos3, f"Gold_TP3_{reason[:6]}")
+            t1 = res1.get("ticket", 0) if isinstance(res1, dict) else 0
+            t2 = res2.get("ticket", 0) if isinstance(res2, dict) else 0
+            self.benchmark_tracker.register_trade(t1, t2, symbol, "BUY", ask, sl, total_lot, strat_id)
+        elif total_lot == 0.02:
+            lot1 = 0.01
+            lot2 = 0.01
+            res1 = self.connector.open_order(symbol, "BUY", lot1, sl, tp1, self.magic_pos1, f"Gold_TP1_{reason[:6]}")
+            res2 = self.connector.open_order(symbol, "BUY", lot2, sl, final_tp3 if is_trend_runner else tp2, self.magic_pos2, f"Gold_TP2_{reason[:6]}")
+            t1 = res1.get("ticket", 0) if isinstance(res1, dict) else 0
+            t2 = res2.get("ticket", 0) if isinstance(res2, dict) else 0
+            self.benchmark_tracker.register_trade(t1, t2, symbol, "BUY", ask, sl, total_lot, strat_id)
+        else:
+            lot1 = 0.01
+            res1 = self.connector.open_order(symbol, "BUY", lot1, sl, tp1, self.magic_pos1, f"Gold_TP1_{reason[:6]}")
 
-        self.add_log(f"🟢 [AI BUY OPENED] {reason} | Dynamic RR: {dynamic_rr}R | Total Lot: {total_lot} (x{lot_mult:.2f}) | Price: {ask:.2f} | SL: {sl:.2f} | TP1: {tp1:.2f}", "SUCCESS")
+        self.add_log(f"🟢 [BUY OPENED] {reason} | Exit Plan: TP1 {tp1:.2f} (1R) / TP2 {tp2:.2f} (1.8R) / {'AI Trail' if is_trend_runner else f'TP3 {tp3:.2f}'} ({runner_reason}) | Total Lot: {total_lot}", "SUCCESS")
         if self.notifier:
             self.notifier.notify_order_opened("BUY", symbol, total_lot, ask, sl, tp1, reason)
 
@@ -648,8 +697,9 @@ class GoldScalpingBot:
 
         opt = opt_params or {}
         sl_mult = opt.get("atr_sl_multiplier", 1.0)
-        dynamic_rr = opt.get("tp_ratio", 1.60 if not is_asian_scalp else 1.25)
+        dynamic_rr = opt.get("tp_ratio", 1.50 if not is_asian_scalp else 1.20)
         lot_mult = opt.get("lot_multiplier", 1.0)
+        session = self.get_current_session()
 
         if is_asian_scalp:
             highest_high = df['high'].iloc[-4:-1].max()
@@ -660,7 +710,9 @@ class GoldScalpingBot:
             if sl_dist > 3.50: sl = bid + 3.50; sl_dist = 3.50
             
             bb_mid = float(df['sma20'].iloc[-2])
-            tp1 = min(bid - 1.50, bb_mid) if bb_mid < bid else (bid - sl_dist * dynamic_rr)
+            tp1 = min(bid - 1.20, bb_mid) if bb_mid < bid else (bid - sl_dist * 1.0)
+            tp2 = bid - (sl_dist * 1.8)
+            tp3 = bid - (sl_dist * 2.5)
         else:
             highest_high = df['high'].iloc[-8:-1].max()
             sl_buffer = 0.50 * sl_mult
@@ -668,23 +720,43 @@ class GoldScalpingBot:
             sl_dist = sl - bid
             if sl_dist < 1.50: sl = bid + 1.50; sl_dist = 1.50
             if sl_dist > 10.0: sl = bid + 10.0; sl_dist = 10.0
-            tp1 = bid - (sl_dist * dynamic_rr)
+            tp1 = bid - (sl_dist * 1.0)
+            tp2 = bid - (sl_dist * 1.8)
+            tp3 = bid - (sl_dist * 2.8)
+
+        strat_id = "CAPTAIN_SMC_DUAL"
+        for k in ["NEWS_MOMENTUM_EXPANSION", "EMA50_3CANDLES_H1", "ASIAN_RANGE_SNIPER", "TKT_SMC_GOLD_PRO_M15", "CAPTAIN_SMC_DUAL"]:
+            if k in reason: strat_id = k; break
+
+        is_trend_runner, runner_reason = self.should_run_trend(strat_id, df, session)
+        final_tp3 = 0.0 if is_trend_runner else tp3
 
         total_lot = self.calculate_lot_size(sl_dist, lot_mult)
-        lot1 = max(0.01, round(total_lot * 0.50, 2))
-        lot2 = max(0.01, round(total_lot * 0.50, 2))
 
-        res1 = self.connector.open_order(symbol, "SELL", lot1, sl, tp1, self.magic_pos1, f"Gold_P1_{reason[:8]}")
-        res2 = self.connector.open_order(symbol, "SELL", lot2, sl, 0.0, self.magic_pos2, f"Gold_P2_{reason[:8]}")
+        if total_lot >= 0.03:
+            lot1 = max(0.01, round(total_lot * 0.35, 2))
+            lot2 = max(0.01, round(total_lot * 0.35, 2))
+            lot3 = max(0.01, round(total_lot - lot1 - lot2, 2))
 
-        t1 = res1.get("ticket", 0) if isinstance(res1, dict) else 0
-        t2 = res2.get("ticket", 0) if isinstance(res2, dict) else 0
-        strat_id = "SECRET_EMA_PULLBACK"
-        for k in ["NEWS_MOMENTUM_EXPANSION", "EMA50_3CANDLES_H1", "ASIAN_RANGE_SNIPER", "SMC_SWEEP", "EMA_RIBBON", "BB_SQUEEZE", "SECRET_EMA_PULLBACK", "ALL_CONFLUENCE"]:
-            if k in reason: strat_id = k; break
-        self.benchmark_tracker.register_trade(t1, t2, symbol, "SELL", bid, sl, total_lot, strat_id)
+            res1 = self.connector.open_order(symbol, "SELL", lot1, sl, tp1, self.magic_pos1, f"Gold_TP1_{reason[:6]}")
+            res2 = self.connector.open_order(symbol, "SELL", lot2, sl, tp2, self.magic_pos2, f"Gold_TP2_{reason[:6]}")
+            res3 = self.connector.open_order(symbol, "SELL", lot3, sl, final_tp3, self.magic_pos3, f"Gold_TP3_{reason[:6]}")
+            t1 = res1.get("ticket", 0) if isinstance(res1, dict) else 0
+            t2 = res2.get("ticket", 0) if isinstance(res2, dict) else 0
+            self.benchmark_tracker.register_trade(t1, t2, symbol, "SELL", bid, sl, total_lot, strat_id)
+        elif total_lot == 0.02:
+            lot1 = 0.01
+            lot2 = 0.01
+            res1 = self.connector.open_order(symbol, "SELL", lot1, sl, tp1, self.magic_pos1, f"Gold_TP1_{reason[:6]}")
+            res2 = self.connector.open_order(symbol, "SELL", lot2, sl, final_tp3 if is_trend_runner else tp2, self.magic_pos2, f"Gold_TP2_{reason[:6]}")
+            t1 = res1.get("ticket", 0) if isinstance(res1, dict) else 0
+            t2 = res2.get("ticket", 0) if isinstance(res2, dict) else 0
+            self.benchmark_tracker.register_trade(t1, t2, symbol, "SELL", bid, sl, total_lot, strat_id)
+        else:
+            lot1 = 0.01
+            res1 = self.connector.open_order(symbol, "SELL", lot1, sl, tp1, self.magic_pos1, f"Gold_TP1_{reason[:6]}")
 
-        self.add_log(f"🔴 [AI SELL OPENED] {reason} | Dynamic RR: {dynamic_rr}R | Total Lot: {total_lot} (x{lot_mult:.2f}) | Price: {bid:.2f} | SL: {sl:.2f} | TP1: {tp1:.2f}", "SUCCESS")
+        self.add_log(f"🔴 [SELL OPENED] {reason} | Exit Plan: TP1 {tp1:.2f} (1R) / TP2 {tp2:.2f} (1.8R) / {'AI Trail' if is_trend_runner else f'TP3 {tp3:.2f}'} ({runner_reason}) | Total Lot: {total_lot}", "SUCCESS")
         if self.notifier:
             self.notifier.notify_order_opened("SELL", symbol, total_lot, bid, sl, tp1, reason)
 
@@ -705,6 +777,48 @@ class GoldScalpingBot:
         positions = self.connector.get_open_positions(symbol)
         pos1_list = [p for p in positions if p.get('magic') == self.magic_pos1]
         pos2_list = [p for p in positions if p.get('magic') == self.magic_pos2]
+        pos3_list = [p for p in positions if p.get('magic') == self.magic_pos3]
+
+        m_info = self.connector.get_market_info(symbol)
+        bid = m_info.get('bid', 0.0)
+        ask = m_info.get('ask', 0.0)
+
+        # Stage 1: When Pos 1 (TP1) is closed -> Move Pos 2 & Pos 3 to Break-Even (+0.30)
+        if len(pos1_list) == 0 and (len(pos2_list) > 0 or len(pos3_list) > 0):
+            for p in (pos2_list + pos3_list):
+                open_p = p.get('price_open', 0.0)
+                sl = p.get('sl', 0.0)
+                ptype = p.get('type')
+
+                if ptype == "BUY" and sl < open_p and bid > (open_p + 0.30):
+                    new_sl = open_p + 0.30
+                    self.connector.modify_position(p.get('ticket'), new_sl, p.get('tp'))
+                    self.add_log(f"🛡️ [BREAK-EVEN LOCKED] Pos #{p.get('ticket')} SL locked at {new_sl:.2f}", "SUCCESS")
+                elif ptype == "SELL" and (sl > open_p or sl == 0) and ask < (open_p - 0.30):
+                    new_sl = open_p - 0.30
+                    self.connector.modify_position(p.get('ticket'), new_sl, p.get('tp'))
+                    self.add_log(f"🛡️ [BREAK-EVEN LOCKED] Pos #{p.get('ticket')} SL locked at {new_sl:.2f}", "SUCCESS")
+
+        # Stage 2: When Pos 2 (TP2) is closed -> Move Pos 3 to TP1 Level (Lock Profit)
+        if len(pos1_list) == 0 and len(pos2_list) == 0 and len(pos3_list) > 0:
+            for p3 in pos3_list:
+                open_p = p3.get('price_open', 0.0)
+                sl = p3.get('sl', 0.0)
+                ptype = p3.get('type')
+                
+                # Active Dynamic Trailing Stop for AI Trend Runners (TP == 0)
+                if p3.get('tp', 0.0) == 0.0:
+                    trail_dist = 2.50 # 250 points trailing buffer
+                    if ptype == "BUY":
+                        trail_sl = round(bid - trail_dist, 2)
+                        if trail_sl > sl and trail_sl > (open_p + 0.50):
+                            self.connector.modify_position(p3.get('ticket'), trail_sl, 0.0)
+                            self.add_log(f"📈 [AI TREND TRAILING] Pos3 #{p3.get('ticket')} Trailing SL updated to {trail_sl:.2f}", "SUCCESS")
+                    elif ptype == "SELL":
+                        trail_sl = round(ask + trail_dist, 2)
+                        if (sl == 0 or trail_sl < sl) and trail_sl < (open_p - 0.50):
+                            self.connector.modify_position(p3.get('ticket'), trail_sl, 0.0)
+                            self.add_log(f"📉 [AI TREND TRAILING] Pos3 #{p3.get('ticket')} Trailing SL updated to {trail_sl:.2f}", "SUCCESS")
 
         m_info = self.connector.get_market_info(symbol)
         bid = m_info.get('bid', 0.0)
