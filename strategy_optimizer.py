@@ -565,15 +565,12 @@ class RealTimeStrategyOptimizer:
             comment = str(deal.get("comment", ""))
             profit = deal.get("profit", 0.0) + deal.get("swap", 0.0) + deal.get("commission", 0.0)
             
-            strat = "SECRET_EMA_PULLBACK"
-            if "NEWS" in comment or "News" in comment or "Momentum" in comment: strat = "NEWS_MOMENTUM_EXPANSION"
+            strat = "CAPTAIN_SMC_DUAL"
+            if "TKT" in comment or "v8" in comment: strat = "TKT_SMC_GOLD_PRO_M15"
+            elif "NEWS" in comment or "News" in comment or "Momentum" in comment: strat = "NEWS_MOMENTUM_EXPANSION"
             elif "EMA50_3CANDLES" in comment or "3 Candles" in comment or "H1" in comment: strat = "EMA50_3CANDLES_H1"
             elif "Asian" in comment or "ASIAN" in comment or "Sniper" in comment: strat = "ASIAN_RANGE_SNIPER"
-            elif "SMC" in comment: strat = "SMC_SWEEP"
-            elif "Ribbon" in comment: strat = "EMA_RIBBON"
-            elif "BB" in comment or "Squeeze" in comment: strat = "BB_SQUEEZE"
-            elif "Pullback" in comment or "SECRET" in comment: strat = "SECRET_EMA_PULLBACK"
-            elif "Confluence" in comment: strat = "ALL_CONFLUENCE"
+            elif "SMC" in comment or "Captain" in comment: strat = "CAPTAIN_SMC_DUAL"
 
             self.record_trade_outcome(strat, profit, 0.0, comment, ticket=deal.get("ticket"))
 
