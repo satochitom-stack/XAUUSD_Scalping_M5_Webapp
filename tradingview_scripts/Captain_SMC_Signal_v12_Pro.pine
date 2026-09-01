@@ -1,0 +1,238 @@
+//@version=5
+indicator("Captain SMC Signal Pro V1.2 [Dual Auto + Filtered]", overlay=true, max_boxes_count=50, max_labels_count=50, max_lines_count=50)
+
+// ==========================================
+// 1. INPUT SETTINGS
+// ==========================================
+group_preset    = "=== 1. PRESET & SIGNAL MODEL ==="
+preset_mode     = input.string("Scalper", "เลือก Preset", options=["Scalper", "Balanced", "Custom"], group=group_preset)
+signal_model    = input.string("Dual Auto (Fast + Confirmed)", "รูปแบบสัญญาณ", options=["Dual Auto (Fast + Confirmed)", "Fast", "Confirmed"], group=group_preset)
+
+group_filter    = "=== 2. INSTITUTIONAL QUALITY FILTERS ==="
+use_trend_guard = input.bool(true, "🛡️ กรองทิศทางเทรนด์ใหญ่ (EMA 50/150 Confluence)", group=group_filter)
+use_rsi_filter  = input.bool(true, "🛡️ กรอง RSI Momentum Overbought/Oversold", group=group_filter)
+min_wick_ratio  = input.float(0.35, "สัดส่วนไส้ปฏิเสธราคาขั้นต่ำ (Wick Rejection Ratio)", minval=0.20, maxval=0.60, step=0.05, group=group_filter)
+
+group_sr        = "=== 3. SUPPORT & RESISTANCE (S/R ZONES) ==="
+fine_tuner      = input.int(10, "Fine Tuner (Pivot Lookback)", minval=3, maxval=30, group=group_sr)
+max_zones       = input.int(5, "จำนวนโซนสูงสุด", minval=1, maxval=10, group=group_sr)
+show_sr_zones   = input.bool(true, "แสดง Support/Resistance Zone", group=group_sr)
+color_support   = input.color(color.new(#1e3a8a, 60), "สี Support Zone (Demand)", group=group_sr)
+color_resist    = input.color(color.new(#881337, 60), "สี Resistance Zone (Supply)", group=group_sr)
+
+group_rr        = "=== 4. RISK:REWARD & MULTI-TP ==="
+show_tpsl_box   = input.bool(true, "แสดง TP/SL Box & Target Lines", group=group_rr)
+atr_length      = input.int(14, "ATR Length", group=group_rr)
+sl_buffer_atr   = input.float(0.30, "SL Buffer (ATR x)", step=0.05, group=group_rr)
+tp1_r           = input.float(1.0, "TP1 (Rx)", group=group_rr)
+tp2_r           = input.float(2.0, "TP2 (Rx)", group=group_rr)
+tp3_r           = input.float(3.0, "TP3 (Rx) Runner", group=group_rr)
+be_trigger_pct  = input.float(50.0, "BE Trigger (%) วิ่งถึง % ของ TP1 ดึงกันทุน", group=group_rr)
+tsl_buffer_atr  = input.float(0.10, "TSL Buffer (ATR x)", group=group_rr)
+
+group_dash      = "=== 5. DASHBOARD HUD ==="
+show_dashboard  = input.bool(true, "แสดง Dashboard บนกราฟ", group=group_dash)
+
+// ==========================================
+// 2. INDICATOR & TREND CALCULATIONS
+// ==========================================
+atr_val = ta.atr(atr_length)
+ema50   = ta.ema(close, 50)
+ema150  = ta.ema(close, 150)
+rsi14   = ta.rsi(close, 14)
+
+is_uptrend   = ema50 > ema150
+is_downtrend = ema50 < ema150
+
+plot(ema50, "EMA 50", color=color.new(color.cyan, 40), linewidth=1)
+plot(ema150, "EMA 150", color=color.new(color.orange, 40), linewidth=1)
+
+// ==========================================
+// 3. SUPPORT & RESISTANCE PIVOT ZONES
+// ==========================================
+p_high = ta.pivothigh(high, fine_tuner, fine_tuner)
+p_low  = ta.pivotlow(low, fine_tuner, fine_tuner)
+
+var box[] supp_boxes = array.new_box()
+var box[] res_boxes  = array.new_box()
+
+var float last_supp_high = na
+var float last_supp_low  = na
+var float last_res_high  = na
+var float last_res_low   = na
+
+if not na(p_low) and show_sr_zones
+    b_low = p_low
+    b_high = math.min(open[fine_tuner], close[fine_tuner])
+    last_supp_low := b_low
+    last_supp_high := b_high
+    b = box.new(left=bar_index - fine_tuner, top=b_high, right=bar_index + 15, bottom=b_low,
+                bgcolor=color_support, border_color=color.new(color.blue, 30), extend=extend.right)
+    array.push(supp_boxes, b)
+    if array.size(supp_boxes) > max_zones
+        box.delete(array.shift(supp_boxes))
+
+if not na(p_high) and show_sr_zones
+    b_high = p_high
+    b_low = math.max(open[fine_tuner], close[fine_tuner])
+    last_res_high := b_high
+    last_res_low := b_low
+    b = box.new(left=bar_index - fine_tuner, top=b_high, right=bar_index + 15, bottom=b_low,
+                bgcolor=color_resist, border_color=color.new(color.red, 30), extend=extend.right)
+    array.push(res_boxes, b)
+    if array.size(res_boxes) > max_zones
+        box.delete(array.shift(res_boxes))
+
+// ==========================================
+// 4. CANDLE REJECTION & CHOCH SIGNALS
+// ==========================================
+candle_range = high - low
+upper_wick   = high - math.max(open, close)
+lower_wick   = math.min(open, close) - low
+candle_body  = math.abs(close - open)
+
+// Model 1: Fast Entry (Wick Rejection at S/R)
+fast_buy_cond = false
+fast_sell_cond = false
+
+if candle_range > 0 and (lower_wick / candle_range) >= min_wick_ratio and close > open
+    if not na(last_supp_high) and low <= last_supp_high and close >= last_supp_low
+        if not use_trend_guard or not is_downtrend or (use_rsi_filter and rsi14 < 35)
+            fast_buy_cond := true
+
+if candle_range > 0 and (upper_wick / candle_range) >= min_wick_ratio and close < open
+    if not na(last_res_low) and high >= last_res_low and close <= last_res_high
+        if not use_trend_guard or not is_uptrend or (use_rsi_filter and rsi14 > 65)
+            fast_sell_cond := true
+
+// Model 2: Confirmed Entry (CHoCH / Market Structure Break)
+recent_high = ta.highest(high, 15)[1]
+recent_low  = ta.lowest(low, 15)[1]
+
+conf_buy_cond = close > recent_high and close > open and (not use_trend_guard or is_uptrend or rsi14 > 50)
+conf_sell_cond = close < recent_low and close < open and (not use_trend_guard or is_downtrend or rsi14 < 50)
+
+// Final Signal Selection
+is_dual = signal_model == "Dual Auto (Fast + Confirmed)"
+buy_trigger  = is_dual ? (fast_buy_cond or conf_buy_cond) : (signal_model == "Fast" ? fast_buy_cond : conf_buy_cond)
+sell_trigger = is_dual ? (fast_sell_cond or conf_sell_cond) : (signal_model == "Fast" ? fast_sell_cond : conf_sell_cond)
+
+// Prevent consecutive repeat signals
+var int last_signal_dir = 0 // 1: Buy, -1: Sell
+buy_final  = buy_trigger and last_signal_dir != 1
+sell_final = sell_trigger and last_signal_dir != -1
+
+if buy_final
+    last_signal_dir := 1
+if sell_final
+    last_signal_dir := -1
+
+// ==========================================
+// 5. PLOT SHAPES & TARGET LEVELS
+// ==========================================
+var float sig_entry = na
+var float sig_sl    = na
+var float sig_tp1   = na
+var float sig_tp2   = na
+var float sig_tp3   = na
+var float sig_be    = na
+var float sig_tsl   = na
+var string sig_type = "NONE"
+
+if buy_final
+    sig_entry := close
+    sl_dist = math.max(1.0, (preset_mode == "Scalper" ? sl_buffer_atr * 3.0 : 1.5) * atr_val)
+    sig_sl  := sig_entry - sl_dist
+    sig_tp1 := sig_entry + (sl_dist * tp1_r)
+    sig_tp2 := sig_entry + (sl_dist * tp2_r)
+    sig_tp3 := sig_entry + (sl_dist * tp3_r)
+    sig_be  := sig_entry + 0.30
+    sig_tsl := sig_tp1
+    sig_type := fast_buy_cond ? "BUY (Fast)" : "BUY (Confirmed)"
+
+if sell_final
+    sig_entry := close
+    sl_dist = math.max(1.0, (preset_mode == "Scalper" * sl_buffer_atr * 3.0 : 1.5) * atr_val)
+    sig_sl  := sig_entry + sl_dist
+    sig_tp1 := sig_entry - (sl_dist * tp1_r)
+    sig_tp2 := sig_entry - (sl_dist * tp2_r)
+    sig_tp3 := sig_entry - (sl_dist * tp3_r)
+    sig_be  := sig_entry - 0.30
+    sig_tsl := sig_tp1
+    sig_type := fast_sell_cond ? "SELL (Fast)" : "SELL (Confirmed)"
+
+plotshape(buy_final and fast_buy_cond, title="BUY Fast", style=shape.labelup, location=location.belowbar,
+          color=color.green, textcolor=color.white, text="BUY\nFast", size=size.small)
+plotshape(buy_final and not fast_buy_cond, title="BUY Confirmed", style=shape.labelup, location=location.belowbar,
+          color=color.teal, textcolor=color.white, text="BUY\nCHoCH", size=size.small)
+
+plotshape(sell_final and fast_sell_cond, title="SELL Fast", style=shape.labeldown, location=location.abovebar,
+          color=color.red, textcolor=color.white, text="SELL\nFast", size=size.small)
+plotshape(sell_final and not fast_sell_cond, title="SELL Confirmed", style=shape.labeldown, location=location.abovebar,
+          color=color.maroon, textcolor=color.white, text="SELL\nCHoCH", size=size.small)
+
+// Draw Target Lines
+var line line_sl  = na
+var line line_ent = na
+var line line_tp1 = na
+var line line_tp2 = na
+var line line_tp3 = na
+
+if (buy_final or sell_final) and show_tpsl_box
+    line.delete(line_sl)
+    line.delete(line_ent)
+    line.delete(line_tp1)
+    line.delete(line_tp2)
+    line.delete(line_tp3)
+    
+    x1 = bar_index
+    x2 = bar_index + 20
+    line_sl  := line.new(x1, sig_sl, x2, sig_sl, color=color.red, width=2, style=line.style_solid)
+    line_ent := line.new(x1, sig_entry, x2, sig_entry, color=color.gray, width=1, style=line.style_dotted)
+    line_tp1 := line.new(x1, sig_tp1, x2, sig_tp1, color=color.blue, width=1, style=line.style_dashed)
+    line_tp2 := line.new(x1, sig_tp2, x2, sig_tp2, color=color.teal, width=2, style=line.style_solid)
+    line_tp3 := line.new(x1, sig_tp3, x2, sig_tp3, color=color.green, width=2, style=line.style_solid)
+
+// ==========================================
+// 6. DASHBOARD TABLE
+// ==========================================
+var table dash = table.new(position.top_right, 2, 10, bgcolor=color.new(#0b0f19, 10), border_color=color.new(#1e3a8a, 40), border_width=1)
+
+if show_dashboard and barstate.islast
+    trend_txt = is_uptrend ? "BULLISH 🟢" : (is_downtrend ? "BEARISH 🔴" : "SIDEWAY 🟡")
+    
+    table.cell(dash, 0, 0, "⭐ SMC Signal Pro", bgcolor=color.new(#1e3a8a, 20), text_color=color.white, text_size=size.small, text_halign=text.left)
+    table.cell(dash, 1, 0, "V1.2 Filtered", bgcolor=color.new(#1e3a8a, 20), text_color=color.yellow, text_size=size.small, text_halign=text.right)
+
+    table.cell(dash, 0, 1, "Preset", text_color=color.gray, text_size=size.tiny, text_halign=text.left)
+    table.cell(dash, 1, 1, preset_mode, text_color=color.white, text_size=size.tiny, text_halign=text.right)
+
+    table.cell(dash, 0, 2, "Model", text_color=color.gray, text_size=size.tiny, text_halign=text.left)
+    table.cell(dash, 1, 2, "Dual Auto (Fast+Conf)", text_color=color.aqua, text_size=size.tiny, text_halign=text.right)
+
+    table.cell(dash, 0, 3, "Trend Bias", text_color=color.gray, text_size=size.tiny, text_halign=text.left)
+    table.cell(dash, 1, 3, trend_txt, text_color=is_uptrend ? color.green : (is_downtrend ? color.red : color.yellow), text_size=size.tiny, text_halign=text.right)
+
+    table.cell(dash, 0, 4, "Last Signal", text_color=color.gray, text_size=size.tiny, text_halign=text.left)
+    table.cell(dash, 1, 4, sig_type, text_color=last_signal_dir == 1 ? color.green : (last_signal_dir == -1 ? color.red : color.gray), text_size=size.tiny, text_halign=text.right)
+
+    table.cell(dash, 0, 5, "Entry Price", text_color=color.gray, text_size=size.tiny, text_halign=text.left)
+    table.cell(dash, 1, 5, not na(sig_entry) ? str.tostring(sig_entry, "#.##") : "-", text_color=color.white, text_size=size.tiny, text_halign=text.right)
+
+    table.cell(dash, 0, 6, "Stop Loss", text_color=color.gray, text_size=size.tiny, text_halign=text.left)
+    table.cell(dash, 1, 6, not na(sig_sl) ? str.tostring(sig_sl, "#.##") : "-", text_color=color.red, text_size=size.tiny, text_halign=text.right)
+
+    table.cell(dash, 0, 7, "TP1 / TP2 / TP3", text_color=color.gray, text_size=size.tiny, text_halign=text.left)
+    table.cell(dash, 1, 7, not na(sig_tp1) ? str.tostring(sig_tp1, "#.##") + " / " + str.tostring(sig_tp2, "#.##") : "-", text_color=color.green, text_size=size.tiny, text_halign=text.right)
+
+    table.cell(dash, 0, 8, "RRR / BE Lock", text_color=color.gray, text_size=size.tiny, text_halign=text.left)
+    table.cell(dash, 1, 8, "1:1 / 1:2 / 1:3 (BE 50%)", text_color=color.gold, text_size=size.tiny, text_halign=text.right)
+
+    table.cell(dash, 0, 9, "Anti-Loss Filters", text_color=color.gray, text_size=size.tiny, text_halign=text.left)
+    table.cell(dash, 1, 9, "EMA50 + RSI + S/R Guard", text_color=color.teal, text_size=size.tiny, text_halign=text.right)
+
+// ==========================================
+// 7. TRADINGVIEW ALERTS
+// ==========================================
+alertcondition(buy_final, title="SMC Pro BUY Alert", message="🟢 Captain SMC Signal Pro: BUY Signal Triggered on {{ticker}} at {{close}} | SL: " + str.tostring(sig_sl) + " | TP1: " + str.tostring(sig_tp1))
+alertcondition(sell_final, title="SMC Pro SELL Alert", message="🔴 Captain SMC Signal Pro: SELL Signal Triggered on {{ticker}} at {{close}} | SL: " + str.tostring(sig_sl) + " | TP1: " + str.tostring(sig_tp1))
