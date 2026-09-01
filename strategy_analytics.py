@@ -234,11 +234,14 @@ class RealTradeAnalyticsManager:
         # Set active status tags based on session
         now_hour = datetime.now().hour
         is_asian = (7 <= now_hour < 14)
-        if is_asian:
-            setups_data["ASIAN_RANGE_SNIPER"]["status"] = "🟢 ACTIVE (ตลาดเอเชีย)"
-        else:
-            setups_data["SMC_SWEEP"]["status"] = "🟢 ACTIVE (London/NY)"
-        setups_data["EMA50_3CANDLES_H1"]["status"] = "🟢 MONITORING (H1 Bar)"
+        if "ASIAN_RANGE_SNIPER" in setups_data:
+            setups_data["ASIAN_RANGE_SNIPER"]["status"] = "🟢 ACTIVE (ตลาดเอเชีย)" if is_asian else "⚪ STANDBY (เอเชีย 07-14)"
+        if "CAPTAIN_SMC_DUAL" in setups_data:
+            setups_data["CAPTAIN_SMC_DUAL"]["status"] = "🟢 ACTIVE (London/NY)"
+        if "TKT_SMC_GOLD_PRO_M15" in setups_data:
+            setups_data["TKT_SMC_GOLD_PRO_M15"]["status"] = "🟢 ACTIVE (M15 Confluence)"
+        if "EMA50_3CANDLES_H1" in setups_data:
+            setups_data["EMA50_3CANDLES_H1"]["status"] = "🟢 MONITORING (H1 Bar)"
 
         total_trades = len(deals)
         overall_winrate = round((total_wins / total_trades * 100.0), 1) if total_trades > 0 else 0.0

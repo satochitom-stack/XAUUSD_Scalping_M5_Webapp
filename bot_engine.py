@@ -394,6 +394,8 @@ class GoldScalpingBot:
             if b1['rsi7'] >= 65 and b1['rsi7'] < b2['rsi7']:
                 return False, True, "⛩️ Asian Range Sniper: Upper Band Rebound (80% WR)"
 
+        return False, False, ""
+
     def _check_captain_smc(self, df: pd.DataFrame) -> Tuple[bool, bool, str]:
         """
         Captain Trading LAB - SMC Signal V.1.2 Dual-Model Engine
