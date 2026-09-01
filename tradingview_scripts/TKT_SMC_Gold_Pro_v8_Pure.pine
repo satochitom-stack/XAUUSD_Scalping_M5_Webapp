@@ -1,0 +1,180 @@
+//@version=5
+indicator("TKT SMC Gold Pro v8.0 [Pure]", overlay=true, max_boxes_count=80, max_labels_count=80, max_lines_count=80)
+
+// ==========================================
+// 1. INPUT SETTINGS
+// ==========================================
+group_score     = "=== 1. INSTITUTIONAL SCORING ==="
+score_threshold = input.int(60, "Score Threshold (%) [>= 60%]", minval=40, maxval=90, step=5, group=group_score)
+use_htf_trend   = input.bool(true, "🛡️ HTF Trend Guard (H1 Alignment)", group=group_score)
+
+group_fvg       = "=== 2. FAIR VALUE GAPS (FVG) ==="
+show_fvg        = input.bool(true, "แสดงกล่อง Fair Value Gaps (FVG)", group=group_fvg)
+min_fvg_pts     = input.float(50.0, "Min FVG Size (Points)", step=10.0, group=group_fvg)
+max_fvg_display = input.int(8, "จำนวนกล่อง FVG สูงสุด", minval=1, maxval=20, group=group_fvg)
+color_bull_fvg  = input.color(color.new(color.green, 70), "Bullish FVG", group=group_fvg)
+color_bear_fvg  = input.color(color.new(color.red, 70), "Bearish FVG", group=group_fvg)
+
+group_kz        = "=== 3. KILL ZONES (SESSIONS UTC+7) ==="
+show_kz_bg      = input.bool(true, "ไฮไลท์สีพื้นหลังช่วง Kill Zones", group=group_kz)
+tz_offset       = input.int(7, "Timezone Offset (UTC+)", group=group_kz)
+enable_asia_kz  = input.bool(true, "Asia Kill Zone (07:00 - 14:00)", group=group_kz)
+enable_london_kz= input.bool(true, "London Kill Zone (14:00 - 18:00)", group=group_kz)
+enable_ny_kz    = input.bool(true, "NY AM Kill Zone (19:00 - 23:00)", group=group_kz)
+
+group_trade     = "=== 4. TRADE MANAGEMENT (POINTS) ==="
+show_tp_sl_box  = input.bool(true, "แสดงเส้น Entry / SL / TP", group=group_trade)
+sl_points       = input.float(1000.0, "Stop Loss (Points)", step=100.0, group=group_trade)
+tp1_points      = input.float(1000.0, "Take Profit 1 (Points) [1:1 RRR]", step=100.0, group=group_trade)
+tp2_points      = input.float(1500.0, "Take Profit 2 (Points) [1:1.5 RRR]", step=100.0, group=group_trade)
+
+// ==========================================
+// 2. TIME & KILL ZONE DETECTION (UTC+7)
+// ==========================================
+utc_hour = (hour + (tz_offset - 7)) % 24
+is_asia_kz   = enable_asia_kz and (utc_hour >= 7 and utc_hour < 14)
+is_london_kz = enable_london_kz and (utc_hour >= 14 and utc_hour < 18)
+is_ny_kz     = enable_ny_kz and (utc_hour >= 19 and utc_hour < 23)
+is_in_kz     = is_asia_kz or is_london_kz or is_ny_kz
+
+bgcolor(show_kz_bg and is_london_kz ? color.new(color.blue, 94) : na, title="London Kill Zone")
+bgcolor(show_kz_bg and is_ny_kz ? color.new(color.orange, 94) : na, title="NY Kill Zone")
+bgcolor(show_kz_bg and is_asia_kz ? color.new(color.purple, 95) : na, title="Asia Kill Zone")
+
+// ==========================================
+// 3. FAIR VALUE GAPS (FVG) DETECTION
+// ==========================================
+fvg_threshold = (min_fvg_pts * syminfo.mintick)
+bullish_fvg = (low > high[2] + fvg_threshold)
+bearish_fvg = (high < low[2] - fvg_threshold)
+
+var box[] fvg_boxes = array.new_box()
+
+if bullish_fvg and show_fvg
+    b = box.new(bar_index - 2, low, bar_index + 12, high[2], border_color=color.new(color.green, 50), bgcolor=color_bull_fvg)
+    array.push(fvg_boxes, b)
+    if array.size(fvg_boxes) > max_fvg_display
+        box.delete(array.shift(fvg_boxes))
+
+if bearish_fvg and show_fvg
+    b = box.new(bar_index - 2, low[2], bar_index + 12, high, border_color=color.new(color.red, 50), bgcolor=color_bear_fvg)
+    array.push(fvg_boxes, b)
+    if array.size(fvg_boxes) > max_fvg_display
+        box.delete(array.shift(fvg_boxes))
+
+// ==========================================
+// 4. STRUCTURE, CONFLUENCE & SCORING
+// ==========================================
+sw_high = ta.highest(high, 20)[1]
+sw_low  = ta.lowest(low, 20)[1]
+
+bull_bos = close > sw_high and close > open
+bear_bos = close < sw_low and close < open
+
+pd_high = ta.highest(high, 50)
+pd_low  = ta.lowest(low, 50)
+equilibrium = (pd_high + pd_low) / 2.0
+is_discount = close < equilibrium
+is_premium  = close > equilibrium
+
+c_range = high - low
+lower_wick = math.min(open, close) - low
+upper_wick = high - math.max(open, close)
+has_lower_rejection = c_range > 0 and (lower_wick / c_range) >= 0.30 and close > open
+has_upper_rejection = c_range > 0 and (upper_wick / c_range) >= 0.30 and close < open
+
+h1_ema50 = request.security(syminfo.tickerid, "60", ta.ema(close, 50))
+h1_is_bull = close > h1_ema50
+h1_is_bear = close < h1_ema50
+
+// Scoring Calculation
+buy_score  = 0
+sell_score = 0
+
+if bull_bos or close > ta.ema(close, 20)
+    buy_score += 25
+if bear_bos or close < ta.ema(close, 20)
+    sell_score += 25
+
+if bullish_fvg or (low <= (sw_low + 0.80) and close > open)
+    buy_score += 25
+if bearish_fvg or (high >= (sw_high - 0.80) and close < open)
+    sell_score += 25
+
+if is_in_kz
+    buy_score += 20
+    sell_score += 20
+
+if is_discount
+    buy_score += 15
+if is_premium
+    sell_score += 15
+
+if has_lower_rejection
+    buy_score += 15
+if has_upper_rejection
+    sell_score += 15
+
+if use_htf_trend
+    if h1_is_bull
+        buy_score += 10
+    if h1_is_bear
+        sell_score += 10
+
+buy_trigger  = buy_score >= score_threshold and buy_score > sell_score
+sell_trigger = sell_score >= score_threshold and sell_score > buy_score
+
+var int last_sig_dir = 0
+buy_signal  = buy_trigger and last_sig_dir != 1
+sell_signal = sell_trigger and last_sig_dir != -1
+
+if buy_signal
+    last_sig_dir := 1
+if sell_signal
+    last_sig_dir := -1
+
+// ==========================================
+// 5. TARGET LINES & SHAPES
+// ==========================================
+var float tkt_entry = na
+var float tkt_sl    = na
+var float tkt_tp1   = na
+var float tkt_tp2   = na
+
+pts_to_price = (syminfo.mintick * 10.0)
+
+if buy_signal
+    tkt_entry := close
+    tkt_sl    := close - (sl_points * pts_to_price)
+    tkt_tp1   := close + (tp1_points * pts_to_price)
+    tkt_tp2   := close + (tp2_points * pts_to_price)
+    label.new(bar_index, low - (15 * syminfo.mintick), "BUY\n" + str.tostring(buy_score) + "%", color=color.green, textcolor=color.white, style=label.style_label_up, size=size.small)
+
+if sell_signal
+    tkt_entry := close
+    tkt_sl    := close + (sl_points * pts_to_price)
+    tkt_tp1   := close - (tp1_points * pts_to_price)
+    tkt_tp2   := close - (tp2_points * pts_to_price)
+    label.new(bar_index, high + (15 * syminfo.mintick), "SELL\n" + str.tostring(sell_score) + "%", color=color.red, textcolor=color.white, style=label.style_label_down, size=size.small)
+
+var line l_sl  = na
+var line l_ent = na
+var line l_tp1 = na
+var line l_tp2 = na
+
+if (buy_signal or sell_signal) and show_tp_sl_box
+    line.delete(l_sl)
+    line.delete(l_ent)
+    line.delete(l_tp1)
+    line.delete(l_tp2)
+    
+    l_sl  := line.new(bar_index, tkt_sl, bar_index + 25, tkt_sl, color=color.red, width=2, style=line.style_solid)
+    l_ent := line.new(bar_index, tkt_entry, bar_index + 25, tkt_entry, color=color.gray, width=1, style=line.style_dotted)
+    l_tp1 := line.new(bar_index, tkt_tp1, bar_index + 25, tkt_tp1, color=color.blue, width=1, style=line.style_dashed)
+    l_tp2 := line.new(bar_index, tkt_tp2, bar_index + 25, tkt_tp2, color=color.green, width=2, style=line.style_solid)
+
+// ==========================================
+// 6. ALERTS
+// ==========================================
+alertcondition(buy_signal, title="TKT SMC BUY Alert", message="🟢 TKT SMC Gold Pro: BUY Score Triggered on {{ticker}} at {{close}}")
+alertcondition(sell_signal, title="TKT SMC SELL Alert", message="🔴 TKT SMC Gold Pro: SELL Score Triggered on {{ticker}} at {{close}}")
