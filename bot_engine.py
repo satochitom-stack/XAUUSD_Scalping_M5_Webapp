@@ -89,13 +89,32 @@ class GoldScalpingBot:
 
     def check_new_day(self):
         today = datetime.now().date()
-        if self.current_day != today:
+        acc = self.connector.get_account_info()
+        equity = acc.get("equity", 10000.0)
+
+        if self.current_day != today or self.day_starting_equity == 0.0:
             self.current_day = today
-            self.day_starting_equity = self.connector.get_account_info().get("equity", 10000.0)
+            self.day_starting_equity = equity
             self.daily_target_reached = False
             self.daily_max_loss_reached = False
             self.pause_until_time = 0
             self.add_log(f"📅 New trading day initialized. Base Equity: ${self.day_starting_equity:.2f}", "INFO")
+
+        # Daily Profit & Loss Safety Guard
+        if self.day_starting_equity > 0:
+            strat_cfg = self.config.get("strategy", {})
+            daily_target_pct = strat_cfg.get("daily_target_percent", 5.0) # Target +5%
+            daily_max_loss_pct = strat_cfg.get("daily_max_loss_percent", 3.0) # Max Loss -3%
+
+            pnl_pct = ((equity - self.day_starting_equity) / self.day_starting_equity) * 100.0
+
+            if pnl_pct >= daily_target_pct and not self.daily_target_reached:
+                self.daily_target_reached = True
+                self.add_log(f"🎉 [DAILY TARGET HIT] Profit +{pnl_pct:.2f}% >= {daily_target_pct}%. Banking profits & locking for today!", "SUCCESS")
+
+            elif pnl_pct <= -daily_max_loss_pct and not self.daily_max_loss_reached:
+                self.daily_max_loss_reached = True
+                self.add_log(f"🛑 [DAILY MAX LOSS SHIELD] Loss {pnl_pct:.2f}% <= -{daily_max_loss_pct}%. Capital Shield active! Pausing trading until tomorrow.", "WARNING")
 
     def get_current_session(self) -> str:
         """Determines active forex/gold market session."""

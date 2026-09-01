@@ -14,6 +14,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 from news_calendar import NewsCalendarManager
+from hourly_heat_engine import HourlyHeatEngine
 
 logger = logging.getLogger("StrategyOptimizer")
 
@@ -103,6 +104,7 @@ class RealTimeStrategyOptimizer:
         
         self.enabled = True
         self.news_calendar = NewsCalendarManager()
+        self.hourly_engine = HourlyHeatEngine()
         self.min_confidence_score = 0.55
         self.last_regime = "ANALYZING"
         self.last_regime_details = {}
@@ -373,8 +375,9 @@ class RealTimeStrategyOptimizer:
         if strategy_key in self.strategy_stats:
             self.strategy_stats[strategy_key]["current_dynamic_rr"] = dynamic_rr
 
-        # 4. Lot sizing multiplier based on strategy weight
-        lot_multiplier = max(0.5, min(round(weight, 2), 1.75))
+        # 4. Lot sizing multiplier based on strategy weight & Hourly Heatmap
+        hour_mult, hour_desc = self.hourly_engine.get_hour_multiplier(datetime.now().hour)
+        lot_multiplier = max(0.5, min(round(weight * hour_mult, 2), 1.75))
 
         return {
             "lot_multiplier": lot_multiplier,
@@ -553,6 +556,7 @@ class RealTimeStrategyOptimizer:
 
         self.recompute_stats_from_history()
         self.save_state()
+        self.hourly_engine.record_outcome(datetime.now(), profit)
 
     def sync_mt5_closed_deals(self, deals: List[dict]):
         """Sync MT5 closed deals and auto-update learning engine safely without duplicates."""
@@ -605,5 +609,6 @@ class RealTimeStrategyOptimizer:
                 "best_icon": best_strat[1].get("icon", "📈")
             },
             "strategies": self.strategy_stats,
+            "hourly_heatmap": self.hourly_engine.get_all_heatmap_data(),
             "recent_history": self.trade_history[-15:]
         }
