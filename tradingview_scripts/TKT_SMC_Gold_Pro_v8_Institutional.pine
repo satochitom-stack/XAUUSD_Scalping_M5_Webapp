@@ -154,6 +154,8 @@ if buy_signal
     tkt_tp1   := close + (tp1_points * pts_to_price)
     tkt_tp2   := close + (tp2_points * pts_to_price)
     tkt_score := buy_score
+    lbl_txt = show_score_lbl ? ("BUY\n" + str.tostring(buy_score) + "%") : "BUY"
+    label.new(bar_index, low - (15 * syminfo.mintick), text=lbl_txt, color=color.green, textcolor=color.white, style=label.style_label_up, size=size.small)
 
 if sell_signal
     tkt_entry := close
@@ -161,9 +163,8 @@ if sell_signal
     tkt_tp1   := close - (tp1_points * pts_to_price)
     tkt_tp2   := close - (tp2_points * pts_to_price)
     tkt_score := sell_score
-
-plotshape(buy_signal, title="TKT SMC BUY", style=shape.labelup, location=location.belowbar, color=color.green, textcolor=color.white, text=show_score_lbl ? "BUY\n" + str.tostring(buy_score) + "%" : "BUY", size=size.small)
-plotshape(sell_signal, title="TKT SMC SELL", style=shape.labeldown, location=location.abovebar, color=color.red, textcolor=color.white, text=show_score_lbl ? "SELL\n" + str.tostring(sell_score) + "%" : "SELL", size=size.small)
+    lbl_txt = show_score_lbl ? ("SELL\n" + str.tostring(sell_score) + "%") : "SELL"
+    label.new(bar_index, high + (15 * syminfo.mintick), text=lbl_txt, color=color.red, textcolor=color.white, style=label.style_label_down, size=size.small)
 
 var line l_sl  = na
 var line l_ent = na
