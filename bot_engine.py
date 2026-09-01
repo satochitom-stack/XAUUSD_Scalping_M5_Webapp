@@ -282,15 +282,12 @@ class GoldScalpingBot:
         # Execute Signals
         if buy_signal or sell_signal:
             action_type = "BUY" if buy_signal else "SELL"
-            strat_key = "SECRET_EMA_PULLBACK"
+            strat_key = "CAPTAIN_SMC_DUAL"
             if "News" in signal_reason or "NEWS" in signal_reason or "Momentum" in signal_reason: strat_key = "NEWS_MOMENTUM_EXPANSION"
+            elif "TKT" in signal_reason or "M15" in signal_reason: strat_key = "TKT_SMC_GOLD_PRO_M15"
+            elif "Captain" in signal_reason: strat_key = "CAPTAIN_SMC_DUAL"
             elif "3 Candles" in signal_reason or "EMA50_3CANDLES" in signal_reason: strat_key = "EMA50_3CANDLES_H1"
             elif "Asian" in signal_reason: strat_key = "ASIAN_RANGE_SNIPER"
-            elif "SMC" in signal_reason: strat_key = "SMC_SWEEP"
-            elif "Ribbon" in signal_reason: strat_key = "EMA_RIBBON"
-            elif "BB" in signal_reason or "Squeeze" in signal_reason: strat_key = "BB_SQUEEZE"
-            elif "Pullback" in signal_reason: strat_key = "SECRET_EMA_PULLBACK"
-            elif strat_mode == "ALL": strat_key = "ALL_CONFLUENCE"
 
             # 1. Evaluate Market Regime & Liquidity Filter Score (0 - 100)
             score_res = self.scorer.evaluate_market_confluence(df, current_spread, strat_key)
@@ -417,14 +414,21 @@ class GoldScalpingBot:
         upper_wick = b1['high'] - max(b1['open'], b1['close'])
         lower_wick = min(b1['open'], b1['close']) - b1['low']
 
-        # --- MODEL 1: FAST ENTRY (Wick Rejection >= 35% in S/R Zone) ---
-        # Fast Buy: Tests Support Zone + Lower Wick >= 35% + Closes Bullish
-        if b1['low'] <= (swing_low + 0.60) and (lower_wick / candle_range) >= 0.35 and b1['close'] > b1['open']:
-            return True, False, "Captain_SMC_Fast (Wick Rejection 35%)"
+        # 2. Trend Confluence Filter (EMA 50 vs EMA 150)
+        is_uptrend = b1.get('ema50', 0) > b1.get('ema150', 0)
+        is_downtrend = b1.get('ema50', 0) < b1.get('ema150', 0)
+        rsi = b1.get('rsi14', 50)
 
-        # Fast Sell: Tests Resistance Zone + Upper Wick >= 35% + Closes Bearish
+        # --- MODEL 1: FAST ENTRY (Wick Rejection >= 35% in S/R Zone) ---
+        # Fast Buy: Tests Support Zone + Lower Wick >= 35% + Closes Bullish + NOT in steep downtrend
+        if b1['low'] <= (swing_low + 0.60) and (lower_wick / candle_range) >= 0.35 and b1['close'] > b1['open']:
+            if not is_downtrend or rsi < 35: # Only buy if aligned with trend or extremely oversold
+                return True, False, "Captain_SMC_Fast (Wick Rejection 35%)"
+
+        # Fast Sell: Tests Resistance Zone + Upper Wick >= 35% + Closes Bearish + NOT in steep uptrend
         if b1['high'] >= (swing_high - 0.60) and (upper_wick / candle_range) >= 0.35 and b1['close'] < b1['open']:
-            return False, True, "Captain_SMC_Fast (Wick Rejection 35%)"
+            if not is_uptrend or rsi > 65: # Only sell if aligned with trend or extremely overbought
+                return False, True, "Captain_SMC_Fast (Wick Rejection 35%)"
 
         # --- MODEL 2: CONFIRMED ENTRY (CHoCH / Market Structure Break) ---
         recent_15 = df.iloc[-17:-2]
@@ -432,11 +436,11 @@ class GoldScalpingBot:
         recent_low = recent_15['low'].min()
 
         # Confirmed Buy: Bullish candle closes above recent swing high
-        if b1['close'] > recent_high and b1['close'] > b1['open']:
+        if b1['close'] > recent_high and b1['close'] > b1['open'] and (is_uptrend or rsi > 52):
             return True, False, "Captain_SMC_Confirmed (Structure CHoCH Break)"
 
         # Confirmed Sell: Bearish candle closes below recent swing low
-        if b1['close'] < recent_low and b1['close'] < b1['open']:
+        if b1['close'] < recent_low and b1['close'] < b1['open'] and (is_downtrend or rsi < 48):
             return False, True, "Captain_SMC_Confirmed (Structure CHoCH Break)"
 
         return False, False, ""
