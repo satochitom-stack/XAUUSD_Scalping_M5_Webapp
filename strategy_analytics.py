@@ -24,15 +24,25 @@ class RealTradeAnalyticsManager:
     
     # Strategy Catalog Definition (Bot Strategies Only)
     STRATEGY_REGISTRY = {
-        "EMA50_3CANDLES_H1": {
-            "id": "EMA50_3CANDLES_H1",
-            "name": "EMA 50 + 3 Confirmation Candles (H1 Pro)",
-            "icon": "📈",
-            "category": "TREND_FOLLOWING",
-            "timeframe": "H1",
+        "CAPTAIN_SMC_DUAL": {
+            "id": "CAPTAIN_SMC_DUAL",
+            "name": "Captain SMC Signal V1.2 (Dual Auto)",
+            "icon": "⭐",
+            "category": "SMC_PRO",
+            "timeframe": "M5",
             "best_session": "London & NY (14:00 - 04:00)",
-            "magic_numbers": [777888, 777889, 777890],
-            "description": "เทรดตามเทรนด์ H1 เมื่อเกิดแท่งเทียนสีเดียวกัน 3 แท่งติดเหนือ/ใต้เส้น EMA 50 + ความชัน"
+            "magic_numbers": [888120, 888121, 888122, 888123, 888124, 888125, 555888, 555889, 555890],
+            "description": "ระบบ Smart Money Concept อัตโนมัติ เข้าทั้ง Fast (ไส้ปฏิเสธ S/R 35%) และ Confirmed (CHoCH Break) พร้อม Multi-TP"
+        },
+        "TKT_SMC_GOLD_PRO_M15": {
+            "id": "TKT_SMC_GOLD_PRO_M15",
+            "name": "TKT SMC Gold Pro v8.0 (M15)",
+            "icon": "⚜️",
+            "category": "SMC_M15",
+            "timeframe": "M15",
+            "best_session": "London & NY AM Kill Zones (14:00 - 23:00)",
+            "magic_numbers": [999150, 999151, 999152],
+            "description": "ระบบสถาบัน Confluence Score ≥ 60% กรอง FVG Imbalance + Order Block + Kill Zone บน M15"
         },
         "ASIAN_RANGE_SNIPER": {
             "id": "ASIAN_RANGE_SNIPER",
@@ -44,45 +54,15 @@ class RealTradeAnalyticsManager:
             "magic_numbers": [555888, 555889, 555890],
             "description": "สไนเปอร์กรอบตลาดเอเชีย แตะขอบ Bollinger Band + Fast RSI 7 ดีดกลับเข้าหา SMA 20"
         },
-        "SMC_SWEEP": {
-            "id": "SMC_SWEEP",
-            "name": "SMC Liquidity Sweep & Rejection",
-            "icon": "🎯",
-            "category": "SCALPING",
-            "timeframe": "M5",
-            "best_session": "London & NY Open (14:00 - 22:00)",
-            "magic_numbers": [555888, 555889, 555890],
-            "description": "ดักปลายไส้กวาด Stop Loss ทะลุ High/Low 20 แท่งแล้วทิ้งไส้ยาว >45% ดึงกลับเข้ากรอบ"
-        },
-        "EMA_RIBBON": {
-            "id": "EMA_RIBBON",
-            "name": "Dynamic EMA Ribbon (20/50/100/200) + RSI",
-            "icon": "🌊",
-            "category": "TREND_FOLLOWING",
-            "timeframe": "M5",
-            "best_session": "London & NY (14:00 - 02:00)",
-            "magic_numbers": [555888, 555889, 555890],
-            "description": "รันตาม Super Trend แถบ EMA 4 เส้น ย่อตัวแตะ Value Zone (EMA 20) + RSI รีเซ็ต"
-        },
-        "BB_SQUEEZE": {
-            "id": "BB_SQUEEZE",
-            "name": "Bollinger Bands Squeeze Volatility Breakout",
-            "icon": "💥",
-            "category": "VOLATILITY_BREAKOUT",
-            "timeframe": "M5",
-            "best_session": "London & NY Overlap (19:00 - 23:00)",
-            "magic_numbers": [555888, 555889, 555890],
-            "description": "สไนเปอร์ตลาดบีบตัวแคบสุดในรอบ 20 แท่ง แล้วเข้าแท่งแรกที่ระเบิดตามเทรนด์ EMA 50"
-        },
-        "SECRET_EMA_PULLBACK": {
-            "id": "SECRET_EMA_PULLBACK",
-            "name": "Classic Secret EMA 50/150 Pullback",
+        "EMA50_3CANDLES_H1": {
+            "id": "EMA50_3CANDLES_H1",
+            "name": "EMA 50 + 3 Confirmation Candles (H1 Pro)",
             "icon": "📈",
-            "category": "SCALPING",
-            "timeframe": "M5",
-            "best_session": "All Active Sessions",
-            "magic_numbers": [555888, 555889, 555890],
-            "description": "สูตรต้นตำรับ Secret System ตรวจจับความชัน EMA 50/150 และย่อทดสอบเส้น EMA"
+            "category": "TREND_FOLLOWING",
+            "timeframe": "H1",
+            "best_session": "London & NY (14:00 - 04:00)",
+            "magic_numbers": [777888, 777889, 777890],
+            "description": "เทรดตามเทรนด์ H1 เมื่อเกิดแท่งเทียนสีเดียวกัน 3 แท่งติดเหนือ/ใต้เส้น EMA 50 + ความชัน"
         }
     }
 
@@ -154,41 +134,31 @@ class RealTradeAnalyticsManager:
         magic = deal.magic
         comment = (deal.comment or "").lower()
 
+        # 0. TKT SMC Gold Pro v8.0 (Magic 999150..999155 or comment tkt / fvg / score)
+        if (magic >= 999150 and magic <= 999155) or "tkt" in comment or "fvg" in comment or "m15" in comment:
+            return "TKT_SMC_GOLD_PRO_M15"
+
+        # 0.1 Captain SMC Signal V1.2 (Magic 888120..888125 or comment Captain_SMC)
+        if (magic >= 888120 and magic <= 888125) or "captain" in comment:
+            return "CAPTAIN_SMC_DUAL"
+
         # 1. H1 Strategy (Magic 777888, 777889, 777890 or comment containing H1 / EMA50)
         if magic in [777888, 777889, 777890] or "h1" in comment or "ema50" in comment:
             return "EMA50_3CANDLES_H1"
 
-        # 2. Asian Range Sniper
+        # 2. Asian Range Sniper (00:00 - 07:00 Server / 07:00 - 14:00 Thai)
         if "asian" in comment or "⛩" in comment:
             return "ASIAN_RANGE_SNIPER"
 
-        # 3. SMC Sweep
-        if "smc" in comment or "sweep" in comment:
-            return "SMC_SWEEP"
-
-        # 4. Ribbon
-        if "ribbon" in comment:
-            return "EMA_RIBBON"
-
-        # 5. Squeeze
-        if "squeeze" in comment or "bb" in comment:
-            return "BB_SQUEEZE"
-
-        # 6. Pullback / Secret
-        if "pullback" in comment or "secret" in comment:
-            return "SECRET_EMA_PULLBACK"
-
-        # Default classification based on deal time / position type if opened by M5 Scalper EA
-        if magic in [555889, 555890]:
+        # Default classification based on deal time if opened by M5 EA
+        if magic in [555888, 555889, 555890]:
             deal_hour = datetime.fromtimestamp(deal.time).hour
             if 0 <= deal_hour < 7:
                 return "ASIAN_RANGE_SNIPER"
-            elif "tp" in comment:
-                return "SMC_SWEEP"
             else:
-                return "SECRET_EMA_PULLBACK"
+                return "CAPTAIN_SMC_DUAL"
 
-        return "SECRET_EMA_PULLBACK"
+        return "CAPTAIN_SMC_DUAL"
 
     def get_real_stats_summary(self) -> dict:
         """Calculate 100% verified real trading statistics for BOTS ONLY from MT5 deal history."""

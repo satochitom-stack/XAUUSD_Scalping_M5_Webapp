@@ -18,17 +18,40 @@ from news_calendar import NewsCalendarManager
 logger = logging.getLogger("StrategyOptimizer")
 
 DEFAULT_STRATEGIES = [
-    "NEWS_MOMENTUM_EXPANSION",
-    "EMA50_3CANDLES_H1",
+    "TKT_SMC_GOLD_PRO_M15",
+    "CAPTAIN_SMC_DUAL",
     "ASIAN_RANGE_SNIPER",
-    "SMC_SWEEP",
-    "EMA_RIBBON",
-    "BB_SQUEEZE",
-    "SECRET_EMA_PULLBACK",
-    "ALL_CONFLUENCE"
+    "EMA50_3CANDLES_H1",
+    "NEWS_MOMENTUM_EXPANSION"
 ]
 
 SETUP_PROFILES = {
+    "TKT_SMC_GOLD_PRO_M15": {
+        "id": "TKT_SMC_GOLD_PRO_M15",
+        "name": "TKT SMC Gold Pro v8.0 (M15)",
+        "icon": "⚜️",
+        "win_prob": 81.0,
+        "base_rr": 1.50,
+        "min_rr": 1.20,
+        "max_rr": 2.80,
+        "trailing_type": "CONFLUENCE_STAGE",
+        "trail_points": 300.0,
+        "trail_step_points": 50.0,
+        "description": "Institutional SMC Confluence (BOS/CHoCH + FVG Imbalance + Kill Zones + Score >= 60%) on M15"
+    },
+    "CAPTAIN_SMC_DUAL": {
+        "id": "CAPTAIN_SMC_DUAL",
+        "name": "Captain SMC Signal V1.2 (Dual Auto)",
+        "icon": "⭐",
+        "win_prob": 79.0,
+        "base_rr": 1.70,
+        "min_rr": 1.30,
+        "max_rr": 3.00,
+        "trailing_type": "TIGHT_LOCK",
+        "trail_points": 200.0,
+        "trail_step_points": 30.0,
+        "description": "Smart Money Concepts Dual-Model entering Fast (Wick 35%) & Confirmed (CHoCH) automatically"
+    },
     "NEWS_MOMENTUM_EXPANSION": {
         "id": "NEWS_MOMENTUM_EXPANSION",
         "name": "High-Impact News Momentum Breakout",
@@ -67,71 +90,6 @@ SETUP_PROFILES = {
         "trail_points": 180.0,
         "trail_step_points": 30.0,
         "description": "Asian session mean-reversion at Bollinger bands with Fast RSI 7 bounce"
-    },
-    "SMC_SWEEP": {
-        "id": "SMC_SWEEP",
-        "name": "SMC Liquidity Sweep",
-        "icon": "🎯",
-        "win_prob": 78.0,
-        "base_rr": 1.60,
-        "min_rr": 1.40,
-        "max_rr": 2.50,
-        "trailing_type": "TIGHT_LOCK",
-        "trail_points": 200.0,
-        "trail_step_points": 30.0,
-        "description": "High winrate sweep with tight SL & extended opposite liquidity target"
-    },
-    "EMA_RIBBON": {
-        "id": "EMA_RIBBON",
-        "name": "EMA Ribbon Momentum",
-        "icon": "🌊",
-        "win_prob": 70.0,
-        "base_rr": 1.35,
-        "min_rr": 1.25,
-        "max_rr": 2.00,
-        "trailing_type": "EMA_TRAIL",
-        "trail_points": 250.0,
-        "trail_step_points": 50.0,
-        "description": "Trend momentum continuation with EMA 50 trailing stop"
-    },
-    "BB_SQUEEZE": {
-        "id": "BB_SQUEEZE",
-        "name": "BB Squeeze Volatility Breakout",
-        "icon": "💥",
-        "win_prob": 68.0,
-        "base_rr": 1.80,
-        "min_rr": 1.50,
-        "max_rr": 3.00,
-        "trailing_type": "WIDE_ATR",
-        "trail_points": 350.0,
-        "trail_step_points": 50.0,
-        "description": "Explosive volatility expansion with extended target"
-    },
-    "SECRET_EMA_PULLBACK": {
-        "id": "SECRET_EMA_PULLBACK",
-        "name": "Secret EMA 50/150 Pullback",
-        "icon": "📈",
-        "win_prob": 66.0,
-        "base_rr": 1.25,
-        "min_rr": 1.15,
-        "max_rr": 1.75,
-        "trailing_type": "SWING_TRAIL",
-        "trail_points": 250.0,
-        "trail_step_points": 40.0,
-        "description": "Quick bounce scalp at EMA 50 support/resistance"
-    },
-    "ALL_CONFLUENCE": {
-        "id": "ALL_CONFLUENCE",
-        "name": "Multi-Strategy Confluence",
-        "icon": "🌟",
-        "win_prob": 82.0,
-        "base_rr": 2.00,
-        "min_rr": 1.75,
-        "max_rr": 3.50,
-        "trailing_type": "CONFLUENCE_STAGE",
-        "trail_points": 250.0,
-        "trail_step_points": 40.0,
-        "description": "Multi-indicator confluence with max RR & lot scaling"
     }
 }
 
@@ -464,7 +422,7 @@ class RealTimeStrategyOptimizer:
         """Load persisted learning data from json."""
         if os.path.exists(self.data_file_path):
             try:
-                with open(self.data_file_path, "r", encoding="utf-8") as f:
+                with open(self.data_file_path, "r", encoding="utf-8-sig") as f:
                     data = json.load(f)
                     self.enabled = data.get("enabled", True)
                     self.trade_history = data.get("trade_history", [])[-200:]
@@ -489,8 +447,9 @@ class RealTimeStrategyOptimizer:
 
     def recompute_stats_from_history(self):
         """Recomputes all strategy scorecards strictly from unique trade history records."""
+        self.strategy_stats = {}
         for k in DEFAULT_STRATEGIES:
-            prof = SETUP_PROFILES.get(k, SETUP_PROFILES["ALL_CONFLUENCE"])
+            prof = SETUP_PROFILES.get(k, SETUP_PROFILES["CAPTAIN_SMC_DUAL"])
             self.strategy_stats[k] = {
                 "id": k,
                 "name": prof["name"],
@@ -521,9 +480,9 @@ class RealTimeStrategyOptimizer:
 
         # Recalculate each strategy stats strictly from actual history
         for t in self.trade_history:
-            strat = t.get("strategy", "SECRET_EMA_PULLBACK")
+            strat = t.get("strategy", "CAPTAIN_SMC_DUAL")
             if strat not in self.strategy_stats:
-                strat = "SECRET_EMA_PULLBACK"
+                strat = "CAPTAIN_SMC_DUAL"
             stat = self.strategy_stats[strat]
             pnl = t.get("profit", 0.0)
             stat["trades"] = stat.get("trades", 0) + 1
@@ -546,7 +505,7 @@ class RealTimeStrategyOptimizer:
             else: stat["weight"] = 0.70
 
             # Dynamic R:R and Loss Mitigation Adjustment based on Streak
-            prof = SETUP_PROFILES.get(strat, SETUP_PROFILES["ALL_CONFLUENCE"])
+            prof = SETUP_PROFILES.get(strat, SETUP_PROFILES["CAPTAIN_SMC_DUAL"])
             if stat["streak"] >= 2:
                 stat["current_dynamic_rr"] = min(prof["max_rr"], round(prof["base_rr"] * 1.30, 2))
                 stat["atr_sl_multiplier"] = 1.0

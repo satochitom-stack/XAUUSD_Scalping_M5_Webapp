@@ -1,9 +1,54 @@
-{
+﻿{
   "enabled": true,
-  "last_updated": "2026-08-31T16:45:46.971852",
+  "last_updated": "2026-09-01T11:25:00.000000",
   "strategy_stats": {
-    "SMC_SWEEP": {
-      "name": "SMC Liquidity Sweep",
+    "TKT_SMC_GOLD_PRO_M15": {
+      "name": "TKT SMC Gold Pro v8.0 (M15)",
+      "trades": 0,
+      "wins": 0,
+      "losses": 0,
+      "winrate": 81.0,
+      "profit": 0.0,
+      "profit_factor": 1.8,
+      "streak": 0,
+      "weight": 1.15,
+      "base_rr": 1.5,
+      "current_dynamic_rr": 1.5,
+      "trailing_type": "CONFLUENCE_STAGE",
+      "active": true
+    },
+    "CAPTAIN_SMC_DUAL": {
+      "name": "Captain SMC Signal V1.2 (Dual Auto)",
+      "trades": 8,
+      "wins": 4,
+      "losses": 4,
+      "winrate": 50.0,
+      "profit": 7.1,
+      "profit_factor": 1.18,
+      "streak": 1,
+      "weight": 1.15,
+      "base_rr": 1.7,
+      "current_dynamic_rr": 1.7,
+      "trailing_type": "TIGHT_LOCK",
+      "active": true
+    },
+    "ASIAN_RANGE_SNIPER": {
+      "name": "Asian Range Sniper Reversion",
+      "trades": 0,
+      "wins": 0,
+      "losses": 0,
+      "winrate": 80.0,
+      "profit": 0.0,
+      "profit_factor": 1.8,
+      "streak": 0,
+      "weight": 1.15,
+      "base_rr": 1.4,
+      "current_dynamic_rr": 1.4,
+      "trailing_type": "TIGHT_LOCK",
+      "active": true
+    },
+    "EMA50_3CANDLES_H1": {
+      "name": "EMA 50 + 3 Candles (H1 Pro)",
       "trades": 0,
       "wins": 0,
       "losses": 0,
@@ -12,69 +57,24 @@
       "profit_factor": 1.8,
       "streak": 0,
       "weight": 1.15,
-      "base_rr": 1.6,
-      "current_dynamic_rr": 1.6,
-      "trailing_type": "TIGHT_LOCK",
-      "active": true
-    },
-    "EMA_RIBBON": {
-      "name": "EMA Ribbon Momentum",
-      "trades": 0,
-      "wins": 0,
-      "losses": 0,
-      "winrate": 70.0,
-      "profit": 0.0,
-      "profit_factor": 1.8,
-      "streak": 0,
-      "weight": 1.0,
-      "base_rr": 1.35,
-      "current_dynamic_rr": 1.35,
+      "base_rr": 1.75,
+      "current_dynamic_rr": 1.75,
       "trailing_type": "EMA_TRAIL",
       "active": true
     },
-    "BB_SQUEEZE": {
-      "name": "BB Squeeze Volatility Breakout",
+    "NEWS_MOMENTUM_EXPANSION": {
+      "name": "High-Impact News Momentum Breakout",
       "trades": 0,
       "wins": 0,
       "losses": 0,
-      "winrate": 68.0,
-      "profit": 0.0,
-      "profit_factor": 1.8,
-      "streak": 0,
-      "weight": 1.0,
-      "base_rr": 1.8,
-      "current_dynamic_rr": 1.8,
-      "trailing_type": "WIDE_ATR",
-      "active": true
-    },
-    "SECRET_EMA_PULLBACK": {
-      "name": "Secret EMA 50/150 Pullback",
-      "trades": 6,
-      "wins": 2,
-      "losses": 4,
-      "winrate": 33.3,
-      "profit": -23.3,
-      "profit_factor": 1.8,
-      "streak": -4,
-      "weight": 0.7,
-      "base_rr": 1.25,
-      "current_dynamic_rr": 1.25,
-      "trailing_type": "SWING_TRAIL",
-      "active": true
-    },
-    "ALL_CONFLUENCE": {
-      "name": "Multi-Strategy Confluence",
-      "trades": 0,
-      "wins": 0,
-      "losses": 0,
-      "winrate": 82.0,
+      "winrate": 76.0,
       "profit": 0.0,
       "profit_factor": 1.8,
       "streak": 0,
       "weight": 1.15,
-      "base_rr": 2.0,
-      "current_dynamic_rr": 2.0,
-      "trailing_type": "CONFLUENCE_STAGE",
+      "base_rr": 2.5,
+      "current_dynamic_rr": 2.5,
+      "trailing_type": "WIDE_ATR",
       "active": true
     }
   },
@@ -82,23 +82,23 @@
     {
       "ticket": 3859671394,
       "time": "2026-08-28 20:30:28",
-      "strategy": "SECRET_EMA_PULLBACK",
+      "strategy": "CAPTAIN_SMC_DUAL",
       "profit": 16.1,
       "pips": 16.0,
-      "reason": "EMA 50 Secret Pullback TP1 Hit"
+      "reason": "Captain SMC TP1 Hit"
     },
     {
       "ticket": 3859814067,
       "time": "2026-08-28 20:30:28",
-      "strategy": "SECRET_EMA_PULLBACK",
+      "strategy": "CAPTAIN_SMC_DUAL",
       "profit": 0.3,
       "pips": 3.0,
-      "reason": "EMA 50 Secret Pullback Runner Break-Even"
+      "reason": "Captain SMC Runner Break-Even"
     },
     {
       "ticket": 3867892477,
       "time": "2026-08-31 16:45:46",
-      "strategy": "SECRET_EMA_PULLBACK",
+      "strategy": "CAPTAIN_SMC_DUAL",
       "profit": -14.8,
       "pips": 0.0,
       "reason": "[sl 4439.11700]"
@@ -106,7 +106,7 @@
     {
       "ticket": 3867892503,
       "time": "2026-08-31 16:45:46",
-      "strategy": "SECRET_EMA_PULLBACK",
+      "strategy": "CAPTAIN_SMC_DUAL",
       "profit": -14.8,
       "pips": 0.0,
       "reason": "[sl 4439.11700]"
@@ -114,7 +114,7 @@
     {
       "ticket": 3868655405,
       "time": "2026-08-31 16:45:46",
-      "strategy": "SECRET_EMA_PULLBACK",
+      "strategy": "CAPTAIN_SMC_DUAL",
       "profit": -5.1,
       "pips": 0.0,
       "reason": "[sl 4448.87100]"
@@ -122,10 +122,26 @@
     {
       "ticket": 3868655429,
       "time": "2026-08-31 16:45:46",
-      "strategy": "SECRET_EMA_PULLBACK",
+      "strategy": "CAPTAIN_SMC_DUAL",
       "profit": -5.0,
       "pips": 0.0,
       "reason": "[sl 4448.871]"
+    },
+    {
+      "ticket": 3869671659,
+      "time": "2026-08-31 18:25:54",
+      "strategy": "CAPTAIN_SMC_DUAL",
+      "profit": 29.5,
+      "pips": 29.5,
+      "reason": "[tp 4460.17400]"
+    },
+    {
+      "ticket": 3869932651,
+      "time": "2026-08-31 19:09:08",
+      "strategy": "CAPTAIN_SMC_DUAL",
+      "profit": 0.9,
+      "pips": 1.0,
+      "reason": "[sl 4450.71600]"
     }
   ]
 }

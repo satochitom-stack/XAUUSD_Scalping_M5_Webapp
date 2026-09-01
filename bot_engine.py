@@ -237,13 +237,19 @@ class GoldScalpingBot:
 
         # --- LONDON & NEW YORK SESSION SETUPS (Trend & Momentum) ---
         if not buy_signal and not sell_signal and session != "ASIAN SESSION":
-            # Strategy: SMC Liquidity Sweep (Winrate 75-80%)
-            if strat_mode in ["ALL", "SMC_SWEEP"]:
-                buy_sig, sell_sig, reason = self._check_smc_liquidity_sweep(df)
+            # Primary Flagship 1: Captain Trading LAB - SMC Signal V1.2 (Dual Auto: Fast & Confirmed)
+            if strat_mode in ["ALL", "CAPTAIN_SMC", "CAPTAIN_SMC_DUAL", "SMC_SWEEP"]:
+                buy_sig, sell_sig, reason = self._check_captain_smc(df)
                 if buy_sig: buy_signal, signal_reason = True, reason
                 elif sell_sig: sell_signal, signal_reason = True, reason
 
-            # Strategy: EMA Ribbon + RSI Momentum Reset (Winrate 70%)
+            # Institutional Flagship 2: TKT SMC Gold Pro v8.0 (M15 Institutional Confluence Score >= 60%)
+            if not buy_signal and not sell_signal and strat_mode in ["ALL", "TKT_SMC_GOLD_PRO_M15"]:
+                buy_sig, sell_sig, reason = self._check_tkt_smc_gold_pro_m15(symbol)
+                if buy_sig: buy_signal, signal_reason = True, reason
+                elif sell_sig: sell_signal, signal_reason = True, reason
+
+            # Secondary Support: EMA Ribbon + RSI Momentum Reset (Winrate 70%)
             if not buy_signal and not sell_signal and strat_mode in ["ALL", "EMA_RIBBON"]:
                 buy_sig, sell_sig, reason = self._check_ema_ribbon_rsi(df)
                 if buy_sig: buy_signal, signal_reason = True, reason
@@ -390,6 +396,122 @@ class GoldScalpingBot:
         if touched_upper and b1['close'] < b1['open'] and (upper_wick / candle_range) >= 0.40:
             if b1['rsi7'] >= 65 and b1['rsi7'] < b2['rsi7']:
                 return False, True, "⛩️ Asian Range Sniper: Upper Band Rebound (80% WR)"
+
+    def _check_captain_smc(self, df: pd.DataFrame) -> Tuple[bool, bool, str]:
+        """
+        Captain Trading LAB - SMC Signal V.1.2 Dual-Model Engine
+        Evaluates BOTH Fast (Wick Rejection at S/R Zone) and Confirmed (CHoCH / Market Structure Break).
+        """
+        if len(df) < 35: return False, False, ""
+        b1 = df.iloc[-2] # Last closed bar
+        lookback = df.iloc[-32:-2]
+        
+        # 1. Calculate Support & Resistance / Order Block Zones (Fine Tuner = 10)
+        swing_high = lookback['high'].rolling(window=10).max().iloc[-1]
+        swing_low = lookback['low'].rolling(window=10).min().iloc[-1]
+
+        candle_range = b1['high'] - b1['low']
+        if candle_range <= 0.25:
+            return False, False, ""
+
+        upper_wick = b1['high'] - max(b1['open'], b1['close'])
+        lower_wick = min(b1['open'], b1['close']) - b1['low']
+
+        # --- MODEL 1: FAST ENTRY (Wick Rejection >= 35% in S/R Zone) ---
+        # Fast Buy: Tests Support Zone + Lower Wick >= 35% + Closes Bullish
+        if b1['low'] <= (swing_low + 0.60) and (lower_wick / candle_range) >= 0.35 and b1['close'] > b1['open']:
+            return True, False, "Captain_SMC_Fast (Wick Rejection 35%)"
+
+        # Fast Sell: Tests Resistance Zone + Upper Wick >= 35% + Closes Bearish
+        if b1['high'] >= (swing_high - 0.60) and (upper_wick / candle_range) >= 0.35 and b1['close'] < b1['open']:
+            return False, True, "Captain_SMC_Fast (Wick Rejection 35%)"
+
+        # --- MODEL 2: CONFIRMED ENTRY (CHoCH / Market Structure Break) ---
+        recent_15 = df.iloc[-17:-2]
+        recent_high = recent_15['high'].max()
+        recent_low = recent_15['low'].min()
+
+        # Confirmed Buy: Bullish candle closes above recent swing high
+        if b1['close'] > recent_high and b1['close'] > b1['open']:
+            return True, False, "Captain_SMC_Confirmed (Structure CHoCH Break)"
+
+        # Confirmed Sell: Bearish candle closes below recent swing low
+        if b1['close'] < recent_low and b1['close'] < b1['open']:
+            return False, True, "Captain_SMC_Confirmed (Structure CHoCH Break)"
+
+        return False, False, ""
+
+    def _check_tkt_smc_gold_pro_m15(self, symbol: str) -> Tuple[bool, bool, str]:
+        """
+        TKT SMC Gold Pro v8.0 - Institutional Confluence Scoring Engine (M15 Sweet Spot).
+        Evaluates Market Structure (BOS/CHoCH) + FVG Imbalance (min 50 pts) + Order Block + Kill Zone Session.
+        Fires signal when Confluence Score >= 60%.
+        """
+        try:
+            df_m15 = self.connector.get_rates(symbol, "M15", 60)
+            if df_m15.empty or len(df_m15) < 30:
+                return False, False, ""
+
+            b1 = df_m15.iloc[-2] # Closed M15 candle
+            b2 = df_m15.iloc[-3]
+            b3 = df_m15.iloc[-4]
+
+            buy_score = 0
+            sell_score = 0
+
+            # 1. Structure Trend (BOS / CHoCH) - 25%
+            lookback = df_m15.iloc[-25:-2]
+            swing_high = lookback['high'].max()
+            swing_low = lookback['low'].min()
+
+            if b1['close'] > swing_high:
+                buy_score += 25
+            elif b1['close'] < swing_low:
+                sell_score += 25
+
+            # 2. Fair Value Gap (FVG Imbalance) - 25%
+            min_fvg_pts = 0.50 # 50 points = 0.50 USD
+            bull_fvg_present = (b1['low'] > b3['high'] + min_fvg_pts)
+            bear_fvg_present = (b1['high'] < b3['low'] - min_fvg_pts)
+
+            if bull_fvg_present or (b1['low'] <= (swing_low + 0.80) and b1['close'] > b1['open']):
+                buy_score += 25
+            if bear_fvg_present or (b1['high'] >= (swing_high - 0.80) and b1['close'] < b1['open']):
+                sell_score += 25
+
+            # 3. Kill Zone Session Bonus - 20%
+            now_hour = (datetime.utcnow().hour + 7) % 24 # Thai UTC+7
+            in_kill_zone = (7 <= now_hour < 14) or (14 <= now_hour < 18) or (19 <= now_hour < 23)
+            if in_kill_zone:
+                buy_score += 20
+                sell_score += 20
+
+            # 4. Premium / Discount Equilibrium - 15%
+            pd_50 = df_m15.iloc[-50:-2] if len(df_m15) >= 50 else df_m15.iloc[:-2]
+            equilibrium = (pd_50['high'].max() + pd_50['low'].min()) / 2.0
+            if b1['close'] < equilibrium:
+                buy_score += 15 # Discount (Good for BUY)
+            else:
+                sell_score += 15 # Premium (Good for SELL)
+
+            # 5. Wick Rejection / Volume Confirmation - 15%
+            candle_range = b1['high'] - b1['low']
+            if candle_range > 0.30:
+                lower_wick = min(b1['open'], b1['close']) - b1['low']
+                upper_wick = b1['high'] - max(b1['open'], b1['close'])
+                if (lower_wick / candle_range) >= 0.30 and b1['close'] > b1['open']:
+                    buy_score += 15
+                if (upper_wick / candle_range) >= 0.30 and b1['close'] < b1['open']:
+                    sell_score += 15
+
+            # Check threshold (>= 60%)
+            if buy_score >= 60 and buy_score > sell_score:
+                return True, False, f"TKT SMC Gold Pro M15 (Score: {buy_score}% >= 60%)"
+            elif sell_score >= 60 and sell_score > buy_score:
+                return False, True, f"TKT SMC Gold Pro M15 (Score: {sell_score}% >= 60%)"
+
+        except Exception as e:
+            logger.error(f"Error checking TKT SMC Gold Pro M15: {e}")
 
         return False, False, ""
 
@@ -607,6 +729,50 @@ class GoldScalpingBot:
                     self.add_log(f"🛡️ [BREAK-EVEN LOCKED] Runner #{p2.get('ticket')} SL locked at {new_sl:.2f}", "SUCCESS")
                     if self.notifier:
                         self.notifier.notify_break_even(p2.get('ticket'), symbol, new_sl)
+
+    def check_and_execute_pyramiding(self, df: pd.DataFrame, symbol: str, ea_positions: list, regime_info: dict):
+        """Execute risk-free trend pyramiding (scaling-in) when runner SL is already locked at Break-Even."""
+        strat_cfg = self.config.get("strategy", {})
+        if not strat_cfg.get("enable_trend_pyramiding", False):
+            return
+
+        # 1. Block pyramiding if in ranging or choppy sideway regime
+        if regime_info.get("is_choppy") or "SIDEWAY" in regime_info.get("regime", "") or "RANGING" in regime_info.get("regime", ""):
+            return
+
+        # 2. Check if runner position exists (Pos 2) and SL is locked at Break-Even
+        runner_pos = [p for p in ea_positions if p.get('magic') == self.magic_pos2]
+        if not runner_pos:
+            return
+
+        p = runner_pos[0]
+        open_price = p.get('price_open', 0.0)
+        sl = p.get('sl', 0.0)
+        ptype = p.get('type')
+
+        # Require SL to be locked at Break-Even or in profit
+        if ptype == "BUY" and sl < open_price:
+            return
+        if ptype == "SELL" and (sl > open_price or sl == 0):
+            return
+
+        # Check existing pyramid positions limit
+        max_layers = strat_cfg.get("max_pyramid_layers", 2)
+        pyramid_magic_base = self.magic_number + 3 # 555891
+        existing_pyramids = [pos for pos in ea_positions if pos.get('magic') == pyramid_magic_base]
+        if len(existing_pyramids) >= max_layers:
+            return
+
+        # Execute Pyramid Layer
+        lot_ratio = strat_cfg.get("pyramid_lot_ratio", 0.60)
+        lot = max(0.01, round(p.get('volume', 0.02) * lot_ratio, 2))
+        
+        m_info = self.connector.get_market_info(symbol)
+        curr_price = m_info.get('ask' if ptype == "BUY" else 'bid', 0.0)
+        pyramid_sl = open_price
+
+        self.connector.open_order(symbol, ptype, lot, pyramid_sl, 0.0, pyramid_magic_base, "Pyramid_L1")
+        self.add_log(f"🔺 [TREND PYRAMIDING] Added Layer 1 on {ptype} | Lot: {lot} | Magic: {pyramid_magic_base}", "SUCCESS")
 
 # Alias for backwards compatibility
 BotEngine = GoldScalpingBot
