@@ -310,7 +310,7 @@ class GoldScalpingBot:
             elif "Asian" in signal_reason: strat_key = "ASIAN_RANGE_SNIPER"
 
             # 1. Evaluate Market Regime & Liquidity Filter Score (0 - 100)
-            score_res = self.scorer.evaluate_market_confluence(df, current_spread, strat_key)
+            score_res = self.scorer.evaluate_market_confluence(df, spread, strat_key)
             if not score_res.get("is_allowed", True):
                 self.scorer.record_filtered_trade(strat_key, score_res)
                 self.add_log(f"🛡️ [QUALITY FILTERED] {strat_key} ({action_type}) Skipped | Score: {score_res['score']}/100 ({score_res['grade']}) | {score_res['pillars']['volume']['desc']}", "WARNING")

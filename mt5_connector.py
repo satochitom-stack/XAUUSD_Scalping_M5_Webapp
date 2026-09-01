@@ -43,8 +43,26 @@ class MT5Connector:
             return False
 
         try:
-            # 1. If explicit credentials provided with password, attempt explicit login
-            if self.account > 0 and self.password and self.server:
+            # 1. First, attempt to attach to already running visible MT5 GUI terminal
+            init_ok = mt5.initialize()
+            if init_ok and mt5.account_info() is not None:
+                acc_info = mt5.account_info()
+                self.is_connected = True
+                self.account = acc_info.login
+                self.server = acc_info.server
+                self.live_currency = acc_info.currency
+                logger.info(f"✅ Successfully attached to active MT5 GUI Window #{acc_info.login} ({acc_info.server}) | Balance: {acc_info.balance:,.2f} {acc_info.currency}")
+                return True
+
+            # 2. If not open, launch MT5 GUI process directly so the window is visible to the user
+            if self.path and os.path.exists(self.path):
+                import subprocess
+                subprocess.Popen([self.path])
+                time.sleep(2.0)
+                init_ok = mt5.initialize()
+
+            # 3. Fallback explicit login
+            if not init_ok and self.account > 0 and self.password and self.server:
                 if self.path:
                     init_ok = mt5.initialize(
                         path=self.path,
@@ -58,14 +76,6 @@ class MT5Connector:
                         password=self.password,
                         server=self.server
                     )
-            elif self.path:
-                init_ok = mt5.initialize(path=self.path)
-            else:
-                # 2. Auto-connect to whatever MT5 terminal is currently running on Windows!
-                init_ok = mt5.initialize()
-
-            if not init_ok:
-                init_ok = mt5.initialize()
 
             if init_ok:
                 acc_info = mt5.account_info()
