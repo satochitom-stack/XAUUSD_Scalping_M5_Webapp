@@ -63,6 +63,16 @@ class RealTradeAnalyticsManager:
             "best_session": "London & NY (14:00 - 04:00)",
             "magic_numbers": [777888, 777889, 777890],
             "description": "เทรดตามเทรนด์ H1 เมื่อเกิดแท่งเทียนสีเดียวกัน 3 แท่งติดเหนือ/ใต้เส้น EMA 50 + ความชัน"
+        },
+        "NEWS_MOMENTUM_EXPANSION": {
+            "id": "NEWS_MOMENTUM_EXPANSION",
+            "name": "News Momentum Expansion",
+            "icon": "⚡",
+            "category": "NEWS_TRADING",
+            "timeframe": "M5",
+            "best_session": "High-Impact News Events (USD)",
+            "magic_numbers": [666888, 666889, 666890],
+            "description": "ดักจับแท่งเทียน Breakout ความผันผวนสูงช่วงข่าวใหญ่ (CPI, NFP, FOMC) พร้อม Trailing Stop กว้าง"
         }
     }
 
@@ -149,6 +159,10 @@ class RealTradeAnalyticsManager:
         # 2. Asian Range Sniper (00:00 - 07:00 Server / 07:00 - 14:00 Thai)
         if "asian" in comment or "⛩" in comment:
             return "ASIAN_RANGE_SNIPER"
+
+        # 3. News Momentum Expansion (News Spike)
+        if "news" in comment or "momentum" in comment or magic in [666888, 666889, 666890]:
+            return "NEWS_MOMENTUM_EXPANSION"
 
         # Default classification based on deal time if opened by M5 EA
         if magic in [555888, 555889, 555890]:
