@@ -27,8 +27,6 @@ sl_buffer_atr   = input.float(0.30, "SL Buffer (ATR x)", step=0.05, group=group_
 tp1_r           = input.float(1.0, "TP1 (Rx)", group=group_rr)
 tp2_r           = input.float(2.0, "TP2 (Rx)", group=group_rr)
 tp3_r           = input.float(3.0, "TP3 (Rx) Runner", group=group_rr)
-be_trigger_pct  = input.float(50.0, "BE Trigger (%) วิ่งถึง % ของ TP1 ดึงกันทุน", group=group_rr)
-tsl_buffer_atr  = input.float(0.10, "TSL Buffer (ATR x)", group=group_rr)
 
 group_dash      = "=== 5. DASHBOARD HUD ==="
 show_dashboard  = input.bool(true, "แสดง Dashboard บนกราฟ", group=group_dash)
@@ -55,7 +53,6 @@ p_low  = ta.pivotlow(low, fine_tuner, fine_tuner)
 
 var box[] supp_boxes = array.new_box()
 var box[] res_boxes  = array.new_box()
-
 var float last_supp_high = na
 var float last_supp_low  = na
 var float last_res_high  = na
@@ -66,8 +63,7 @@ if not na(p_low) and show_sr_zones
     b_high = math.min(open[fine_tuner], close[fine_tuner])
     last_supp_low := b_low
     last_supp_high := b_high
-    b = box.new(left=bar_index - fine_tuner, top=b_high, right=bar_index + 15, bottom=b_low,
-                bgcolor=color_support, border_color=color.new(color.blue, 30), extend=extend.right)
+    b = box.new(left=bar_index - fine_tuner, top=b_high, right=bar_index + 15, bottom=b_low, bgcolor=color_support, border_color=color.new(color.blue, 30), extend=extend.right)
     array.push(supp_boxes, b)
     if array.size(supp_boxes) > max_zones
         box.delete(array.shift(supp_boxes))
@@ -77,8 +73,7 @@ if not na(p_high) and show_sr_zones
     b_low = math.max(open[fine_tuner], close[fine_tuner])
     last_res_high := b_high
     last_res_low := b_low
-    b = box.new(left=bar_index - fine_tuner, top=b_high, right=bar_index + 15, bottom=b_low,
-                bgcolor=color_resist, border_color=color.new(color.red, 30), extend=extend.right)
+    b = box.new(left=bar_index - fine_tuner, top=b_high, right=bar_index + 15, bottom=b_low, bgcolor=color_resist, border_color=color.new(color.red, 30), extend=extend.right)
     array.push(res_boxes, b)
     if array.size(res_boxes) > max_zones
         box.delete(array.shift(res_boxes))
@@ -89,7 +84,6 @@ if not na(p_high) and show_sr_zones
 candle_range = high - low
 upper_wick   = high - math.max(open, close)
 lower_wick   = math.min(open, close) - low
-candle_body  = math.abs(close - open)
 
 // Model 1: Fast Entry (Wick Rejection at S/R)
 fast_buy_cond = false
@@ -105,20 +99,18 @@ if candle_range > 0 and (upper_wick / candle_range) >= min_wick_ratio and close 
         if not use_trend_guard or not is_uptrend or (use_rsi_filter and rsi14 > 65)
             fast_sell_cond := true
 
-// Model 2: Confirmed Entry (CHoCH / Market Structure Break)
+// Model 2: Confirmed Entry (CHoCH Break)
 recent_high = ta.highest(high, 15)[1]
 recent_low  = ta.lowest(low, 15)[1]
 
 conf_buy_cond = close > recent_high and close > open and (not use_trend_guard or is_uptrend or rsi14 > 50)
 conf_sell_cond = close < recent_low and close < open and (not use_trend_guard or is_downtrend or rsi14 < 50)
 
-// Final Signal Selection
-is_dual = signal_model == "Dual Auto (Fast + Confirmed)"
+is_dual = (signal_model == "Dual Auto (Fast + Confirmed)")
 buy_trigger  = is_dual ? (fast_buy_cond or conf_buy_cond) : (signal_model == "Fast" ? fast_buy_cond : conf_buy_cond)
 sell_trigger = is_dual ? (fast_sell_cond or conf_sell_cond) : (signal_model == "Fast" ? fast_sell_cond : conf_sell_cond)
 
-// Prevent consecutive repeat signals
-var int last_signal_dir = 0 // 1: Buy, -1: Sell
+var int last_signal_dir = 0
 buy_final  = buy_trigger and last_signal_dir != 1
 sell_final = sell_trigger and last_signal_dir != -1
 
@@ -128,50 +120,41 @@ if sell_final
     last_signal_dir := -1
 
 // ==========================================
-// 5. PLOT SHAPES & TARGET LEVELS
+// 5. PLOT SHAPES & TARGET LINES
 // ==========================================
 var float sig_entry = na
 var float sig_sl    = na
 var float sig_tp1   = na
 var float sig_tp2   = na
 var float sig_tp3   = na
-var float sig_be    = na
-var float sig_tsl   = na
 var string sig_type = "NONE"
 
 if buy_final
     sig_entry := close
-    sl_dist = math.max(1.0, (preset_mode == "Scalper" ? sl_buffer_atr * 3.0 : 1.5) * atr_val)
+    sl_multiplier = (preset_mode == "Scalper") ? (sl_buffer_atr * 3.0) : 1.5
+    sl_dist = math.max(1.0, sl_multiplier * atr_val)
     sig_sl  := sig_entry - sl_dist
     sig_tp1 := sig_entry + (sl_dist * tp1_r)
     sig_tp2 := sig_entry + (sl_dist * tp2_r)
     sig_tp3 := sig_entry + (sl_dist * tp3_r)
-    sig_be  := sig_entry + 0.30
-    sig_tsl := sig_tp1
     sig_type := fast_buy_cond ? "BUY (Fast)" : "BUY (Confirmed)"
 
 if sell_final
     sig_entry := close
-    sl_dist = math.max(1.0, (preset_mode == "Scalper" * sl_buffer_atr * 3.0 : 1.5) * atr_val)
+    sl_multiplier = (preset_mode == "Scalper") ? (sl_buffer_atr * 3.0) : 1.5
+    sl_dist = math.max(1.0, sl_multiplier * atr_val)
     sig_sl  := sig_entry + sl_dist
     sig_tp1 := sig_entry - (sl_dist * tp1_r)
     sig_tp2 := sig_entry - (sl_dist * tp2_r)
     sig_tp3 := sig_entry - (sl_dist * tp3_r)
-    sig_be  := sig_entry - 0.30
-    sig_tsl := sig_tp1
     sig_type := fast_sell_cond ? "SELL (Fast)" : "SELL (Confirmed)"
 
-plotshape(buy_final and fast_buy_cond, title="BUY Fast", style=shape.labelup, location=location.belowbar,
-          color=color.green, textcolor=color.white, text="BUY\nFast", size=size.small)
-plotshape(buy_final and not fast_buy_cond, title="BUY Confirmed", style=shape.labelup, location=location.belowbar,
-          color=color.teal, textcolor=color.white, text="BUY\nCHoCH", size=size.small)
+plotshape(buy_final and fast_buy_cond, title="BUY Fast", style=shape.labelup, location=location.belowbar, color=color.green, textcolor=color.white, text="BUY\nFast", size=size.small)
+plotshape(buy_final and not fast_buy_cond, title="BUY Confirmed", style=shape.labelup, location=location.belowbar, color=color.teal, textcolor=color.white, text="BUY\nCHoCH", size=size.small)
 
-plotshape(sell_final and fast_sell_cond, title="SELL Fast", style=shape.labeldown, location=location.abovebar,
-          color=color.red, textcolor=color.white, text="SELL\nFast", size=size.small)
-plotshape(sell_final and not fast_sell_cond, title="SELL Confirmed", style=shape.labeldown, location=location.abovebar,
-          color=color.maroon, textcolor=color.white, text="SELL\nCHoCH", size=size.small)
+plotshape(sell_final and fast_sell_cond, title="SELL Fast", style=shape.labeldown, location=location.abovebar, color=color.red, textcolor=color.white, text="SELL\nFast", size=size.small)
+plotshape(sell_final and not fast_sell_cond, title="SELL Confirmed", style=shape.labeldown, location=location.abovebar, color=color.maroon, textcolor=color.white, text="SELL\nCHoCH", size=size.small)
 
-// Draw Target Lines
 var line line_sl  = na
 var line line_ent = na
 var line line_tp1 = na
@@ -234,5 +217,5 @@ if show_dashboard and barstate.islast
 // ==========================================
 // 7. TRADINGVIEW ALERTS
 // ==========================================
-alertcondition(buy_final, title="SMC Pro BUY Alert", message="🟢 Captain SMC Signal Pro: BUY Signal Triggered on {{ticker}} at {{close}} | SL: " + str.tostring(sig_sl) + " | TP1: " + str.tostring(sig_tp1))
-alertcondition(sell_final, title="SMC Pro SELL Alert", message="🔴 Captain SMC Signal Pro: SELL Signal Triggered on {{ticker}} at {{close}} | SL: " + str.tostring(sig_sl) + " | TP1: " + str.tostring(sig_tp1))
+alertcondition(buy_final, title="SMC Pro BUY Alert", message="🟢 Captain SMC Signal Pro: BUY Signal Triggered on {{ticker}} at {{close}}")
+alertcondition(sell_final, title="SMC Pro SELL Alert", message="🔴 Captain SMC Signal Pro: SELL Signal Triggered on {{ticker}} at {{close}}")
