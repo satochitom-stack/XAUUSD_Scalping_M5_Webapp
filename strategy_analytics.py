@@ -280,12 +280,12 @@ class RealTradeAnalyticsManager:
                 else:
                     status_val = "BE"
 
-                # Calculate R:R Ratio (e.g., 1:1.5, 1:2.0)
+                # Calculate R:R Ratio as float number (e.g. 1.5, 2.0, 6.4)
                 rr_ratio_val = None
                 if price_diff > 0:
                     est_risk = 2.0  # standard baseline gold risk points
                     ratio_num = max(1.0, round(price_diff / est_risk, 1))
-                    rr_ratio_val = f"1:{ratio_num:.1f}"
+                    rr_ratio_val = float(ratio_num)
 
                 if is_bot:
                     strat_key = self._classify_deal_strategy(in_deal)
