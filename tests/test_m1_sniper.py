@@ -36,6 +36,7 @@ class TestM1SniperConfirmation(unittest.TestCase):
         df['sma20'] = df['close'].rolling(20).mean()
         df['bb_upper'] = df['sma20'] + 3.0
         df['bb_lower'] = df['sma20'] - 3.0
+        df['rsi7'] = 50.0
         return df
 
     def test_m1_sniper_profile_exists(self):
@@ -104,6 +105,36 @@ class TestM1SniperConfirmation(unittest.TestCase):
         self.assertFalse(buy_sig)
         self.assertTrue(sell_sig)
         self.assertIn("M1 Sniper Confirmation", reason)
+
+    def test_pina_colada_bands_and_caution_guard(self):
+        df = self._create_mock_m5_df(2650.0)
+        # Simulate a violent 3-candle dump outside lower band (Panic Dump)
+        df.loc[df.index[-4], 'open'] = 2650.0; df.loc[df.index[-4], 'close'] = 2640.0; df.loc[df.index[-4], 'low'] = 2638.0
+        df.loc[df.index[-3], 'open'] = 2640.0; df.loc[df.index[-3], 'close'] = 2630.0; df.loc[df.index[-3], 'low'] = 2628.0
+        df.loc[df.index[-2], 'open'] = 2630.0; df.loc[df.index[-2], 'close'] = 2620.0; df.loc[df.index[-2], 'low'] = 2615.0
+
+        pina = self.bot._calculate_pina_colada(df)
+        # Caution should be active to protect capital from catching falling knife
+        self.assertTrue(pina['caution'])
+        self.assertFalse(pina['coming_back_bull'])
+
+    def test_pina_colada_coming_back_trigger(self):
+        df = self._create_mock_m5_df(2650.0)
+        pina_pre = self.bot._calculate_pina_colada(df)
+        lb = pina_pre['lower_band']
+
+        # Previous bar pierced below lower band
+        df.loc[df.index[-3], 'low'] = lb - 2.0
+        df.loc[df.index[-3], 'close'] = lb - 1.0
+
+        # Latest closed bar closes back inside lower band with bullish body (Coming Back!)
+        df.loc[df.index[-2], 'open'] = lb - 0.5
+        df.loc[df.index[-2], 'close'] = lb + 1.5
+        df.loc[df.index[-2], 'high'] = lb + 1.8
+        df.loc[df.index[-2], 'low'] = lb - 0.6
+
+        pina_post = self.bot._calculate_pina_colada(df)
+        self.assertTrue(pina_post['coming_back_bull'])
 
 
 if __name__ == '__main__':

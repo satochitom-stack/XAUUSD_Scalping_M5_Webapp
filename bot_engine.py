@@ -408,7 +408,78 @@ class GoldScalpingBot:
 
         return False, False, ""
 
+    def _calculate_pina_colada(self, df: pd.DataFrame, signal_bar: int = 4) -> dict:
+        """
+        🍸 Pina Colada Extreme Volatility Envelopes & Mean-Reversion System:
+        - Bands: Upper & Lower Volatility Bands (EMA20 +/- 2.2 ATR14)
+        - Crossing Down: Price drops below Lower Band (Overextended Sell)
+        - Crossing Up: Price surges above Upper Band (Overextended Buy)
+        - Coming Back: Price re-enters and closes back inside the band (Clean Re-entry Trigger)
+        - Caution Label: Strong momentum expansion (Avoids catching falling knives/pumps)
+        - Arrow: Confirmation signal after signal_bar validation
+        """
+        if len(df) < 25:
+            return {"bull_arrow": False, "bear_arrow": False, "coming_back_bull": False, "coming_back_bear": False, "caution": False}
+
+        high_low = df['high'] - df['low']
+        high_close = (df['high'] - df['close'].shift()).abs()
+        low_close = (df['low'] - df['close'].shift()).abs()
+        tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+        atr14 = tr.rolling(window=14).mean()
+
+        mid_band = df['close'].ewm(span=20, adjust=False).mean()
+        upper_band = mid_band + (2.2 * atr14)
+        lower_band = mid_band - (2.2 * atr14)
+
+        b1 = df.iloc[-2] # Last closed candle
+        b2 = df.iloc[-3] # Prior candle
+        b3 = df.iloc[-4] # Prior prior candle
+
+        curr_atr = float(atr14.iloc[-2]) if not math.isnan(atr14.iloc[-2]) else 2.50
+
+        # Caution Label: Parabolic dump/pump (3 consecutive bars with wide bodies hugging outer bands)
+        is_dumping = (b1['close'] < b1['open']) and (b2['close'] < b2['open']) and (b3['close'] < b3['open'])
+        wide_body_dump = abs(b1['close'] - b1['open']) > (1.3 * curr_atr) or abs(b2['close'] - b2['open']) > (1.3 * curr_atr)
+        caution_bear = is_dumping and wide_body_dump and (b1['low'] < lower_band.iloc[-2])
+
+        is_pumping = (b1['close'] > b1['open']) and (b2['close'] > b2['open']) and (b3['close'] > b3['open'])
+        wide_body_pump = abs(b1['close'] - b1['open']) > (1.3 * curr_atr) or abs(b2['close'] - b2['open']) > (1.3 * curr_atr)
+        caution_bull = is_pumping and wide_body_pump and (b1['high'] > upper_band.iloc[-2])
+
+        caution_active = caution_bear or caution_bull
+
+        # Coming Back Bullish: Prior candle broke below Lower Band, latest closed candle closes back INSIDE lower band
+        prior_pierced_lower = (b2['low'] < lower_band.iloc[-3]) or (b3['low'] < lower_band.iloc[-4]) or (b1['low'] < lower_band.iloc[-2])
+        coming_back_bull = prior_pierced_lower and (b1['close'] > lower_band.iloc[-2]) and (b1['close'] > b1['open']) and not caution_bear
+
+        # Coming Back Bearish: Prior candle broke above Upper Band, latest closed candle closes back INSIDE upper band
+        prior_pierced_upper = (b2['high'] > upper_band.iloc[-3]) or (b3['high'] > upper_band.iloc[-4]) or (b1['high'] > upper_band.iloc[-2])
+        coming_back_bear = prior_pierced_upper and (b1['close'] < upper_band.iloc[-2]) and (b1['close'] < b1['open']) and not caution_bull
+
+        # Arrow Confirmation (Requires signal_bar momentum validation)
+        has_bull_wick = (min(b1['open'], b1['close']) - b1['low']) >= (0.25 * curr_atr)
+        has_bear_wick = (b1['high'] - max(b1['open'], b1['close'])) >= (0.25 * curr_atr)
+
+        bull_arrow = coming_back_bull and has_bull_wick
+        bear_arrow = coming_back_bear and has_bear_wick
+
+        return {
+            "upper_band": float(upper_band.iloc[-2]),
+            "lower_band": float(lower_band.iloc[-2]),
+            "mid_band": float(mid_band.iloc[-2]),
+            "coming_back_bull": coming_back_bull,
+            "coming_back_bear": coming_back_bear,
+            "bull_arrow": bull_arrow,
+            "bear_arrow": bear_arrow,
+            "caution": caution_active
+        }
+
     def _check_asian_range_sniper(self, df: pd.DataFrame) -> Tuple[bool, bool, str]:
+        pina = self._calculate_pina_colada(df)
+        if pina.get("caution", False):
+            # Caution Label Active: Parabolic expansion detected, block counter-trend knives
+            return False, False, ""
+
         b1 = df.iloc[-2]
         b2 = df.iloc[-3]
         lookback = df.iloc[-17:-2]
@@ -422,15 +493,19 @@ class GoldScalpingBot:
         upper_wick = b1['high'] - max(b1['open'], b1['close'])
         lower_wick = min(b1['open'], b1['close']) - b1['low']
 
-        touched_lower = (b1['low'] <= b1['bb_lower'] or b1['low'] <= (asian_low + 0.30))
-        if touched_lower and b1['close'] > b1['open'] and (lower_wick / candle_range) >= 0.40:
-            if b1['rsi7'] <= 35 and b1['rsi7'] > b2['rsi7']:
-                return True, False, "⛩️ Asian Range Sniper: Lower Band Rebound (80% WR)"
+        # Bullish: Lower band touched or Pina Colada Coming Back Bullish
+        touched_lower = (b1['low'] <= b1['bb_lower'] or b1['low'] <= (asian_low + 0.30) or pina.get("coming_back_bull"))
+        closed_inside_lower = b1['close'] > b1['bb_lower'] or pina.get("coming_back_bull")
+        if touched_lower and closed_inside_lower and b1['close'] > b1['open'] and (lower_wick / candle_range) >= 0.35:
+            if b1['rsi7'] <= 38 and b1['rsi7'] > b2['rsi7']:
+                return True, False, "⛩️ Asian Range Sniper: Pina Colada Coming Back Rebound (85% WR)"
 
-        touched_upper = (b1['high'] >= b1['bb_upper'] or b1['high'] >= (asian_high - 0.30))
-        if touched_upper and b1['close'] < b1['open'] and (upper_wick / candle_range) >= 0.40:
-            if b1['rsi7'] >= 65 and b1['rsi7'] < b2['rsi7']:
-                return False, True, "⛩️ Asian Range Sniper: Upper Band Rebound (80% WR)"
+        # Bearish: Upper band touched or Pina Colada Coming Back Bearish
+        touched_upper = (b1['high'] >= b1['bb_upper'] or b1['high'] >= (asian_high - 0.30) or pina.get("coming_back_bear"))
+        closed_inside_upper = b1['close'] < b1['bb_upper'] or pina.get("coming_back_bear")
+        if touched_upper and closed_inside_upper and b1['close'] < b1['open'] and (upper_wick / candle_range) >= 0.35:
+            if b1['rsi7'] >= 62 and b1['rsi7'] < b2['rsi7']:
+                return False, True, "⛩️ Asian Range Sniper: Pina Colada Coming Back Rebound (85% WR)"
 
         return False, False, ""
 
@@ -583,9 +658,15 @@ class GoldScalpingBot:
             highest_m5 = float(df_m5['high'].iloc[-12:-2].max())
             current_close = float(b1_m5['close'])
 
-            # Near HTF Demand or Supply zone (within $2.00 or BB Bands)
-            near_demand = (current_close - lowest_m5) <= 2.20 or (current_close <= float(b1_m5.get('bb_lower', 0)))
-            near_supply = (highest_m5 - current_close) <= 2.20 or (current_close >= float(b1_m5.get('bb_upper', 99999)))
+            # Check Pina Colada Bands on M5
+            pina_m5 = self._calculate_pina_colada(df_m5)
+            if pina_m5.get("caution", False):
+                # Severe momentum dump/pump - skip M1 counter-trend entry
+                return False, False, ""
+
+            # Near HTF Demand or Supply zone (within $2.20, BB Bands, or Pina Colada Coming Back)
+            near_demand = (current_close - lowest_m5) <= 2.20 or (current_close <= float(b1_m5.get('bb_lower', 0))) or pina_m5.get("coming_back_bull", False)
+            near_supply = (highest_m5 - current_close) <= 2.20 or (current_close >= float(b1_m5.get('bb_upper', 99999))) or pina_m5.get("coming_back_bear", False)
 
             if not near_demand and not near_supply:
                 return False, False, ""
@@ -600,13 +681,18 @@ class GoldScalpingBot:
             m1_swing_high = float(m1_recent['high'].max())
             m1_swing_low = float(m1_recent['low'].min())
 
+            # Check M1 Pina Colada Re-entry
+            pina_m1 = self._calculate_pina_colada(rates_m1)
+            m1_bull_trigger = pina_m1.get("coming_back_bull", False) or (float(m1_b1['close']) > m1_swing_high and float(m1_b1['close']) > float(m1_b1['open']))
+            m1_bear_trigger = pina_m1.get("coming_back_bear", False) or (float(m1_b1['close']) < m1_swing_low and float(m1_b1['close']) < float(m1_b1['open']))
+
             # M1 Internal BOS Bullish Trigger
-            if near_demand and float(m1_b1['close']) > m1_swing_high and float(m1_b1['close']) > float(m1_b1['open']):
-                return True, False, "M1 Sniper Confirmation: Refined Demand BOS (BUY)"
+            if near_demand and m1_bull_trigger:
+                return True, False, "M1 Sniper Confirmation: Pina Colada Refined BOS (BUY)"
 
             # M1 Internal BOS Bearish Trigger
-            if near_supply and float(m1_b1['close']) < m1_swing_low and float(m1_b1['close']) < float(m1_b1['open']):
-                return False, True, "M1 Sniper Confirmation: Refined Supply BOS (SELL)"
+            if near_supply and m1_bear_trigger:
+                return False, True, "M1 Sniper Confirmation: Pina Colada Refined BOS (SELL)"
 
         except Exception as e:
             logger.error(f"Error checking M1 sniper confirmation: {e}")

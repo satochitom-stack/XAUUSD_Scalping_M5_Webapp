@@ -1,0 +1,22 @@
+{
+  "threshold": 70,
+  "is_enabled": true,
+  "saved_junk_trades": 2,
+  "last_updated": "2026-09-02T10:09:59.734939",
+  "recent_evaluations": [
+    {
+      "time": "10:09:59",
+      "setup": "CAPTAIN_SMC_DUAL",
+      "score": 66,
+      "grade": "B",
+      "reason": "Score 66 < 70 | Extremely Dry / Illiquid (0.0x avg)"
+    },
+    {
+      "time": "10:04:59",
+      "setup": "CAPTAIN_SMC_DUAL",
+      "score": 66,
+      "grade": "B",
+      "reason": "Score 66 < 70 | Extremely Dry / Illiquid (0.0x avg)"
+    }
+  ]
+}
