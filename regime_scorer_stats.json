@@ -1,9 +1,30 @@
 {
   "threshold": 70,
   "is_enabled": true,
-  "saved_junk_trades": 11,
-  "last_updated": "2026-09-02T14:34:59.612038",
+  "saved_junk_trades": 14,
+  "last_updated": "2026-09-02T15:25:00.570158",
   "recent_evaluations": [
+    {
+      "time": "15:25:00",
+      "setup": "FLASH_MICRO_SCALPER",
+      "score": 66,
+      "grade": "B",
+      "reason": "Score 66 < 70 | Extremely Dry / Illiquid (0.01x avg)"
+    },
+    {
+      "time": "15:09:59",
+      "setup": "CAPTAIN_SMC_DUAL",
+      "score": 66,
+      "grade": "B",
+      "reason": "Score 66 < 70 | Extremely Dry / Illiquid (0.01x avg)"
+    },
+    {
+      "time": "15:05:02",
+      "setup": "CAPTAIN_SMC_DUAL",
+      "score": 66,
+      "grade": "B",
+      "reason": "Score 66 < 70 | Extremely Dry / Illiquid (0.01x avg)"
+    },
     {
       "time": "14:34:59",
       "setup": "FLASH_MICRO_SCALPER",
