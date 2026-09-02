@@ -100,6 +100,14 @@ class GoldScalpingBot:
             self.pause_until_time = 0
             self.add_log(f"📅 New trading day initialized. Base Equity: ${self.day_starting_equity:.2f}", "INFO")
 
+        # Deposit or Capital Adjustment Detection
+        if self.day_starting_equity > 0 and (equity > (self.day_starting_equity * 1.20) or equity < (self.day_starting_equity * 0.80)):
+            old_base = self.day_starting_equity
+            self.day_starting_equity = equity
+            self.daily_target_reached = False
+            self.daily_max_loss_reached = False
+            self.add_log(f"💳 Deposit/Balance adjustment detected (${old_base:.2f} ➔ ${equity:.2f}). Base Equity updated & ready to trade!", "INFO")
+
         # Daily Profit & Loss Safety Guard
         if self.day_starting_equity > 0:
             strat_cfg = self.config.get("strategy", {})
@@ -310,7 +318,7 @@ class GoldScalpingBot:
             elif "Asian" in signal_reason: strat_key = "ASIAN_RANGE_SNIPER"
 
             # 1. Evaluate Market Regime & Liquidity Filter Score (0 - 100)
-            score_res = self.scorer.evaluate_market_confluence(df, current_spread, strat_key)
+            score_res = self.scorer.evaluate_market_confluence(df, spread, strat_key)
             if not score_res.get("is_allowed", True):
                 self.scorer.record_filtered_trade(strat_key, score_res)
                 self.add_log(f"🛡️ [QUALITY FILTERED] {strat_key} ({action_type}) Skipped | Score: {score_res['score']}/100 ({score_res['grade']}) | {score_res['pillars']['volume']['desc']}", "WARNING")
