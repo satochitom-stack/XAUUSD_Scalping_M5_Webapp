@@ -271,18 +271,38 @@ class RealTradeAnalyticsManager:
                 else:
                     session_str = "New York Session (19:00-04:00)"
 
+                # Fetch history orders for this position to get exact TP and SL
+                pos_orders = mt5.history_orders_get(position=pid)
+                sl_val = None
+                tp_val = None
+                if pos_orders:
+                    for po in pos_orders:
+                        if po.sl > 0 and sl_val is None:
+                            sl_val = round(float(po.sl), 3)
+                        if po.tp > 0 and tp_val is None:
+                            tp_val = round(float(po.tp), 3)
+
                 # Determine status & R:R
                 price_diff = abs(exit_price - entry_price)
                 if net_pnl > 0:
                     status_val = "WIN"
                 elif net_pnl < 0:
-                    status_val = "CUT" if price_diff < 1.5 else "LOSS"
+                    if sl_val and abs(exit_price - sl_val) > 0.5:
+                        status_val = "CUT"
+                    elif price_diff < 1.5:
+                        status_val = "CUT"
+                    else:
+                        status_val = "LOSS"
                 else:
                     status_val = "BE"
 
                 # Calculate R:R Ratio as float number (e.g. 1.5, 2.0, 6.4)
                 rr_ratio_val = None
-                if price_diff > 0:
+                if sl_val and abs(entry_price - sl_val) > 0:
+                    risk = abs(entry_price - sl_val)
+                    reward = abs(tp_val - entry_price) if tp_val else price_diff
+                    rr_ratio_val = round(reward / risk, 1)
+                elif price_diff > 0:
                     est_risk = 2.0  # standard baseline gold risk points
                     ratio_num = max(1.0, round(price_diff / est_risk, 1))
                     rr_ratio_val = float(ratio_num)
@@ -299,7 +319,8 @@ class RealTradeAnalyticsManager:
                     trade_id = f"manual-mt5-{pid}"
                     notes_str = f"✋ MT5 Manual Trade #{pid} | Vol: {volume} | Net: ${net_pnl:+,.2f}"
                     mental_tags = ["🎯 Manual Trade"]
-                    technique_str = "Price Action / Manual Scalp"
+                    # User selects their own setup/technique in the journal!
+                    technique_str = "-"
                     psychology_str = "มีวินัยตามแผน (Manual Trade)"
 
                 journal_trades.append({
@@ -310,8 +331,8 @@ class RealTradeAnalyticsManager:
                     "entryPrice": entry_price,
                     "exitPrice": exit_price,
                     "lotSize": volume,
-                    "tp": None,
-                    "sl": None,
+                    "tp": tp_val,
+                    "sl": sl_val,
                     "profit": net_pnl,
                     "status": status_val,
                     "rrRatio": rr_ratio_val,
