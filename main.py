@@ -68,6 +68,17 @@ bot_thread.start()
 # FastAPI App
 app = FastAPI(title="XAUUSD Scalping M5 Multi-Account Hub", version="2.0.0")
 
+from fastapi.middleware.cors import CORSMiddleware
+
+# Enable CORS for Trade Journal web app and local development
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # --- TOKEN AUTHENTICATION DEPENDENCY ---
 def verify_token(x_access_token: Optional[str] = Header(None), token: Optional[str] = None):
     """Verify Access Token against authorized tokens list in config."""
@@ -379,6 +390,86 @@ async def toggle_regime_scorer(_: bool = Depends(verify_token)):
             inst.bot.scorer.save_state()
     return {"status": True, "is_enabled": not curr, "message": f"Quality Filter {'Enabled' if not curr else 'Disabled'}"}
 
+# --- 📖 AUTO-SYNC TO TRADE JOURNAL API ---
+@app.get("/api/journal/export_trades")
+async def export_trades_for_journal(days: int = 90, token: Optional[str] = None):
+    """
+    Export 100% verified Bot deals mapped to Trade Journal standard schema:
+    { id, pair, type, entryPrice, exitPrice, lotSize, tp, sl, profit, status, date, openDate, closeDate, closedAt, technique, timeframe, session, notes, mentalTags, disciplineStatus }
+    """
+    try:
+        deals = account_manager.analytics.fetch_real_history_from_mt5(days=days)
+        journal_trades = []
+
+        strategy_name_map = {
+            "CAPTAIN_SMC_DUAL": "Captain SMC Signal V1.2 (Dual Auto)",
+            "TKT_SMC_GOLD_PRO_M15": "TKT SMC Gold Pro v8.0 (M15)",
+            "ASIAN_RANGE_SNIPER": "Asian Range Sniper: Mean Reversion",
+            "EMA50_3CANDLES_H1": "EMA 50 + 3 Confirmation Candles (H1 Pro)",
+            "NEWS_MOMENTUM_EXPANSION": "News Momentum Expansion",
+            "M1_SNIPER_CONFIRMATION": "M1 Sniper Confirmation (Refine Zone)",
+            "FLASH_MICRO_SCALPER": "Flash Micro-Scalper (9 EMA Quick-Bite)"
+        }
+
+        for d in deals:
+            pnl = d.get("net_profit", d.get("profit", 0.0))
+            status_val = "WIN" if pnl > 0 else ("LOSS" if pnl < 0 else "BE")
+            sym = d.get("symbol", "XAUUSD")
+            clean_pair = "XAU/USD" if "XAU" in sym or "GOLD" in sym else sym
+            
+            raw_time = d.get("time", "")
+            # Determine Session based on hour
+            session_str = "London & NY (14:00 - 04:00)"
+            try:
+                hour = int(raw_time.split(" ")[1].split(":")[0])
+                if 6 <= hour < 14:
+                    session_str = "Asia Session (06:00-14:00)"
+                elif 14 <= hour < 19:
+                    session_str = "London Session (14:00-19:00)"
+                else:
+                    session_str = "New York Session (19:00-04:00)"
+            except Exception:
+                pass
+
+            strat_key = d.get("strategy_id", "CAPTAIN_SMC_DUAL")
+            strat_name = strategy_name_map.get(strat_key, strat_key)
+
+            ticket_id = f"bot-mt5-{d.get('order') or d.get('ticket')}"
+            
+            journal_trades.append({
+                "id": ticket_id,
+                "ticket": d.get("order") or d.get("ticket"),
+                "pair": clean_pair,
+                "type": d.get("type", "BUY"),
+                "entryPrice": d.get("price", 0.0),
+                "exitPrice": d.get("price", 0.0), # deal close price
+                "lotSize": d.get("volume", 0.01),
+                "tp": None,
+                "sl": None,
+                "profit": pnl,
+                "status": status_val,
+                "date": raw_time[:16] if len(raw_time) >= 16 else raw_time,
+                "openDate": raw_time[:16] if len(raw_time) >= 16 else raw_time,
+                "closeDate": raw_time[:16] if len(raw_time) >= 16 else raw_time,
+                "closedAt": raw_time[:16] if len(raw_time) >= 16 else raw_time,
+                "technique": strat_name,
+                "timeframe": "M5" if "M15" not in strat_key and "H1" not in strat_key else ("M15" if "M15" in strat_key else "H1"),
+                "session": session_str,
+                "notes": f"🤖 MT5 Bot Deal #{d.get('ticket')} | Magic: {d.get('magic')} | {d.get('comment')}",
+                "mentalTags": ["🤖 Automated Bot Trade"],
+                "disciplineStatus": "system",
+                "psychology": "มั่นใจตามแผน (Executed Setup)"
+            })
+
+        return {
+            "status": True,
+            "count": len(journal_trades),
+            "trades": journal_trades
+        }
+    except Exception as e:
+        logger.error(f"Error exporting trades for journal: {e}")
+        return JSONResponse(status_code=500, content={"status": False, "error": str(e), "trades": []})
+
 if __name__ == "__main__":
     import uvicorn
     host = app_config.get("server", {}).get("host", "127.0.0.1")
@@ -389,3 +480,4 @@ if __name__ == "__main__":
     print(f"🔑 Access Token: {app_config.get('auth', {}).get('access_tokens', ['GOLD_VIP_2026'])[0]}")
     print(f"=======================================================")
     uvicorn.run(app, host=host, port=port)
+

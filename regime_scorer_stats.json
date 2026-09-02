@@ -1,9 +1,16 @@
 {
   "threshold": 70,
   "is_enabled": true,
-  "saved_junk_trades": 3,
-  "last_updated": "2026-09-02T11:15:01.472115",
+  "saved_junk_trades": 4,
+  "last_updated": "2026-09-02T11:25:01.339543",
   "recent_evaluations": [
+    {
+      "time": "11:25:01",
+      "setup": "FLASH_MICRO_SCALPER",
+      "score": 66,
+      "grade": "B",
+      "reason": "Score 66 < 70 | Extremely Dry / Illiquid (0.01x avg)"
+    },
     {
       "time": "11:15:01",
       "setup": "M1_SNIPER_CONFIRMATION",
