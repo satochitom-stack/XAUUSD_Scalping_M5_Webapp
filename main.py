@@ -19,7 +19,7 @@ except Exception:
     pass
 
 from typing import Optional, List, Dict
-from fastapi import FastAPI, HTTPException, Depends, status, Request, Header
+from fastapi import FastAPI, HTTPException, Depends, status, Request, Header, Query
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from pydantic import BaseModel
 
