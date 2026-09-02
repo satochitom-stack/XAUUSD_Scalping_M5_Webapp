@@ -1050,8 +1050,12 @@ class GoldScalpingBot:
         risk_money = balance * (risk_pct / 100.0)
 
         lot = (risk_money / (sl_dist * 100.0 + 1e-9)) * lot_mult
-        if self.consecutive_losses == 1: lot *= 0.50
-        elif self.consecutive_losses >= 2: lot *= 0.25
+
+        # Dynamic Lot Reduction (Only if enabled in config, default false for Option A)
+        dynamic_reduction = self.config.get("strategy", {}).get("dynamic_lot_reduction", False)
+        if dynamic_reduction:
+            if self.consecutive_losses == 1: lot *= 0.50
+            elif self.consecutive_losses >= 2: lot *= 0.25
 
         lot = max(0.01, round(lot, 2))
         return min(lot, 50.0)
