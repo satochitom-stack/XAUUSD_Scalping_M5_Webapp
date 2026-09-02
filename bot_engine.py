@@ -263,6 +263,15 @@ class GoldScalpingBot:
             elif sell_sig: 
                 sell_signal, signal_reason, is_asian_scalp = True, reason, True
 
+        # --- SPECIALIZED 3: M1 Sniper Confirmation (Golfpy Framework - Refine Zone & High R:R) ---
+        is_m1_sniper = False
+        if not buy_signal and not sell_signal and strat_mode in ["ALL", "M1_SNIPER_CONFIRMATION"]:
+            buy_sig, sell_sig, reason = self._check_m1_sniper_confirmation(symbol, df, strat_mode)
+            if buy_sig: 
+                buy_signal, signal_reason, is_m1_sniper = True, reason, True
+            elif sell_sig: 
+                sell_signal, signal_reason, is_m1_sniper = True, reason, True
+
         # --- LONDON & NEW YORK SESSION SETUPS (Trend & Momentum) ---
         if not buy_signal and not sell_signal and session != "ASIAN SESSION":
             # Primary Flagship 1: Captain Trading LAB - SMC Signal V1.2 (Dual Auto: Fast & Confirmed)
@@ -313,6 +322,7 @@ class GoldScalpingBot:
             strat_key = "CAPTAIN_SMC_DUAL"
             if "News" in signal_reason or "NEWS" in signal_reason or "Momentum" in signal_reason: strat_key = "NEWS_MOMENTUM_EXPANSION"
             elif "TKT" in signal_reason or "M15" in signal_reason: strat_key = "TKT_SMC_GOLD_PRO_M15"
+            elif "M1" in signal_reason or "Sniper" in signal_reason: strat_key = "M1_SNIPER_CONFIRMATION"
             elif "Captain" in signal_reason: strat_key = "CAPTAIN_SMC_DUAL"
             elif "3 Candles" in signal_reason or "EMA50_3CANDLES" in signal_reason: strat_key = "EMA50_3CANDLES_H1"
             elif "Asian" in signal_reason: strat_key = "ASIAN_RANGE_SNIPER"
@@ -336,10 +346,10 @@ class GoldScalpingBot:
 
             if buy_signal:
                 self.last_signal = f"BUY ({signal_reason} | Quality: {score_res['score']}/100 {score_res['grade']})"
-                self.execute_buy(df, symbol, signal_reason, is_asian_scalp, opt_params)
+                self.execute_buy(df, symbol, signal_reason, is_asian_scalp, opt_params, is_m1_sniper=is_m1_sniper)
             elif sell_signal:
                 self.last_signal = f"SELL ({signal_reason} | Quality: {score_res['score']}/100 {score_res['grade']})"
-                self.execute_sell(df, symbol, signal_reason, is_asian_scalp, opt_params)
+                self.execute_sell(df, symbol, signal_reason, is_asian_scalp, opt_params, is_m1_sniper=is_m1_sniper)
 
     def _check_news_momentum_expansion(self, df: pd.DataFrame, news_status: dict) -> Tuple[bool, bool, str]:
         """
@@ -549,6 +559,60 @@ class GoldScalpingBot:
 
         return False, False, ""
 
+    def _check_m1_sniper_confirmation(self, symbol: str, df_m5: pd.DataFrame, strat_mode: str = "ALL") -> Tuple[bool, bool, str]:
+        """
+        ⚡ M1 Sniper Confirmation (Inspired by Golfpy Trade Multi-Timeframe Framework):
+        1. Context: M15/M5 Key S/R Zone, Order Block, or Bollinger Band extreme.
+        2. Timing Gate: Early Asia (07:00 - 10:00) & NY Session (19:00 - 23:00).
+           Avoids London mid-day chop / fakeouts when in ALL mode.
+        3. Trigger: M1 Internal BOS / CHoCH + Candle Confirmation with refined SL (100-200 pts) & High R:R (1:3 - 1:5).
+        """
+        try:
+            now_hour = (datetime.utcnow().hour + 7) % 24 # Thai time UTC+7
+            is_valid_timing = (7 <= now_hour < 10) or (19 <= now_hour < 23)
+            
+            # If in ALL mode, strictly enforce session gate to avoid fakeouts
+            if strat_mode != "M1_SNIPER_CONFIRMATION" and not is_valid_timing:
+                return False, False, ""
+
+            if len(df_m5) < 25:
+                return False, False, ""
+
+            b1_m5 = df_m5.iloc[-2]
+            lowest_m5 = float(df_m5['low'].iloc[-12:-2].min())
+            highest_m5 = float(df_m5['high'].iloc[-12:-2].max())
+            current_close = float(b1_m5['close'])
+
+            # Near HTF Demand or Supply zone (within $2.00 or BB Bands)
+            near_demand = (current_close - lowest_m5) <= 2.20 or (current_close <= float(b1_m5.get('bb_lower', 0)))
+            near_supply = (highest_m5 - current_close) <= 2.20 or (current_close >= float(b1_m5.get('bb_upper', 99999)))
+
+            if not near_demand and not near_supply:
+                return False, False, ""
+
+            # Fetch M1 Candlesticks from MT5
+            rates_m1 = self.connector.get_rates(symbol, "M1", 25)
+            if rates_m1 is None or rates_m1.empty or len(rates_m1) < 12:
+                return False, False, ""
+
+            m1_b1 = rates_m1.iloc[-2] # Last closed M1 bar
+            m1_recent = rates_m1.iloc[-8:-2]
+            m1_swing_high = float(m1_recent['high'].max())
+            m1_swing_low = float(m1_recent['low'].min())
+
+            # M1 Internal BOS Bullish Trigger
+            if near_demand and float(m1_b1['close']) > m1_swing_high and float(m1_b1['close']) > float(m1_b1['open']):
+                return True, False, "M1 Sniper Confirmation: Refined Demand BOS (BUY)"
+
+            # M1 Internal BOS Bearish Trigger
+            if near_supply and float(m1_b1['close']) < m1_swing_low and float(m1_b1['close']) < float(m1_b1['open']):
+                return False, True, "M1 Sniper Confirmation: Refined Supply BOS (SELL)"
+
+        except Exception as e:
+            logger.error(f"Error checking M1 sniper confirmation: {e}")
+
+        return False, False, ""
+
     def _check_smc_liquidity_sweep(self, df: pd.DataFrame) -> Tuple[bool, bool, str]:
         b1 = df.iloc[-2]
         lookback = df.iloc[-22:-2]
@@ -642,14 +706,18 @@ class GoldScalpingBot:
         if strat_id == "EMA50_3CANDLES_H1":
             return True, "AI Trend Trail (H1 Macro Trend)"
 
-        # 4. TKT SMC Gold Pro M15 or Captain SMC Confirmed Break: Check Market Dynamics
+        # 4. M1 Sniper Confirmation -> High R:R Runner (Trailing Stop)
+        if strat_id == "M1_SNIPER_CONFIRMATION":
+            return True, "AI Trend Trail (M1 High R:R Runner)"
+
+        # 5. TKT SMC Gold Pro M15 or Captain SMC Confirmed Break: Check Market Dynamics
         regime = self.optimizer.classify_market_regime(df)
         if "TREND" in regime.get("regime", "") or regime.get("volatility_ratio", 1.0) >= 1.25:
             return True, f"AI Trend Trail ({regime.get('label', 'Trending Expansion')})"
 
         return False, "Fixed TP (Normal S/R Targets)"
 
-    def execute_buy(self, df: pd.DataFrame, symbol: str, reason: str, is_asian_scalp: bool = False, opt_params: Optional[dict] = None):
+    def execute_buy(self, df: pd.DataFrame, symbol: str, reason: str, is_asian_scalp: bool = False, opt_params: Optional[dict] = None, is_m1_sniper: bool = False):
         ask = self.connector.get_market_info(symbol).get("ask", 0.0)
         if ask <= 0: return
 
@@ -659,7 +727,16 @@ class GoldScalpingBot:
         lot_mult = opt.get("lot_multiplier", 1.0)
         session = self.get_current_session()
 
-        if is_asian_scalp:
+        if is_m1_sniper or "M1" in reason:
+            lowest_low = float(df['low'].iloc[-4:-1].min())
+            sl = lowest_low - (0.25 * sl_mult)
+            sl_dist = ask - sl
+            if sl_dist < 0.80: sl = ask - 0.80; sl_dist = 0.80
+            if sl_dist > 2.20: sl = ask - 2.20; sl_dist = 2.20
+            tp1 = ask + (sl_dist * 1.5) # 1.5R Quick Lock & BE
+            tp2 = ask + (sl_dist * 3.0) # 3.0R Major Profit
+            tp3 = ask + (sl_dist * 5.0) # 5.0R Trend Expansion
+        elif is_asian_scalp:
             lowest_low = df['low'].iloc[-4:-1].min()
             sl_buffer = 0.30 * sl_mult
             sl = lowest_low - sl_buffer
@@ -683,8 +760,10 @@ class GoldScalpingBot:
             tp3 = ask + (sl_dist * 2.8)
 
         strat_id = "CAPTAIN_SMC_DUAL"
-        for k in ["NEWS_MOMENTUM_EXPANSION", "EMA50_3CANDLES_H1", "ASIAN_RANGE_SNIPER", "TKT_SMC_GOLD_PRO_M15", "CAPTAIN_SMC_DUAL"]:
-            if k in reason: strat_id = k; break
+        for k in ["M1_SNIPER_CONFIRMATION", "NEWS_MOMENTUM_EXPANSION", "EMA50_3CANDLES_H1", "ASIAN_RANGE_SNIPER", "TKT_SMC_GOLD_PRO_M15", "CAPTAIN_SMC_DUAL"]:
+            if k in reason or (k == "M1_SNIPER_CONFIRMATION" and ("M1" in reason or "Sniper" in reason)): 
+                strat_id = k
+                break
 
         is_trend_runner, runner_reason = self.should_run_trend(strat_id, df, session)
         final_tp3 = 0.0 if is_trend_runner else tp3
@@ -718,7 +797,7 @@ class GoldScalpingBot:
         if self.notifier:
             self.notifier.notify_order_opened("BUY", symbol, total_lot, ask, sl, tp1, reason)
 
-    def execute_sell(self, df: pd.DataFrame, symbol: str, reason: str, is_asian_scalp: bool = False, opt_params: Optional[dict] = None):
+    def execute_sell(self, df: pd.DataFrame, symbol: str, reason: str, is_asian_scalp: bool = False, opt_params: Optional[dict] = None, is_m1_sniper: bool = False):
         bid = self.connector.get_market_info(symbol).get("bid", 0.0)
         if bid <= 0: return
 
@@ -728,7 +807,16 @@ class GoldScalpingBot:
         lot_mult = opt.get("lot_multiplier", 1.0)
         session = self.get_current_session()
 
-        if is_asian_scalp:
+        if is_m1_sniper or "M1" in reason:
+            highest_high = float(df['high'].iloc[-4:-1].max())
+            sl = highest_high + (0.25 * sl_mult)
+            sl_dist = sl - bid
+            if sl_dist < 0.80: sl = bid + 0.80; sl_dist = 0.80
+            if sl_dist > 2.20: sl = bid + 2.20; sl_dist = 2.20
+            tp1 = bid - (sl_dist * 1.5) # 1.5R Quick Lock & BE
+            tp2 = bid - (sl_dist * 3.0) # 3.0R Major Profit
+            tp3 = bid - (sl_dist * 5.0) # 5.0R Trend Expansion
+        elif is_asian_scalp:
             highest_high = df['high'].iloc[-4:-1].max()
             sl_buffer = 0.30 * sl_mult
             sl = highest_high + sl_buffer
@@ -752,8 +840,10 @@ class GoldScalpingBot:
             tp3 = bid - (sl_dist * 2.8)
 
         strat_id = "CAPTAIN_SMC_DUAL"
-        for k in ["NEWS_MOMENTUM_EXPANSION", "EMA50_3CANDLES_H1", "ASIAN_RANGE_SNIPER", "TKT_SMC_GOLD_PRO_M15", "CAPTAIN_SMC_DUAL"]:
-            if k in reason: strat_id = k; break
+        for k in ["M1_SNIPER_CONFIRMATION", "NEWS_MOMENTUM_EXPANSION", "EMA50_3CANDLES_H1", "ASIAN_RANGE_SNIPER", "TKT_SMC_GOLD_PRO_M15", "CAPTAIN_SMC_DUAL"]:
+            if k in reason or (k == "M1_SNIPER_CONFIRMATION" and ("M1" in reason or "Sniper" in reason)): 
+                strat_id = k
+                break
 
         is_trend_runner, runner_reason = self.should_run_trend(strat_id, df, session)
         final_tp3 = 0.0 if is_trend_runner else tp3

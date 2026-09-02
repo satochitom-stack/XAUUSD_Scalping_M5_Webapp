@@ -766,6 +766,7 @@
                                 <option value="ASIAN_RANGE_SNIPER">⛩️ Asian Range Sniper: Mean Reversion (07:00-14:00)</option>
                                 <option value="EMA50_3CANDLES_H1">📈 EMA 50 + 3 Confirmation Candles Trend (H1 Pro)</option>
                                 <option value="NEWS_MOMENTUM_EXPANSION">⚡ High-Impact News Momentum Breakout (เทรดช่วงข่าว)</option>
+                                <option value="M1_SNIPER_CONFIRMATION">🎯 M1 Sniper Confirmation (ย่อยโซน M15/M5 คอนเฟิร์ม M1 Internal BOS)</option>
                             </select>
                         </div>
 
@@ -1501,7 +1502,7 @@
 
             const filtered = setups.filter(s => {
                 if (activeCategoryFilter === 'ALL') return true;
-                if (activeCategoryFilter === 'SCALPING' && (s.category === 'SCALPING' || s.category === 'SMC_PRO' || s.category === 'SMC_M15')) return true;
+                if (activeCategoryFilter === 'SCALPING' && (s.category === 'SCALPING' || s.category === 'SMC_PRO' || s.category === 'SMC_M15' || s.category === 'M1_SCALPING')) return true;
                 return s.category === activeCategoryFilter;
             });
 

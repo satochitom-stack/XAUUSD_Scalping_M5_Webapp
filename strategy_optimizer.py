@@ -23,7 +23,8 @@ DEFAULT_STRATEGIES = [
     "CAPTAIN_SMC_DUAL",
     "ASIAN_RANGE_SNIPER",
     "EMA50_3CANDLES_H1",
-    "NEWS_MOMENTUM_EXPANSION"
+    "NEWS_MOMENTUM_EXPANSION",
+    "M1_SNIPER_CONFIRMATION"
 ]
 
 SETUP_PROFILES = {
@@ -91,6 +92,19 @@ SETUP_PROFILES = {
         "trail_points": 180.0,
         "trail_step_points": 30.0,
         "description": "Asian session mean-reversion at Bollinger bands with Fast RSI 7 bounce"
+    },
+    "M1_SNIPER_CONFIRMATION": {
+        "id": "M1_SNIPER_CONFIRMATION",
+        "name": "M1 Sniper Confirmation (Golfpy Refined)",
+        "icon": "🎯",
+        "win_prob": 79.0,
+        "base_rr": 2.50,
+        "min_rr": 1.50,
+        "max_rr": 5.00,
+        "trailing_type": "TIGHT_LOCK",
+        "trail_points": 150.0,
+        "trail_step_points": 30.0,
+        "description": "Multi-Timeframe M15/M5 Zone + M1 Internal BOS Confirmation with Refined SL (1:3 - 1:5 RRR)"
     }
 }
 
@@ -573,7 +587,8 @@ class RealTimeStrategyOptimizer:
             if "TKT" in comment or "v8" in comment: strat = "TKT_SMC_GOLD_PRO_M15"
             elif "NEWS" in comment or "News" in comment or "Momentum" in comment: strat = "NEWS_MOMENTUM_EXPANSION"
             elif "EMA50_3CANDLES" in comment or "3 Candles" in comment or "H1" in comment: strat = "EMA50_3CANDLES_H1"
-            elif "Asian" in comment or "ASIAN" in comment or "Sniper" in comment: strat = "ASIAN_RANGE_SNIPER"
+            elif "Asian" in comment or "ASIAN" in comment or "Asian Range" in comment: strat = "ASIAN_RANGE_SNIPER"
+            elif "M1" in comment or "Sniper" in comment or "Golfpy" in comment: strat = "M1_SNIPER_CONFIRMATION"
             elif "SMC" in comment or "Captain" in comment: strat = "CAPTAIN_SMC_DUAL"
 
             self.record_trade_outcome(strat, profit, 0.0, comment, ticket=deal.get("ticket"))
