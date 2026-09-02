@@ -162,6 +162,20 @@ class MarketRegimeScorer:
                 else:
                     trend_score = 15
                     trend_desc = f"Elevated Asian Range (ATR: {atr_14:.2f})"
+            elif setup_id == "FLASH_MICRO_SCALPER":
+                if atr_14 >= 1.0:
+                    trend_score = 25
+                    trend_desc = f"Optimal Micro-Volatility for Flash Scalp (ATR: {atr_14:.2f})"
+                else:
+                    trend_score = 16
+                    trend_desc = f"Subdued Micro-Volatility (ATR: {atr_14:.2f})"
+            elif setup_id == "M1_SNIPER_CONFIRMATION":
+                if 1.0 <= atr_14 <= 4.5:
+                    trend_score = 25
+                    trend_desc = f"Ideal Zone Volatility for M1 Refinement (ATR: {atr_14:.2f})"
+                else:
+                    trend_score = 18
+                    trend_desc = f"M1 Volatility Adequate (ATR: {atr_14:.2f})"
             elif setup_id == "BB_SQUEEZE":
                 # BB Squeeze prefers compression transitioning into expansion
                 trend_score = 23

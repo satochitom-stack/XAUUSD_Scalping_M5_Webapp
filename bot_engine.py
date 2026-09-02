@@ -216,8 +216,17 @@ class GoldScalpingBot:
         df['bb_lower'] = df['sma20'] - (2.0 * df['std20'])
         df['bb_width'] = (df['bb_upper'] - df['bb_lower']) / (df['sma20'] + 1e-9)
 
-        # Fast RSI (7) for Asian Scalp & Standard RSI (14) for Trend
+        # Micro Trend EMAs for Flash Scalper
+        df['ema9'] = df['close'].ewm(span=9, adjust=False).mean()
+        df['ema21'] = df['close'].ewm(span=21, adjust=False).mean()
+
+        # Hyper-Fast RSI (4), Fast RSI (7) for Asian Scalp & Standard RSI (14) for Trend
         delta = df['close'].diff()
+        gain4 = (delta.where(delta > 0, 0)).rolling(window=4).mean()
+        loss4 = (-delta.where(delta < 0, 0)).rolling(window=4).mean()
+        rs4 = gain4 / (loss4 + 1e-9)
+        df['rsi4'] = 100 - (100 / (1 + rs4))
+
         gain7 = (delta.where(delta > 0, 0)).rolling(window=7).mean()
         loss7 = (-delta.where(delta < 0, 0)).rolling(window=7).mean()
         rs7 = gain7 / (loss7 + 1e-9)
@@ -272,6 +281,19 @@ class GoldScalpingBot:
             elif sell_sig: 
                 sell_signal, signal_reason, is_m1_sniper = True, reason, True
 
+        # --- SPECIALIZED 4: Flash Micro-Scalper (All-Session 9 EMA Quick-Bite) ---
+        is_flash_scalper = False
+        if not buy_signal and not sell_signal and strat_mode in ["ALL", "FLASH_MICRO_SCALPER"]:
+            # Max 1 open Flash trade to prevent margin clutter
+            positions = self.connector.get_open_positions(symbol)
+            flash_positions = [p for p in positions if "Flash" in str(p.get("comment", "")) or p.get("magic") in [self.magic_pos1, self.magic_pos2]]
+            if len(flash_positions) == 0:
+                buy_sig, sell_sig, reason = self._check_flash_micro_scalper(df)
+                if buy_sig: 
+                    buy_signal, signal_reason, is_flash_scalper = True, reason, True
+                elif sell_sig: 
+                    sell_signal, signal_reason, is_flash_scalper = True, reason, True
+
         # --- LONDON & NEW YORK SESSION SETUPS (Trend & Momentum) ---
         if not buy_signal and not sell_signal and session != "ASIAN SESSION":
             # Primary Flagship 1: Captain Trading LAB - SMC Signal V1.2 (Dual Auto: Fast & Confirmed)
@@ -323,6 +345,7 @@ class GoldScalpingBot:
             if "News" in signal_reason or "NEWS" in signal_reason or "Momentum" in signal_reason: strat_key = "NEWS_MOMENTUM_EXPANSION"
             elif "TKT" in signal_reason or "M15" in signal_reason: strat_key = "TKT_SMC_GOLD_PRO_M15"
             elif "M1" in signal_reason or "Sniper" in signal_reason: strat_key = "M1_SNIPER_CONFIRMATION"
+            elif "Flash" in signal_reason or "FLASH" in signal_reason: strat_key = "FLASH_MICRO_SCALPER"
             elif "Captain" in signal_reason: strat_key = "CAPTAIN_SMC_DUAL"
             elif "3 Candles" in signal_reason or "EMA50_3CANDLES" in signal_reason: strat_key = "EMA50_3CANDLES_H1"
             elif "Asian" in signal_reason: strat_key = "ASIAN_RANGE_SNIPER"
@@ -346,10 +369,10 @@ class GoldScalpingBot:
 
             if buy_signal:
                 self.last_signal = f"BUY ({signal_reason} | Quality: {score_res['score']}/100 {score_res['grade']})"
-                self.execute_buy(df, symbol, signal_reason, is_asian_scalp, opt_params, is_m1_sniper=is_m1_sniper)
+                self.execute_buy(df, symbol, signal_reason, is_asian_scalp, opt_params, is_m1_sniper=is_m1_sniper, is_flash_scalper=is_flash_scalper)
             elif sell_signal:
                 self.last_signal = f"SELL ({signal_reason} | Quality: {score_res['score']}/100 {score_res['grade']})"
-                self.execute_sell(df, symbol, signal_reason, is_asian_scalp, opt_params, is_m1_sniper=is_m1_sniper)
+                self.execute_sell(df, symbol, signal_reason, is_asian_scalp, opt_params, is_m1_sniper=is_m1_sniper, is_flash_scalper=is_flash_scalper)
 
     def _check_news_momentum_expansion(self, df: pd.DataFrame, news_status: dict) -> Tuple[bool, bool, str]:
         """
@@ -722,6 +745,47 @@ class GoldScalpingBot:
 
         return False, False, ""
 
+    def _check_flash_micro_scalper(self, df: pd.DataFrame) -> Tuple[bool, bool, str]:
+        """
+        ⚡ Flash Micro-Scalper (9 EMA Wave & Quick-Bite):
+        - Operates in ALL sessions (Asia, London, New York).
+        - Dual Mode:
+          1. Micro Trend Pullback: Tap EMA 9 with rejection wick in direction of EMA 9/21.
+          2. Sideways Exhaustion: Reversion when stretched > 1.20 USD from EMA 9 with RSI 4 extreme.
+        - Targets: Ultra-fast 70 - 120 points ($0.70 - $1.20) in-and-out.
+        """
+        if len(df) < 25: return False, False, ""
+        b1 = df.iloc[-2]
+        b2 = df.iloc[-3]
+        
+        candle_range = b1['high'] - b1['low']
+        if candle_range <= 0.20: return False, False, ""
+
+        upper_wick = b1['high'] - max(b1['open'], b1['close'])
+        lower_wick = min(b1['open'], b1['close']) - b1['low']
+        rsi4 = b1.get('rsi4', 50.0)
+
+        # Mode 1: Micro-Trend Pullback Tap (Follow Trend Wave)
+        is_micro_uptrend = b1['ema9'] > b1['ema21']
+        is_micro_downtrend = b1['ema9'] < b1['ema21']
+
+        if is_micro_uptrend and b1['low'] <= (b1['ema9'] + 0.25) and b1['close'] > b1['ema9'] and b1['close'] > b1['open']:
+            if (lower_wick / candle_range) >= 0.22 and rsi4 >= 30:
+                return True, False, "⚡ Flash Scalper: Micro-Trend 9 EMA Pullback (BUY)"
+
+        if is_micro_downtrend and b1['high'] >= (b1['ema9'] - 0.25) and b1['close'] < b1['ema9'] and b1['close'] < b1['open']:
+            if (upper_wick / candle_range) >= 0.22 and rsi4 <= 70:
+                return False, True, "⚡ Flash Scalper: Micro-Trend 9 EMA Pullback (SELL)"
+
+        # Mode 2: Sideways Quick Exhaustion (Mean Reversion to EMA 9)
+        if (b1['ema9'] - b1['low']) >= 1.20 and rsi4 <= 20 and b1['close'] > b1['open']:
+            return True, False, "⚡ Flash Scalper: Sideways Exhaustion Quick-Bite (BUY)"
+
+        if (b1['high'] - b1['ema9']) >= 1.20 and rsi4 >= 80 and b1['close'] < b1['open']:
+            return False, True, "⚡ Flash Scalper: Sideways Exhaustion Quick-Bite (SELL)"
+
+        return False, False, ""
+
     def _check_ema_ribbon_rsi(self, df: pd.DataFrame) -> Tuple[bool, bool, str]:
         b1 = df.iloc[-2]
         b2 = df.iloc[-3]
@@ -780,6 +844,10 @@ class GoldScalpingBot:
         Analyzes whether the current setup and market structure warrant an uncapped Trend Runner (Trailing Stop)
         or should take Fixed Targets (TP1, TP2, TP3) without trailing.
         """
+        # 0. Flash Micro-Scalper -> Strict Quick-Bite Fixed TP (No Trailing)
+        if strat_id == "FLASH_MICRO_SCALPER":
+            return False, "Fixed TP (Flash Micro-Scalper Quick-Bite)"
+
         # 1. Asian Session / Mean Reversion -> Strict Fixed TP (No Trailing)
         if strat_id == "ASIAN_RANGE_SNIPER" or session == "ASIAN SESSION":
             return False, "Fixed TP (Asian Sideways - No Trailing)"
@@ -803,7 +871,7 @@ class GoldScalpingBot:
 
         return False, "Fixed TP (Normal S/R Targets)"
 
-    def execute_buy(self, df: pd.DataFrame, symbol: str, reason: str, is_asian_scalp: bool = False, opt_params: Optional[dict] = None, is_m1_sniper: bool = False):
+    def execute_buy(self, df: pd.DataFrame, symbol: str, reason: str, is_asian_scalp: bool = False, opt_params: Optional[dict] = None, is_m1_sniper: bool = False, is_flash_scalper: bool = False):
         ask = self.connector.get_market_info(symbol).get("ask", 0.0)
         if ask <= 0: return
 
@@ -813,7 +881,13 @@ class GoldScalpingBot:
         lot_mult = opt.get("lot_multiplier", 1.0)
         session = self.get_current_session()
 
-        if is_m1_sniper or "M1" in reason:
+        if is_flash_scalper or "Flash" in reason or "FLASH" in reason:
+            sl_dist = 1.10 * sl_mult
+            sl = ask - sl_dist
+            tp1 = ask + 0.80 # 80 pts quick bite
+            tp2 = ask + 1.20 # 120 pts full bite
+            tp3 = 0.0
+        elif is_m1_sniper or "M1" in reason:
             lowest_low = float(df['low'].iloc[-4:-1].min())
             sl = lowest_low - (0.25 * sl_mult)
             sl_dist = ask - sl
@@ -846,8 +920,8 @@ class GoldScalpingBot:
             tp3 = ask + (sl_dist * 2.8)
 
         strat_id = "CAPTAIN_SMC_DUAL"
-        for k in ["M1_SNIPER_CONFIRMATION", "NEWS_MOMENTUM_EXPANSION", "EMA50_3CANDLES_H1", "ASIAN_RANGE_SNIPER", "TKT_SMC_GOLD_PRO_M15", "CAPTAIN_SMC_DUAL"]:
-            if k in reason or (k == "M1_SNIPER_CONFIRMATION" and ("M1" in reason or "Sniper" in reason)): 
+        for k in ["FLASH_MICRO_SCALPER", "M1_SNIPER_CONFIRMATION", "NEWS_MOMENTUM_EXPANSION", "EMA50_3CANDLES_H1", "ASIAN_RANGE_SNIPER", "TKT_SMC_GOLD_PRO_M15", "CAPTAIN_SMC_DUAL"]:
+            if k in reason or (k == "FLASH_MICRO_SCALPER" and "Flash" in reason) or (k == "M1_SNIPER_CONFIRMATION" and ("M1" in reason or "Sniper" in reason)): 
                 strat_id = k
                 break
 
@@ -883,7 +957,7 @@ class GoldScalpingBot:
         if self.notifier:
             self.notifier.notify_order_opened("BUY", symbol, total_lot, ask, sl, tp1, reason)
 
-    def execute_sell(self, df: pd.DataFrame, symbol: str, reason: str, is_asian_scalp: bool = False, opt_params: Optional[dict] = None, is_m1_sniper: bool = False):
+    def execute_sell(self, df: pd.DataFrame, symbol: str, reason: str, is_asian_scalp: bool = False, opt_params: Optional[dict] = None, is_m1_sniper: bool = False, is_flash_scalper: bool = False):
         bid = self.connector.get_market_info(symbol).get("bid", 0.0)
         if bid <= 0: return
 
@@ -893,7 +967,13 @@ class GoldScalpingBot:
         lot_mult = opt.get("lot_multiplier", 1.0)
         session = self.get_current_session()
 
-        if is_m1_sniper or "M1" in reason:
+        if is_flash_scalper or "Flash" in reason or "FLASH" in reason:
+            sl_dist = 1.10 * sl_mult
+            sl = bid + sl_dist
+            tp1 = bid - 0.80 # 80 pts quick bite
+            tp2 = bid - 1.20 # 120 pts full bite
+            tp3 = 0.0
+        elif is_m1_sniper or "M1" in reason:
             highest_high = float(df['high'].iloc[-4:-1].max())
             sl = highest_high + (0.25 * sl_mult)
             sl_dist = sl - bid
@@ -926,8 +1006,8 @@ class GoldScalpingBot:
             tp3 = bid - (sl_dist * 2.8)
 
         strat_id = "CAPTAIN_SMC_DUAL"
-        for k in ["M1_SNIPER_CONFIRMATION", "NEWS_MOMENTUM_EXPANSION", "EMA50_3CANDLES_H1", "ASIAN_RANGE_SNIPER", "TKT_SMC_GOLD_PRO_M15", "CAPTAIN_SMC_DUAL"]:
-            if k in reason or (k == "M1_SNIPER_CONFIRMATION" and ("M1" in reason or "Sniper" in reason)): 
+        for k in ["FLASH_MICRO_SCALPER", "M1_SNIPER_CONFIRMATION", "NEWS_MOMENTUM_EXPANSION", "EMA50_3CANDLES_H1", "ASIAN_RANGE_SNIPER", "TKT_SMC_GOLD_PRO_M15", "CAPTAIN_SMC_DUAL"]:
+            if k in reason or (k == "FLASH_MICRO_SCALPER" and "Flash" in reason) or (k == "M1_SNIPER_CONFIRMATION" and ("M1" in reason or "Sniper" in reason)): 
                 strat_id = k
                 break
 
@@ -985,6 +1065,22 @@ class GoldScalpingBot:
         m_info = self.connector.get_market_info(symbol)
         bid = m_info.get('bid', 0.0)
         ask = m_info.get('ask', 0.0)
+
+        # Stage 0: Flash Scalper Micro Break-Even Guard (+45 pts -> BE +10 pts)
+        for p in positions:
+            comment = str(p.get('comment', ''))
+            if "Flash" in comment:
+                open_p = p.get('price_open', 0.0)
+                sl = p.get('sl', 0.0)
+                ptype = p.get('type')
+                if ptype == "BUY" and sl < open_p and bid >= (open_p + 0.45):
+                    new_sl = open_p + 0.10
+                    self.connector.modify_position(p.get('ticket'), new_sl, p.get('tp'))
+                    self.add_log(f"⚡ [FLASH MICRO-LOCK] Ticket #{p.get('ticket')} +45 pts reached! BE locked at {new_sl:.2f}", "SUCCESS")
+                elif ptype == "SELL" and (sl > open_p or sl == 0) and ask <= (open_p - 0.45):
+                    new_sl = open_p - 0.10
+                    self.connector.modify_position(p.get('ticket'), new_sl, p.get('tp'))
+                    self.add_log(f"⚡ [FLASH MICRO-LOCK] Ticket #{p.get('ticket')} +45 pts reached! BE locked at {new_sl:.2f}", "SUCCESS")
 
         # Stage 1: When Pos 1 (TP1) is closed -> Move Pos 2 & Pos 3 to Break-Even (+0.30)
         if len(pos1_list) == 0 and (len(pos2_list) > 0 or len(pos3_list) > 0):
