@@ -12,7 +12,7 @@ import json
 import logging
 import numpy as np
 import pandas as pd
-from datetime import datetime, time as dtime
+from datetime import datetime, time as dtime, timezone, timedelta
 from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger("RegimeScorer")
@@ -26,7 +26,7 @@ class MarketRegimeScorer:
             data_file_path = os.path.join(base_dir, "regime_scorer_stats.json")
         self.data_file_path = data_file_path
 
-        self.threshold = 70  # Default minimum score required for execution (Grade A/A+)
+        self.threshold = 55  # Minimum score required for execution (Grade A+, A, and B)
         self.is_enabled = True
         self.saved_junk_trades = 0
         self.recent_evaluations: List[dict] = []
@@ -62,7 +62,9 @@ class MarketRegimeScorer:
     def evaluate_market_confluence(self, df: pd.DataFrame, current_spread: float, setup_id: str, 
                                    server_time: Optional[datetime] = None) -> dict:
         """Calculate real-time 0-100 Confluence Quality Score."""
-        now = server_time or datetime.now()
+        # Force Thai Time (GMT+7) regardless of VPS host machine timezone
+        th_tz = timezone(timedelta(hours=7))
+        now = server_time or datetime.now(th_tz)
         current_time = now.time()
 
         # ==========================================
@@ -72,68 +74,69 @@ class MarketRegimeScorer:
         session_name = "REGULAR SESSION"
         session_desc = "Normal Market Liquidity"
 
-        # Asian Session (00:00 - 08:00 Server Time)
-        if dtime(0, 0) <= current_time < dtime(8, 0):
+        # Asian Session (07:00 - 14:00 Thai Time)
+        if dtime(7, 0) <= current_time < dtime(14, 0):
             session_name = "ASIAN SESSION"
             if setup_id == "ASIAN_RANGE_SNIPER":
                 session_score = 25
                 session_desc = "Peak Asian Range Prime Timing (Ideal)"
             else:
-                session_score = 15
+                session_score = 18
                 session_desc = "Moderate Asian Liquidity"
 
-        # London Session (08:00 - 13:00 Server Time / ~14:00 - 18:00 TH)
-        elif dtime(8, 0) <= current_time < dtime(13, 0):
+        # London Session (14:00 - 19:00 Thai Time)
+        elif dtime(14, 0) <= current_time < dtime(19, 0):
             session_name = "LONDON SESSION"
             session_score = 25
             session_desc = "High European Institutional Liquidity Flow"
 
-        # NY / London Overlap (13:00 - 17:00 Server Time / ~19:00 - 23:00 TH)
-        elif dtime(13, 0) <= current_time < dtime(17, 0):
+        # NY / London Overlap & Peak NY (19:00 - 23:59 Thai Time)
+        elif current_time >= dtime(19, 0):
             session_name = "NY / LONDON OVERLAP"
             session_score = 25
             session_desc = "Maximum Global Liquidity & High Momentum"
 
-        # Late NY Session (17:00 - 21:00 Server Time)
-        elif dtime(17, 0) <= current_time < dtime(21, 0):
+        # Late NY Session (00:00 - 04:00 Thai Time)
+        elif dtime(0, 0) <= current_time < dtime(4, 0):
             session_name = "LATE NY SESSION"
-            session_score = 18
-            session_desc = "Moderate US Afternoon Liquidity"
+            session_score = 20
+            session_desc = "Moderate US Afternoon/Night Liquidity"
 
-        # Midnight Rollover Deadzone (21:00 - 23:59 Server Time)
+        # Midnight Rollover Deadzone (04:00 - 07:00 Thai Time)
         else:
             session_name = "ROLLOVER / DEADZONE"
-            session_score = 5
+            session_score = 10
             session_desc = "Low Liquidity / Widened Spreads Warning"
 
         # ==========================================
         # 2. Institutional Tick Volume Pillar (0 - 25 pts)
         # ==========================================
-        volume_score = 15
+        volume_score = 16
         vol_ratio = 1.0
         vol_desc = "Normal Average Volume"
 
-        if not df.empty and 'tick_volume' in df.columns and len(df) >= 20:
-            current_vol = float(df['tick_volume'].iloc[-1])
-            avg_vol_20 = float(df['tick_volume'].iloc[-21:-1].mean())
+        if not df.empty and 'tick_volume' in df.columns and len(df) >= 22:
+            # Must evaluate the completed signal candle (iloc[-2]), NOT the brand-new 0-second candle (iloc[-1])
+            current_vol = float(df['tick_volume'].iloc[-2])
+            avg_vol_20 = float(df['tick_volume'].iloc[-22:-2].mean())
             if avg_vol_20 > 0:
                 vol_ratio = round(current_vol / avg_vol_20, 2)
 
-            if vol_ratio >= 1.60:
+            if vol_ratio >= 1.40:
                 volume_score = 25
                 vol_desc = f"Institutional Volume Surge ({vol_ratio}x avg)"
-            elif vol_ratio >= 1.20:
+            elif vol_ratio >= 1.00:
                 volume_score = 22
                 vol_desc = f"Healthy Above-Average Volume ({vol_ratio}x avg)"
-            elif vol_ratio >= 0.85:
-                volume_score = 16
+            elif vol_ratio >= 0.70:
+                volume_score = 18
                 vol_desc = f"Normal Baseline Volume ({vol_ratio}x avg)"
-            elif vol_ratio >= 0.60:
-                volume_score = 8
-                vol_desc = f"Thin / Weak Volume Drift ({vol_ratio}x avg)"
+            elif vol_ratio >= 0.40:
+                volume_score = 14
+                vol_desc = f"Moderate Volume Drift ({vol_ratio}x avg)"
             else:
-                volume_score = 2
-                vol_desc = f"Extremely Dry / Illiquid ({vol_ratio}x avg)"
+                volume_score = 10
+                vol_desc = f"Thin / Subdued Volume ({vol_ratio}x avg)"
 
         # ==========================================
         # 3. Volatility & Trend Power Pillar (0 - 25 pts)

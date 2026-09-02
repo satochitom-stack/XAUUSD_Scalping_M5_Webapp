@@ -15,7 +15,7 @@ import math
 import logging
 import pandas as pd
 import numpy as np
-from datetime import datetime, time as dtime
+from datetime import datetime, time as dtime, timezone, timedelta
 from typing import Dict, List, Optional, Tuple
 from strategy_optimizer import RealTimeStrategyOptimizer
 from exit_benchmark_tracker import ExitBenchmarkTracker
@@ -125,8 +125,9 @@ class GoldScalpingBot:
                 self.add_log(f"🛑 [DAILY MAX LOSS SHIELD] Loss {pnl_pct:.2f}% <= -{daily_max_loss_pct}%. Capital Shield active! Pausing trading until tomorrow.", "WARNING")
 
     def get_current_session(self) -> str:
-        """Determines active forex/gold market session."""
-        now_hour = datetime.now().hour # Thai time GMT+7
+        """Determines active forex/gold market session in Thai Time (GMT+7)."""
+        th_tz = timezone(timedelta(hours=7))
+        now_hour = datetime.now(th_tz).hour # Guaranteed Thai time GMT+7 regardless of host VPS
         if 7 <= now_hour < 14:
             return "ASIAN SESSION"
         elif 14 <= now_hour < 19:

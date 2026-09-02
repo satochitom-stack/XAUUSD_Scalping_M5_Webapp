@@ -152,6 +152,10 @@ class MultiAccountManager:
             inst = AccountInstance(a, self.global_config)
             inst.bot.notifier = self.notifier
             self.accounts[inst.id] = inst
+            # Auto-start bot accounts on startup (vital for headless VPS runs)
+            if inst.type == "BOT" and a.get("auto_start", True):
+                inst.bot.start()
+                logger.info(f"🚀 [AUTO-START] Bot Engine auto-started for account {inst.name} (#{inst.login})")
 
         if self.accounts:
             self.selected_account_id = list(self.accounts.keys())[0]

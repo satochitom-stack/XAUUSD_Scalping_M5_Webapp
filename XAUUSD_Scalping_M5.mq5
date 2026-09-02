@@ -237,11 +237,13 @@ void ProcessStrategy()
    if(!IsTradingAllowedSafety())
       return;
 
-   // 2. Check Spread
+   // 2. Check Spread (Auto-scale for 2-digit vs 3-digit Gold)
    double spread = (double)SymbolInfoInteger(_Symbol, SYMBOL_SPREAD);
-   if(spread > InpMaxSpreadPoints)
+   double maxSpread = InpMaxSpreadPoints;
+   if(_Digits == 3 && maxSpread < 150.0) maxSpread *= 10.0;
+   if(spread > maxSpread)
      {
-      PrintFormat("Trade Skipped: Spread (%.1f) exceeds maximum allowed (%.1f)", spread, InpMaxSpreadPoints);
+      PrintFormat("Trade Skipped: Spread (%.1f) exceeds maximum allowed (%.1f)", spread, maxSpread);
       return;
      }
 

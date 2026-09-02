@@ -41,6 +41,7 @@
       "symbol": "XAUUSDc",
       "magic_number": 555888,
       "simulation_mode": false,
+      "auto_start": true,
       "strategy": {
         "symbol": "XAUUSDc",
         "timeframe": "M5",
@@ -83,7 +84,7 @@
         "dynamic_lot_reduction": false,
         "daily_target_percent": 10,
         "daily_max_loss_percent": 5.0,
-        "max_spread_points": 45.0,
+        "max_spread_points": 65.0,
         "use_time_filter": true,
         "session_start": "07:00",
         "session_end": "21:00",
