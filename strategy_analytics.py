@@ -159,6 +159,182 @@ class RealTradeAnalyticsManager:
         closed_deals.sort(key=lambda x: x["time"], reverse=True)
         return closed_deals
 
+    def fetch_trades_for_journal(self, days: int = 90, mode: str = "auto", user: Optional[str] = None) -> List[dict]:
+        """
+        Fetch closed positions from MT5 formatted specifically for FXLOG PRO (Trade Journal).
+        Supports:
+        - mode='manual': Manual trades executed by user (@TOM, magic == 0 or non-bot).
+        - mode='bot': Trades executed by MT5 Bots (7 Secret System setups).
+        - mode='auto': Auto-detect based on user name or active connected MT5 account.
+        """
+        journal_trades = []
+        if not MT5_AVAILABLE:
+            return journal_trades
+
+        try:
+            if not mt5.terminal_info():
+                mt5.initialize()
+
+            acc_info = mt5.account_info()
+            active_login = acc_info.login if acc_info else 0
+
+            # Determine mode if auto
+            resolved_mode = mode.lower()
+            if resolved_mode == "auto":
+                if user and ("tom" in user.lower() or "manual" in user.lower()):
+                    resolved_mode = "manual"
+                elif active_login == 257508244: # Tom's Manual Trading Account
+                    resolved_mode = "manual"
+                elif active_login == 159415028: # Auto Bot Account
+                    resolved_mode = "bot"
+                elif user and "bot" in user.lower():
+                    resolved_mode = "bot"
+                else:
+                    resolved_mode = "all"
+
+            from_date = datetime.now() - timedelta(days=days)
+            to_date = datetime.now() + timedelta(days=1)
+            deals = mt5.history_deals_get(from_date, to_date)
+            if not deals:
+                return journal_trades
+
+            # Group deals by position_id to pair Entry (IN) and Exit (OUT)
+            positions = {}
+            for d in deals:
+                if not d.position_id or not d.symbol:
+                    continue
+                pid = d.position_id
+                if pid not in positions:
+                    positions[pid] = {
+                        "in": [],
+                        "out": [],
+                        "symbol": d.symbol,
+                        "magic": d.magic,
+                        "comment": d.comment or ""
+                    }
+                if d.entry == 0:
+                    positions[pid]["in"].append(d)
+                elif d.entry in [1, 2, 3]:
+                    positions[pid]["out"].append(d)
+
+            bot_magics = [555888, 555889, 555890, 777888, 777889, 777890, 333888, 333889, 333890]
+            strategy_name_map = {
+                "CAPTAIN_SMC_DUAL": "Captain SMC Signal V1.2 (Dual Auto)",
+                "TKT_SMC_GOLD_PRO_M15": "TKT SMC Gold Pro v8.0 (M15)",
+                "ASIAN_RANGE_SNIPER": "Asian Range Sniper: Mean Reversion",
+                "EMA50_3CANDLES_H1": "EMA 50 + 3 Confirmation Candles (H1 Pro)",
+                "NEWS_MOMENTUM_EXPANSION": "News Momentum Expansion",
+                "M1_SNIPER_CONFIRMATION": "M1 Sniper Confirmation (Refine Zone)",
+                "FLASH_MICRO_SCALPER": "Flash Micro-Scalper (9 EMA Quick-Bite)"
+            }
+
+            for pid, p in positions.items():
+                if not p["out"] or not p["in"]:
+                    continue
+
+                in_deal = p["in"][0]
+                out_deals = p["out"]
+                last_out = out_deals[-1]
+
+                is_bot = (in_deal.magic in bot_magics) or (in_deal.magic > 10000)
+                comment_lower = (in_deal.comment or "").lower() + " " + (last_out.comment or "").lower()
+                if any(k in comment_lower for k in ["gold_", "bot", "ea", "ema50", "smc", "asian", "squeeze", "ribbon", "flash"]):
+                    is_bot = True
+
+                # Apply mode filter
+                if resolved_mode == "manual" and is_bot:
+                    continue
+                if resolved_mode == "bot" and not is_bot:
+                    continue
+
+                # Calculate financials
+                entry_price = round(float(in_deal.price), 3)
+                exit_price = round(float(last_out.price), 3)
+                volume = round(float(in_deal.volume), 2)
+                net_pnl = round(float(sum(od.profit + od.commission + od.swap for od in out_deals)), 2)
+
+                trade_type = "BUY" if in_deal.type == 0 else "SELL"
+                sym = in_deal.symbol
+                clean_pair = "XAU/USD" if "XAU" in sym.upper() or "GOLD" in sym.upper() else sym
+
+                open_dt = datetime.fromtimestamp(in_deal.time)
+                close_dt = datetime.fromtimestamp(last_out.time)
+                open_str = open_dt.strftime("%Y-%m-%d %H:%M")
+                close_str = close_dt.strftime("%Y-%m-%d %H:%M")
+
+                # Session calculation
+                hour = close_dt.hour
+                if 6 <= hour < 14:
+                    session_str = "Asia Session (06:00-14:00)"
+                elif 14 <= hour < 19:
+                    session_str = "London Session (14:00-19:00)"
+                else:
+                    session_str = "New York Session (19:00-04:00)"
+
+                # Determine status & R:R
+                price_diff = abs(exit_price - entry_price)
+                if net_pnl > 0:
+                    status_val = "WIN"
+                elif net_pnl < 0:
+                    status_val = "CUT" if price_diff < 1.5 else "LOSS"
+                else:
+                    status_val = "BE"
+
+                # Calculate R:R Ratio (e.g., 1:1.5, 1:2.0)
+                rr_ratio_val = None
+                if price_diff > 0:
+                    est_risk = 2.0  # standard baseline gold risk points
+                    ratio_num = max(1.0, round(price_diff / est_risk, 1))
+                    rr_ratio_val = f"1:{ratio_num:.1f}"
+
+                if is_bot:
+                    strat_key = self._classify_deal_strategy(in_deal)
+                    strat_name = strategy_name_map.get(strat_key, strat_key)
+                    trade_id = f"bot-mt5-{pid}"
+                    notes_str = f"🤖 MT5 Bot Deal #{pid} | Magic: {in_deal.magic} | {in_deal.comment or last_out.comment or ''}".strip()
+                    mental_tags = ["🤖 Automated Bot Trade"]
+                    technique_str = strat_name
+                    psychology_str = "มั่นใจตามแผน (Executed Setup)"
+                else:
+                    trade_id = f"manual-mt5-{pid}"
+                    notes_str = f"✋ MT5 Manual Trade #{pid} | Vol: {volume} | Net: ${net_pnl:+,.2f}"
+                    mental_tags = ["🎯 Manual Trade"]
+                    technique_str = "Price Action / Manual Scalp"
+                    psychology_str = "มีวินัยตามแผน (Manual Trade)"
+
+                journal_trades.append({
+                    "id": trade_id,
+                    "ticket": pid,
+                    "pair": clean_pair,
+                    "type": trade_type,
+                    "entryPrice": entry_price,
+                    "exitPrice": exit_price,
+                    "lotSize": volume,
+                    "tp": None,
+                    "sl": None,
+                    "profit": net_pnl,
+                    "status": status_val,
+                    "rrRatio": rr_ratio_val,
+                    "date": close_str,
+                    "openDate": open_str,
+                    "closeDate": close_str,
+                    "closedAt": close_str,
+                    "technique": technique_str,
+                    "timeframe": "M5",
+                    "session": session_str,
+                    "notes": notes_str,
+                    "mentalTags": mental_tags,
+                    "disciplineStatus": "system",
+                    "psychology": psychology_str
+                })
+
+        except Exception as e:
+            logger.error(f"Error fetching trades for journal: {e}")
+
+        # Sort descending by close date
+        journal_trades.sort(key=lambda x: x["closeDate"], reverse=True)
+        return journal_trades
+
     def _classify_deal_strategy(self, deal) -> str:
         """Classify deal into respective strategy."""
         magic = deal.magic
