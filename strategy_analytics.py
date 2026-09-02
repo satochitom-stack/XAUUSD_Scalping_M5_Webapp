@@ -73,6 +73,26 @@ class RealTradeAnalyticsManager:
             "best_session": "High-Impact News Events (USD)",
             "magic_numbers": [666888, 666889, 666890],
             "description": "ดักจับแท่งเทียน Breakout ความผันผวนสูงช่วงข่าวใหญ่ (CPI, NFP, FOMC) พร้อม Trailing Stop กว้าง"
+        },
+        "M1_SNIPER_CONFIRMATION": {
+            "id": "M1_SNIPER_CONFIRMATION",
+            "name": "M1 Sniper Confirmation (Refine Zone)",
+            "icon": "🎯",
+            "category": "SCALPING",
+            "timeframe": "M1 (M15 Refined)",
+            "best_session": "Early Asia & NY Session (07-10 & 19-23)",
+            "magic_numbers": [444888, 444889, 444890],
+            "description": "ย่อยโซน M15/M5 รอคอนเฟิร์ม M1 Internal BOS เข้าจุดคมกริบ SL แคบ 100-150 จุด ดัน R:R สูง 1:3 - 1:5 (Golfpy Framework)"
+        },
+        "FLASH_MICRO_SCALPER": {
+            "id": "FLASH_MICRO_SCALPER",
+            "name": "Flash Micro-Scalper (9 EMA Quick-Bite)",
+            "icon": "⚡",
+            "category": "SCALPING",
+            "timeframe": "M5",
+            "best_session": "All Sessions 24/5 (Asia/London/NY)",
+            "magic_numbers": [333888, 333889, 333890],
+            "description": "สายซิ่งเทรดได้ทุกตลาด เกาะคลื่น EMA 9 & สวนสั้น RSI 4 Exhaustion เน้นปิดเก็บคำเล็ก 70-120 จุด"
         }
     }
 
@@ -163,6 +183,14 @@ class RealTradeAnalyticsManager:
         # 3. News Momentum Expansion (News Spike)
         if "news" in comment or "momentum" in comment or magic in [666888, 666889, 666890]:
             return "NEWS_MOMENTUM_EXPANSION"
+
+        # 4. M1 Sniper Confirmation (Golfpy Framework)
+        if "m1" in comment or "sniper" in comment or magic in [444888, 444889, 444890]:
+            return "M1_SNIPER_CONFIRMATION"
+
+        # 5. Flash Micro-Scalper (Quick-Bite)
+        if "flash" in comment or magic in [333888, 333889, 333890]:
+            return "FLASH_MICRO_SCALPER"
 
         # Default classification based on deal time if opened by M5 EA
         if magic in [555888, 555889, 555890]:
