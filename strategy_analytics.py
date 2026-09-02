@@ -352,6 +352,85 @@ class RealTradeAnalyticsManager:
         journal_trades.sort(key=lambda x: x["closeDate"], reverse=True)
         return journal_trades
 
+    def fetch_open_positions_for_journal(self, user: Optional[str] = None) -> List[dict]:
+        """
+        Fetch currently ACTIVE / OPEN positions from MT5 formatted for FXLOG PRO.
+        Used exclusively in "บันทึกการเทรดใหม่" (New Trade View) to log ongoing live trades.
+        """
+        open_trades = []
+        if not MT5_AVAILABLE:
+            return open_trades
+
+        try:
+            if not mt5.terminal_info():
+                mt5.initialize()
+
+            positions = mt5.positions_get()
+            if not positions:
+                return open_trades
+
+            for p in positions:
+                # Map Symbol
+                sym_clean = p.symbol.upper()
+                if "XAU" in sym_clean or "GOLD" in sym_clean:
+                    pair_str = "XAU/USD"
+                elif "EURUSD" in sym_clean:
+                    pair_str = "EUR/USD"
+                elif "GBPUSD" in sym_clean:
+                    pair_str = "GBP/USD"
+                elif "USDJPY" in sym_clean:
+                    pair_str = "USD/JPY"
+                elif "BTC" in sym_clean:
+                    pair_str = "BTC/USD"
+                else:
+                    pair_str = p.symbol
+
+                pos_type = "BUY" if p.type == 0 else "SELL"
+                entry_price = round(float(p.price_open), 3 if "JPY" in pair_str or "XAU" in pair_str else 5)
+                current_price = round(float(p.price_current), 3 if "JPY" in pair_str or "XAU" in pair_str else 5)
+                sl_val = round(float(p.sl), 3 if "JPY" in pair_str or "XAU" in pair_str else 5) if p.sl > 0 else None
+                tp_val = round(float(p.tp), 3 if "JPY" in pair_str or "XAU" in pair_str else 5) if p.tp > 0 else None
+                volume = round(float(p.volume), 2)
+                profit = round(float(p.profit + getattr(p, "swap", 0.0)), 2)
+
+                dt_open = datetime.fromtimestamp(p.time)
+                date_str = dt_open.strftime("%Y-%m-%d %H:%M")
+
+                open_hour = dt_open.hour
+                if 6 <= open_hour < 14:
+                    session_str = "Asia Session (06:00-14:00)"
+                elif 14 <= open_hour < 19:
+                    session_str = "London Session (14:00-19:00)"
+                else:
+                    session_str = "New York Session (19:00-04:00)"
+
+                open_trades.append({
+                    "ticket": p.ticket,
+                    "id": f"mt5-open-{p.ticket}",
+                    "pair": pair_str,
+                    "type": pos_type,
+                    "lotSize": volume,
+                    "entryPrice": entry_price,
+                    "currentPrice": current_price,
+                    "exitPrice": None,
+                    "sl": sl_val,
+                    "tp": tp_val,
+                    "profit": profit,
+                    "date": date_str,
+                    "openDate": date_str,
+                    "session": session_str,
+                    "timeframe": "M5",
+                    "status": "ACTIVE",
+                    "isClosed": False,
+                    "magic": p.magic,
+                    "comment": p.comment or ""
+                })
+
+            return open_trades
+        except Exception as e:
+            logger.error(f"Error fetching open positions for journal: {e}")
+            return []
+
     def _classify_deal_strategy(self, deal) -> str:
         """Classify deal into respective strategy."""
         magic = deal.magic

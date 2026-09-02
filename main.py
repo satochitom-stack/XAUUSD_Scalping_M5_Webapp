@@ -422,6 +422,35 @@ async def export_trades_for_journal(
         logger.error(f"Error exporting trades for journal: {e}")
         return JSONResponse(status_code=500, content={"status": False, "error": str(e), "trades": []})
 
+@app.get("/api/journal/open_positions")
+async def get_open_positions_for_journal(user: Optional[str] = Query("TOM")):
+    """
+    Fetch live ACTIVE / OPEN positions from MT5 to auto-fill NewTradeView in FXLOG PRO.
+    Only returns ongoing positions currently floating in MT5.
+    """
+    try:
+        open_trades = account_manager.analytics.fetch_open_positions_for_journal(user=user)
+        return {
+            "status": True,
+            "user": user,
+            "count": len(open_trades),
+            "trades": open_trades
+        }
+    except Exception as e:
+        logger.error(f"Error fetching open positions for journal: {e}")
+        return JSONResponse(status_code=500, content={"status": False, "error": str(e), "trades": []})
+
+@app.get("/api/journal/closed_trades")
+async def get_closed_trades_for_journal(
+    days: int = Query(3, description="Days of history to inspect"),
+    mode: str = Query("manual", description="'manual', 'bot', or 'auto'"),
+    user: Optional[str] = Query("TOM", description="Target journal username (e.g. TOM, BOT)")
+):
+    """
+    Fetch closed trades from MT5 to record in TradeLogView in FXLOG PRO.
+    """
+    return await export_trades_for_journal(days=days, mode=mode, user=user)
+
 if __name__ == "__main__":
     import uvicorn
     host = app_config.get("server", {}).get("host", "127.0.0.1")
