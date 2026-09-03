@@ -632,32 +632,56 @@ class GoldScalpingBot:
             if df_m15.empty or len(df_m15) < 30:
                 return False, False, ""
 
+            m15_bar_time = df_m15['time'].iloc[-2]
+            # 0. STRICT BAR LOCK & COOLDOWN: Maximum 1 trade per M15 bar! Never re-enter on the same candle!
+            if getattr(self, 'last_tkt_m15_bar_time', None) == m15_bar_time:
+                return False, False, ""
+            if time.time() < getattr(self, 'tkt_cooldown_until', 0):
+                return False, False, ""
+
             b1 = df_m15.iloc[-2] # Closed M15 candle
             b2 = df_m15.iloc[-3]
             b3 = df_m15.iloc[-4]
 
-            buy_score = 0
-            sell_score = 0
-
-            # 1. Structure Trend (BOS / CHoCH) - 25%
+            # 1. Structure Trend (BOS / CHoCH / Liquidity Sweep) - MANDATORY PREREQUISITE
             lookback = df_m15.iloc[-25:-2]
             swing_high = lookback['high'].max()
             swing_low = lookback['low'].min()
 
-            if b1['close'] > swing_high:
-                buy_score += 25
-            elif b1['close'] < swing_low:
-                sell_score += 25
+            has_bull_bos = (b1['close'] > swing_high)
+            has_bull_sweep = (b1['low'] <= swing_low and b1['close'] > b1['open'] and (b1['close'] - b1['low']) >= 0.80)
+            has_bull_structure = has_bull_bos or has_bull_sweep
+
+            has_bear_bos = (b1['close'] < swing_low)
+            has_bear_sweep = (b1['high'] >= swing_high and b1['close'] < b1['open'] and (b1['high'] - b1['close']) >= 0.80)
+            has_bear_structure = has_bear_bos or has_bear_sweep
+
+            # If no real structural event occurred, NO TRADE!
+            if not has_bull_structure and not has_bear_structure:
+                return False, False, ""
+
+            # Trend Filter: EMA 50 on M15 (Never buy in a free-falling downtrend)
+            ema50_m15 = df_m15['close'].ewm(span=50, adjust=False).mean().iloc[-2]
+            if has_bull_structure and b1['close'] < (ema50_m15 - 1.50):
+                return False, False, "" # Reject BUY counter-trend below M15 EMA 50
+            if has_bear_structure and b1['close'] > (ema50_m15 + 1.50):
+                return False, False, "" # Reject SELL counter-trend above M15 EMA 50
+
+            buy_score = 0
+            sell_score = 0
+
+            if has_bull_structure:
+                buy_score += 30
+            if has_bear_structure:
+                sell_score += 30
 
             # 2. Fair Value Gap (FVG Imbalance) - 25%
             min_fvg_pts = 0.50 # 50 points = 0.50 USD
             bull_fvg_present = (b1['low'] > b3['high'] + min_fvg_pts)
             bear_fvg_present = (b1['high'] < b3['low'] - min_fvg_pts)
 
-            if bull_fvg_present or (b1['low'] <= (swing_low + 0.80) and b1['close'] > b1['open']):
-                buy_score += 25
-            if bear_fvg_present or (b1['high'] >= (swing_high - 0.80) and b1['close'] < b1['open']):
-                sell_score += 25
+            if bull_fvg_present: buy_score += 25
+            if bear_fvg_present: sell_score += 25
 
             # 3. Kill Zone Session Bonus - 20%
             now_hour = (datetime.utcnow().hour + 7) % 24 # Thai UTC+7
@@ -674,21 +698,25 @@ class GoldScalpingBot:
             else:
                 sell_score += 15 # Premium (Good for SELL)
 
-            # 5. Wick Rejection / Volume Confirmation - 15%
+            # 5. Wick Rejection / Volume Confirmation - 10%
             candle_range = b1['high'] - b1['low']
             if candle_range > 0.30:
                 lower_wick = min(b1['open'], b1['close']) - b1['low']
                 upper_wick = b1['high'] - max(b1['open'], b1['close'])
                 if (lower_wick / candle_range) >= 0.30 and b1['close'] > b1['open']:
-                    buy_score += 15
+                    buy_score += 10
                 if (upper_wick / candle_range) >= 0.30 and b1['close'] < b1['open']:
-                    sell_score += 15
+                    sell_score += 10
 
-            # Check threshold (>= 60%)
-            if buy_score >= 60 and buy_score > sell_score:
-                return True, False, f"TKT SMC Gold Pro M15 (Score: {buy_score}% >= 60%)"
-            elif sell_score >= 60 and sell_score > buy_score:
-                return False, True, f"TKT SMC Gold Pro M15 (Score: {sell_score}% >= 60%)"
+            # Stricter Confluence Threshold: >= 70% and structure must match
+            if buy_score >= 70 and buy_score > sell_score and has_bull_structure:
+                self.last_tkt_m15_bar_time = m15_bar_time
+                self.tkt_cooldown_until = time.time() + 900 # 15 min lock
+                return True, False, f"TKT SMC Gold Pro M15 (Score: {buy_score}% >= 70%)"
+            elif sell_score >= 70 and sell_score > buy_score and has_bear_structure:
+                self.last_tkt_m15_bar_time = m15_bar_time
+                self.tkt_cooldown_until = time.time() + 900 # 15 min lock
+                return False, True, f"TKT SMC Gold Pro M15 (Score: {sell_score}% >= 70%)"
 
         except Exception as e:
             logger.error(f"Error checking TKT SMC Gold Pro M15: {e}")
