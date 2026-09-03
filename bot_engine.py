@@ -407,28 +407,35 @@ class GoldScalpingBot:
 
     def _check_news_momentum_expansion(self, df: pd.DataFrame, news_status: dict) -> Tuple[bool, bool, str]:
         """
-        Specialized Setup #8: High-Impact News Momentum Breakout & Straddle.
-        Activates when market is inside news impact/digest window, or when volatility surges with momentum.
+        ⚡ Momentum Expansion Breakout (24/7 Engine - All Sessions):
+        Fires whenever price breaks out of the recent 12-candle swing range with a strong expansion candle (Body >= 58%).
+        Works seamlessly both during High-Impact News releases AND high-liquidity regular sessions (London/NY).
         """
-        if len(df) < 15: return False, False, ""
+        if len(df) < 20: return False, False, ""
         b1 = df.iloc[-2] # Last closed candle
         
-        # Calculate pre-news baseline range (bars -10 to -2)
-        pre_news_high = df['high'].iloc[-10:-2].max()
-        pre_news_low = df['low'].iloc[-10:-2].min()
+        # Calculate recent baseline swing range (bars -14 to -2)
+        pre_swing_high = df['high'].iloc[-14:-2].max()
+        pre_swing_low = df['low'].iloc[-14:-2].min()
         candle_body = abs(b1['close'] - b1['open'])
         candle_range = b1['high'] - b1['low'] + 1e-9
         body_pct = candle_body / candle_range
-
+        
+        rsi14 = b1.get('rsi14', 50.0)
         is_news_spike = news_status.get("is_news_active", False) or news_status.get("state") in ["NEWS_RELEASE_IMPACT", "POST_NEWS_DIGEST"]
 
-        # BUY: Bullish Breakout above Pre-News High with solid body > 60%
-        if is_news_spike and b1['close'] > pre_news_high and b1['close'] > b1['open'] and body_pct >= 0.60:
-            return True, False, "⚡ High-Impact News Momentum Breakout (BUY)"
+        # Expansion validation: Solid body >= 58% and meaningful range >= 0.80 USD
+        is_solid_expansion = (body_pct >= 0.58) and (candle_range >= 0.80)
 
-        # SELL: Bearish Breakdown below Pre-News Low with solid body > 60%
-        if is_news_spike and b1['close'] < pre_news_low and b1['close'] < b1['open'] and body_pct >= 0.60:
-            return False, True, "⚡ High-Impact News Momentum Breakout (SELL)"
+        # BUY: Bullish Breakout above Swing High with solid body & RSI momentum
+        if (is_news_spike or is_solid_expansion) and b1['close'] > pre_swing_high and b1['close'] > b1['open'] and body_pct >= 0.58 and rsi14 >= 52:
+            tag = "⚡ High-Impact News Spike Breakout (BUY)" if is_news_spike else "🚀 Momentum Expansion Breakout (BUY)"
+            return True, False, tag
+
+        # SELL: Bearish Breakdown below Swing Low with solid body & RSI momentum
+        if (is_news_spike or is_solid_expansion) and b1['close'] < pre_swing_low and b1['close'] < b1['open'] and body_pct >= 0.58 and rsi14 <= 48:
+            tag = "⚡ High-Impact News Spike Breakdown (SELL)" if is_news_spike else "🚀 Momentum Expansion Breakdown (SELL)"
+            return False, True, tag
 
         return False, False, ""
 
