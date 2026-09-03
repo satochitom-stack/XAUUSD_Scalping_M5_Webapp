@@ -947,13 +947,37 @@ class GoldScalpingBot:
             tp1 = max(ask + 1.20, bb_mid) if bb_mid > ask else (ask + sl_dist * 1.0)
             tp2 = ask + (sl_dist * 1.8)
             tp3 = ask + (sl_dist * 2.5)
+        elif strat_id == "TKT_SMC_GOLD_PRO_M15" or "TKT" in reason:
+            # Institutional M15 SMC: SL placed below M15 Order Block / Swing Low with safe breathing buffer
+            df_m15 = self.connector.get_rates(symbol, "M15", 35)
+            if not df_m15.empty and len(df_m15) >= 15:
+                ob_low = float(df_m15['low'].iloc[-15:-1].min())
+            else:
+                ob_low = float(df['low'].iloc[-30:-1].min())
+            sl_buffer = 0.80 * sl_mult # 80 pts safety buffer below M15 OB
+            sl = ob_low - sl_buffer
+            sl_dist = ask - sl
+            # Safe zone for M15 Gold: minimum 3.20 USD (320 pts), maximum 6.50 USD (650 pts)
+            if sl_dist < 3.20: sl = ask - 3.20; sl_dist = 3.20
+            if sl_dist > 6.50: sl = ask - 6.50; sl_dist = 6.50
+            tp1 = ask + (sl_dist * 1.0)
+            tp2 = ask + (sl_dist * 1.8)
+        elif strat_id == "CAPTAIN_SMC_DUAL" or "Captain" in reason or "CAPTAIN" in reason:
+            lowest_low = float(df['low'].iloc[-12:-1].min())
+            sl_buffer = 0.50 * sl_mult
+            sl = lowest_low - sl_buffer
+            sl_dist = ask - sl
+            if sl_dist < 2.20: sl = ask - 2.20; sl_dist = 2.20
+            if sl_dist > 5.50: sl = ask - 5.50; sl_dist = 5.50
+            tp1 = ask + (sl_dist * 1.0)
+            tp2 = ask + (sl_dist * 1.8)
         else:
             lowest_low = df['low'].iloc[-8:-1].min()
             sl_buffer = 0.50 * sl_mult
             sl = lowest_low - sl_buffer
             sl_dist = ask - sl
-            if sl_dist < 1.50: sl = ask - 1.50; sl_dist = 1.50
-            if sl_dist > 10.0: sl = ask - 10.0; sl_dist = 10.0
+            if sl_dist < 2.00: sl = ask - 2.00; sl_dist = 2.00
+            if sl_dist > 8.0: sl = ask - 8.0; sl_dist = 8.0
             tp1 = ask + (sl_dist * 1.0)
             tp2 = ask + (sl_dist * 1.8)
 
@@ -1026,13 +1050,37 @@ class GoldScalpingBot:
             bb_mid = float(df['sma20'].iloc[-2])
             tp1 = min(bid - 1.20, bb_mid) if bb_mid < bid else (bid - sl_dist * 1.0)
             tp2 = bid - (sl_dist * 1.8)
+        elif strat_id == "TKT_SMC_GOLD_PRO_M15" or "TKT" in reason:
+            # Institutional M15 SMC: SL placed above M15 Order Block / Swing High with safe breathing buffer
+            df_m15 = self.connector.get_rates(symbol, "M15", 35)
+            if not df_m15.empty and len(df_m15) >= 15:
+                ob_high = float(df_m15['high'].iloc[-15:-1].max())
+            else:
+                ob_high = float(df['high'].iloc[-30:-1].max())
+            sl_buffer = 0.80 * sl_mult # 80 pts safety buffer above M15 OB
+            sl = ob_high + sl_buffer
+            sl_dist = sl - bid
+            # Safe zone for M15 Gold: minimum 3.20 USD (320 pts), maximum 6.50 USD (650 pts)
+            if sl_dist < 3.20: sl = bid + 3.20; sl_dist = 3.20
+            if sl_dist > 6.50: sl = bid + 6.50; sl_dist = 6.50
+            tp1 = bid - (sl_dist * 1.0)
+            tp2 = bid - (sl_dist * 1.8)
+        elif strat_id == "CAPTAIN_SMC_DUAL" or "Captain" in reason or "CAPTAIN" in reason:
+            highest_high = float(df['high'].iloc[-12:-1].max())
+            sl_buffer = 0.50 * sl_mult
+            sl = highest_high + sl_buffer
+            sl_dist = sl - bid
+            if sl_dist < 2.20: sl = bid + 2.20; sl_dist = 2.20
+            if sl_dist > 5.50: sl = bid + 5.50; sl_dist = 5.50
+            tp1 = bid - (sl_dist * 1.0)
+            tp2 = bid - (sl_dist * 1.8)
         else:
             highest_high = df['high'].iloc[-8:-1].max()
             sl_buffer = 0.50 * sl_mult
             sl = highest_high + sl_buffer
             sl_dist = sl - bid
-            if sl_dist < 1.50: sl = bid + 1.50; sl_dist = 1.50
-            if sl_dist > 10.0: sl = bid + 10.0; sl_dist = 10.0
+            if sl_dist < 2.00: sl = bid + 2.00; sl_dist = 2.00
+            if sl_dist > 8.0: sl = bid + 8.0; sl_dist = 8.0
             tp1 = bid - (sl_dist * 1.0)
             tp2 = bid - (sl_dist * 1.8)
 
