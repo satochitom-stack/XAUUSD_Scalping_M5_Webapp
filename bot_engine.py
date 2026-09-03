@@ -1009,9 +1009,9 @@ class GoldScalpingBot:
             sl_buffer = 0.80 * sl_mult # 80 pts safety buffer below M15 OB
             sl = ob_low - sl_buffer
             sl_dist = ask - sl
-            # Safe zone for M15 Gold: minimum 3.20 USD (320 pts), maximum 6.50 USD (650 pts)
-            if sl_dist < 3.20: sl = ask - 3.20; sl_dist = 3.20
-            if sl_dist > 6.50: sl = ask - 6.50; sl_dist = 6.50
+            # Safe zone for M15 Gold: minimum 5.00 USD (500 pts), maximum 8.50 USD (850 pts)
+            if sl_dist < 5.00: sl = ask - 5.00; sl_dist = 5.00
+            if sl_dist > 8.50: sl = ask - 8.50; sl_dist = 8.50
             tp1 = ask + (sl_dist * 1.0)
             tp2 = ask + (sl_dist * 1.8)
         elif strat_id == "CAPTAIN_SMC_DUAL" or "Captain" in reason or "CAPTAIN" in reason:
@@ -1095,9 +1095,9 @@ class GoldScalpingBot:
             sl_buffer = 0.80 * sl_mult # 80 pts safety buffer above M15 OB
             sl = ob_high + sl_buffer
             sl_dist = sl - bid
-            # Safe zone for M15 Gold: minimum 3.20 USD (320 pts), maximum 6.50 USD (650 pts)
-            if sl_dist < 3.20: sl = bid + 3.20; sl_dist = 3.20
-            if sl_dist > 6.50: sl = bid + 6.50; sl_dist = 6.50
+            # Safe zone for M15 Gold: minimum 5.00 USD (500 pts), maximum 8.50 USD (850 pts)
+            if sl_dist < 5.00: sl = bid + 5.00; sl_dist = 5.00
+            if sl_dist > 8.50: sl = bid + 8.50; sl_dist = 8.50
             tp1 = bid - (sl_dist * 1.0)
             tp2 = bid - (sl_dist * 1.8)
         elif strat_id == "CAPTAIN_SMC_DUAL" or "Captain" in reason or "CAPTAIN" in reason:
