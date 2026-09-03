@@ -31,7 +31,7 @@ def main():
     import json
 
     config_path = os.path.join(script_dir, "config.json")
-    host = "127.0.0.1"
+    host = "0.0.0.0"
     port = 8000
     default_token = "GOLD_VIP_2026"
 
@@ -39,7 +39,7 @@ def main():
         try:
             with open(config_path, "r", encoding="utf-8") as f:
                 cfg = json.load(f)
-                host = cfg.get("server", {}).get("host", "127.0.0.1")
+                host = cfg.get("server", {}).get("host", "0.0.0.0")
                 port = cfg.get("server", {}).get("port", 8000)
                 tokens = cfg.get("auth", {}).get("access_tokens", ["GOLD_VIP_2026"])
                 if tokens:

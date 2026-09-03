@@ -456,7 +456,7 @@ async def get_closed_trades_for_journal(
 
 if __name__ == "__main__":
     import uvicorn
-    host = app_config.get("server", {}).get("host", "127.0.0.1")
+    host = app_config.get("server", {}).get("host", "0.0.0.0")
     port = app_config.get("server", {}).get("port", 8000)
     print(f"\n=======================================================")
     print(f"🚀 XAUUSD Scalping M5 Multi-Account Hub Started")
