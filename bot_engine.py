@@ -918,11 +918,14 @@ class GoldScalpingBot:
         magic_p3 = m_info["pos3"]
 
         if is_flash_scalper or "Flash" in reason or "FLASH" in reason or strat_id == "FLASH_MICRO_SCALPER":
-            sl_dist = 1.00 * sl_mult # 100 pts SL
-            sl = ask - sl_dist
-            tp1 = ask + 1.00 # 100 pts (1:1.0 RR)
-            tp2 = ask + 1.50 # 150 pts (1:1.5 RR)
-            tp3 = 0.0
+            # Dynamic Swing Low SL (180 - 250 pts safe zone to absorb gold spread and pullbacks)
+            lowest_low = float(df['low'].iloc[-5:-1].min())
+            sl = lowest_low - (0.35 * sl_mult)
+            sl_dist = ask - sl
+            if sl_dist < 1.80: sl = ask - 1.80; sl_dist = 1.80
+            if sl_dist > 2.50: sl = ask - 2.50; sl_dist = 2.50
+            tp1 = ask + (sl_dist * 1.0)
+            tp2 = ask + (sl_dist * 1.45) # 1:1.45 RR (~260-360 pts)
         elif is_m1_sniper or "M1" in reason:
             lowest_low = float(df['low'].iloc[-4:-1].min())
             sl = lowest_low - (0.25 * sl_mult)
@@ -956,13 +959,13 @@ class GoldScalpingBot:
 
         total_lot = self.calculate_lot_size(sl_dist, lot_mult)
 
-        # Flash Scalper: 1% Risk & Single Clean Position (TP 120-150 pts 1:1.2-1.5)
+        # Flash Scalper: 1% Risk & Single Clean Position with Swing Buffer SL
         if strat_id == "FLASH_MICRO_SCALPER" or is_flash_scalper:
             flash_lot = self.calculate_lot_size(sl_dist, lot_mult=0.50) # 1.0% Risk (Half of 2.0% base)
             res1 = self.connector.open_order(symbol, "BUY", flash_lot, sl, tp2, magic_p1, f"Gold_Flash")
             t1 = res1.get("ticket", 0) if isinstance(res1, dict) else 0
             self.benchmark_tracker.register_trade(t1, 0, symbol, "BUY", ask, sl, flash_lot, strat_id)
-            self.add_log(f"🟢 [BUY OPENED] [{strat_id}] {reason} | Single Micro-Trade Plan: TP {tp2:.2f} (+150 pts 1:1.5) / SL {sl:.2f} (-100 pts) | Lot: {flash_lot} (1.0% Risk)", "SUCCESS")
+            self.add_log(f"🟢 [BUY OPENED] [{strat_id}] {reason} | Swing Buffer Plan: TP {tp2:.2f} (+{sl_dist*1.45*100:.0f} pts 1:1.45) / SL {sl:.2f} (-{sl_dist*100:.0f} pts) | Lot: {flash_lot} (1.0% Risk)", "SUCCESS")
         else:
             # All other 6 setups: Standard 2-Position Split (50% TP1 1.0R / 50% TP2 1.8-2.0R)
             if total_lot >= 0.02:
@@ -996,9 +999,14 @@ class GoldScalpingBot:
         magic_p2 = m_info["pos2"]
 
         if is_flash_scalper or "Flash" in reason or "FLASH" in reason or strat_id == "FLASH_MICRO_SCALPER":
-            sl_dist = 1.00 * sl_mult # 100 pts SL
-            sl = bid + sl_dist
-            tp2 = bid - 1.50 # 150 pts (1:1.5 RR)
+            # Dynamic Swing High SL (180 - 250 pts safe zone to absorb gold spread and pullbacks)
+            highest_high = float(df['high'].iloc[-5:-1].max())
+            sl = highest_high + (0.35 * sl_mult)
+            sl_dist = sl - bid
+            if sl_dist < 1.80: sl = bid + 1.80; sl_dist = 1.80
+            if sl_dist > 2.50: sl = bid + 2.50; sl_dist = 2.50
+            tp1 = bid - (sl_dist * 1.0)
+            tp2 = bid - (sl_dist * 1.45) # 1:1.45 RR (~260-360 pts)
         elif is_m1_sniper or "M1" in reason:
             highest_high = float(df['high'].iloc[-4:-1].max())
             sl = highest_high + (0.25 * sl_mult)
@@ -1030,13 +1038,13 @@ class GoldScalpingBot:
 
         total_lot = self.calculate_lot_size(sl_dist, lot_mult)
 
-        # Flash Scalper: 1% Risk & Single Clean Position (TP 120-150 pts 1:1.2-1.5)
+        # Flash Scalper: 1% Risk & Single Clean Position with Swing Buffer SL
         if strat_id == "FLASH_MICRO_SCALPER" or is_flash_scalper:
             flash_lot = self.calculate_lot_size(sl_dist, lot_mult=0.50) # 1.0% Risk (Half of 2.0% base)
             res1 = self.connector.open_order(symbol, "SELL", flash_lot, sl, tp2, magic_p1, f"Gold_Flash")
             t1 = res1.get("ticket", 0) if isinstance(res1, dict) else 0
             self.benchmark_tracker.register_trade(t1, 0, symbol, "SELL", bid, sl, flash_lot, strat_id)
-            self.add_log(f"🔴 [SELL OPENED] [{strat_id}] {reason} | Single Micro-Trade Plan: TP {tp2:.2f} (+150 pts 1:1.5) / SL {sl:.2f} (-100 pts) | Lot: {flash_lot} (1.0% Risk)", "SUCCESS")
+            self.add_log(f"🔴 [SELL OPENED] [{strat_id}] {reason} | Swing Buffer Plan: TP {tp2:.2f} (+{sl_dist*1.45*100:.0f} pts 1:1.45) / SL {sl:.2f} (-{sl_dist*100:.0f} pts) | Lot: {flash_lot} (1.0% Risk)", "SUCCESS")
         else:
             # All other 6 setups: Standard 2-Position Split (50% TP1 1.0R / 50% TP2 1.8-2.0R)
             if total_lot >= 0.02:
