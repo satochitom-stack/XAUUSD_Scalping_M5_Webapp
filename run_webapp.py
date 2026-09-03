@@ -51,15 +51,6 @@ def main():
     print(f"\n🌐 WebApp Dashboard URL: {url}")
     print(f"🔑 Access Token: {default_token}\n")
 
-    # Automatically open browser after a brief delay
-    def open_browser():
-        time.sleep(1.2)
-        print(f"Opening browser at {url}...")
-        webbrowser.open(url)
-
-    import threading
-    threading.Thread(target=open_browser, daemon=True).start()
-
     from main import app
     uvicorn.run(app, host=host, port=port)
 
