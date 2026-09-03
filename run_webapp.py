@@ -30,16 +30,15 @@ def main():
     import uvicorn
     import json
 
-    config_path = os.path.join(script_dir, "config.json")
     host = "0.0.0.0"
     port = 8000
     default_token = "GOLD_VIP_2026"
 
+    config_path = os.path.join(script_dir, "config.json")
     if os.path.exists(config_path):
         try:
             with open(config_path, "r", encoding="utf-8") as f:
                 cfg = json.load(f)
-                host = cfg.get("server", {}).get("host", "0.0.0.0")
                 port = cfg.get("server", {}).get("port", 8000)
                 tokens = cfg.get("auth", {}).get("access_tokens", ["GOLD_VIP_2026"])
                 if tokens:
@@ -52,7 +51,7 @@ def main():
     print(f"🔑 Access Token: {default_token}\n")
 
     from main import app
-    uvicorn.run(app, host=host, port=port)
+    uvicorn.run(app, host="0.0.0.0", port=port)
 
 if __name__ == "__main__":
     main()
