@@ -917,11 +917,11 @@ class GoldScalpingBot:
         magic_p2 = m_info["pos2"]
         magic_p3 = m_info["pos3"]
 
-        if is_flash_scalper or "Flash" in reason or "FLASH" in reason:
-            sl_dist = 1.10 * sl_mult
+        if is_flash_scalper or "Flash" in reason or "FLASH" in reason or strat_id == "FLASH_MICRO_SCALPER":
+            sl_dist = 1.00 * sl_mult # 100 pts SL
             sl = ask - sl_dist
-            tp1 = ask + 0.80 # 80 pts quick bite
-            tp2 = ask + 1.20 # 120 pts full bite
+            tp1 = ask + 1.00 # 100 pts (1:1.0 RR)
+            tp2 = ask + 1.50 # 150 pts (1:1.5 RR)
             tp3 = 0.0
         elif is_m1_sniper or "M1" in reason:
             lowest_low = float(df['low'].iloc[-4:-1].min())
@@ -960,7 +960,17 @@ class GoldScalpingBot:
 
         total_lot = self.calculate_lot_size(sl_dist, lot_mult)
 
-        if total_lot >= 0.03:
+        # Flash Scalper: Strict 2-Position Split (50% TP1 1.0R / 50% TP2 1.5R)
+        if strat_id == "FLASH_MICRO_SCALPER" or is_flash_scalper:
+            lot1 = max(0.01, round(total_lot * 0.50, 2))
+            lot2 = max(0.01, round(total_lot - lot1, 2))
+            res1 = self.connector.open_order(symbol, "BUY", lot1, sl, tp1, magic_p1, f"Gold_TP1_Flash")
+            res2 = self.connector.open_order(symbol, "BUY", lot2, sl, tp2, magic_p2, f"Gold_TP2_Flash")
+            t1 = res1.get("ticket", 0) if isinstance(res1, dict) else 0
+            t2 = res2.get("ticket", 0) if isinstance(res2, dict) else 0
+            self.benchmark_tracker.register_trade(t1, t2, symbol, "BUY", ask, sl, total_lot, strat_id)
+            self.add_log(f"🟢 [BUY OPENED] [{strat_id}] {reason} | 2-Stage Plan: TP1 {tp1:.2f} (100 pts 1:1.0) / TP2 {tp2:.2f} (150 pts 1:1.5) | Total Lot: {total_lot}", "SUCCESS")
+        elif total_lot >= 0.03:
             lot1 = max(0.01, round(total_lot * 0.35, 2))
             lot2 = max(0.01, round(total_lot * 0.35, 2))
             lot3 = max(0.01, round(total_lot - lot1 - lot2, 2))
@@ -971,6 +981,7 @@ class GoldScalpingBot:
             t1 = res1.get("ticket", 0) if isinstance(res1, dict) else 0
             t2 = res2.get("ticket", 0) if isinstance(res2, dict) else 0
             self.benchmark_tracker.register_trade(t1, t2, symbol, "BUY", ask, sl, total_lot, strat_id)
+            self.add_log(f"🟢 [BUY OPENED] [{strat_id}] {reason} | Exit Plan: TP1 {tp1:.2f} / TP2 {tp2:.2f} / {'AI Trail' if is_trend_runner else f'TP3 {tp3:.2f}'} | Total Lot: {total_lot}", "SUCCESS")
         elif total_lot == 0.02:
             lot1 = 0.01
             lot2 = 0.01
@@ -979,11 +990,11 @@ class GoldScalpingBot:
             t1 = res1.get("ticket", 0) if isinstance(res1, dict) else 0
             t2 = res2.get("ticket", 0) if isinstance(res2, dict) else 0
             self.benchmark_tracker.register_trade(t1, t2, symbol, "BUY", ask, sl, total_lot, strat_id)
+            self.add_log(f"🟢 [BUY OPENED] [{strat_id}] {reason} | Exit Plan: TP1 {tp1:.2f} / TP2 {tp2:.2f} | Total Lot: {total_lot}", "SUCCESS")
         else:
             lot1 = 0.01
             res1 = self.connector.open_order(symbol, "BUY", lot1, sl, tp1, magic_p1, f"Gold_TP1_{reason[:6]}")
-
-        self.add_log(f"🟢 [BUY OPENED] [{strat_id}] {reason} | Exit Plan: TP1 {tp1:.2f} / TP2 {tp2:.2f} / {'AI Trail' if is_trend_runner else f'TP3 {tp3:.2f}'} | Total Lot: {total_lot}", "SUCCESS")
+            self.add_log(f"🟢 [BUY OPENED] [{strat_id}] {reason} | Exit Plan: TP1 {tp1:.2f} | Total Lot: {total_lot}", "SUCCESS")
         if self.notifier:
             self.notifier.notify_order_opened("BUY", symbol, total_lot, ask, sl, tp1, reason)
 
@@ -1002,11 +1013,11 @@ class GoldScalpingBot:
         magic_p2 = m_info["pos2"]
         magic_p3 = m_info["pos3"]
 
-        if is_flash_scalper or "Flash" in reason or "FLASH" in reason:
-            sl_dist = 1.10 * sl_mult
+        if is_flash_scalper or "Flash" in reason or "FLASH" in reason or strat_id == "FLASH_MICRO_SCALPER":
+            sl_dist = 1.00 * sl_mult # 100 pts SL
             sl = bid + sl_dist
-            tp1 = bid - 0.80 # 80 pts quick bite
-            tp2 = bid - 1.20 # 120 pts full bite
+            tp1 = bid - 1.00 # 100 pts (1:1.0 RR)
+            tp2 = bid - 1.50 # 150 pts (1:1.5 RR)
             tp3 = 0.0
         elif is_m1_sniper or "M1" in reason:
             highest_high = float(df['high'].iloc[-4:-1].max())
@@ -1045,7 +1056,17 @@ class GoldScalpingBot:
 
         total_lot = self.calculate_lot_size(sl_dist, lot_mult)
 
-        if total_lot >= 0.03:
+        # Flash Scalper: Strict 2-Position Split (50% TP1 1.0R / 50% TP2 1.5R)
+        if strat_id == "FLASH_MICRO_SCALPER" or is_flash_scalper:
+            lot1 = max(0.01, round(total_lot * 0.50, 2))
+            lot2 = max(0.01, round(total_lot - lot1, 2))
+            res1 = self.connector.open_order(symbol, "SELL", lot1, sl, tp1, magic_p1, f"Gold_TP1_Flash")
+            res2 = self.connector.open_order(symbol, "SELL", lot2, sl, tp2, magic_p2, f"Gold_TP2_Flash")
+            t1 = res1.get("ticket", 0) if isinstance(res1, dict) else 0
+            t2 = res2.get("ticket", 0) if isinstance(res2, dict) else 0
+            self.benchmark_tracker.register_trade(t1, t2, symbol, "SELL", bid, sl, total_lot, strat_id)
+            self.add_log(f"🔴 [SELL OPENED] [{strat_id}] {reason} | 2-Stage Plan: TP1 {tp1:.2f} (100 pts 1:1.0) / TP2 {tp2:.2f} (150 pts 1:1.5) | Total Lot: {total_lot}", "SUCCESS")
+        elif total_lot >= 0.03:
             lot1 = max(0.01, round(total_lot * 0.35, 2))
             lot2 = max(0.01, round(total_lot * 0.35, 2))
             lot3 = max(0.01, round(total_lot - lot1 - lot2, 2))
@@ -1056,6 +1077,7 @@ class GoldScalpingBot:
             t1 = res1.get("ticket", 0) if isinstance(res1, dict) else 0
             t2 = res2.get("ticket", 0) if isinstance(res2, dict) else 0
             self.benchmark_tracker.register_trade(t1, t2, symbol, "SELL", bid, sl, total_lot, strat_id)
+            self.add_log(f"🔴 [SELL OPENED] [{strat_id}] {reason} | Exit Plan: TP1 {tp1:.2f} / TP2 {tp2:.2f} / {'AI Trail' if is_trend_runner else f'TP3 {tp3:.2f}'} | Total Lot: {total_lot}", "SUCCESS")
         elif total_lot == 0.02:
             lot1 = 0.01
             lot2 = 0.01
@@ -1064,11 +1086,11 @@ class GoldScalpingBot:
             t1 = res1.get("ticket", 0) if isinstance(res1, dict) else 0
             t2 = res2.get("ticket", 0) if isinstance(res2, dict) else 0
             self.benchmark_tracker.register_trade(t1, t2, symbol, "SELL", bid, sl, total_lot, strat_id)
+            self.add_log(f"🔴 [SELL OPENED] [{strat_id}] {reason} | Exit Plan: TP1 {tp1:.2f} / TP2 {tp2:.2f} | Total Lot: {total_lot}", "SUCCESS")
         else:
             lot1 = 0.01
             res1 = self.connector.open_order(symbol, "SELL", lot1, sl, tp1, magic_p1, f"Gold_TP1_{reason[:6]}")
-
-        self.add_log(f"🔴 [SELL OPENED] [{strat_id}] {reason} | Exit Plan: TP1 {tp1:.2f} / TP2 {tp2:.2f} / {'AI Trail' if is_trend_runner else f'TP3 {tp3:.2f}'} | Total Lot: {total_lot}", "SUCCESS")
+            self.add_log(f"🔴 [SELL OPENED] [{strat_id}] {reason} | Exit Plan: TP1 {tp1:.2f} | Total Lot: {total_lot}", "SUCCESS")
         if self.notifier:
             self.notifier.notify_order_opened("SELL", symbol, total_lot, bid, sl, tp1, reason)
 
