@@ -119,6 +119,19 @@ SETUP_PROFILES = {
         "trail_points": 80.0,
         "trail_step_points": 20.0,
         "description": "All-Session 9 EMA Micro Wave & RSI 4 Exhaustion Quick-Bite (70-120 pts TP)"
+    },
+    "ALL_CONFLUENCE": {
+        "id": "ALL_CONFLUENCE",
+        "name": "All Confluence Auto-Switch",
+        "icon": "🌟",
+        "win_prob": 80.0,
+        "base_rr": 1.50,
+        "min_rr": 1.20,
+        "max_rr": 3.00,
+        "trailing_type": "TIGHT_LOCK",
+        "trail_points": 250.0,
+        "trail_step_points": 30.0,
+        "description": "Multi-Strategy Confluence Auto-Switching Portfolio"
     }
 }
 
@@ -320,7 +333,7 @@ class RealTimeStrategyOptimizer:
         """
         Calculate dynamically optimized lot multiplier, dynamic ATR SL buffer, setup-specific dynamic R:R ratio, and trailing parameters.
         """
-        profile = SETUP_PROFILES.get(strategy_key, SETUP_PROFILES["ALL_CONFLUENCE"])
+        profile = SETUP_PROFILES.get(strategy_key) or SETUP_PROFILES.get("CAPTAIN_SMC_DUAL", {})
         base_rr = profile.get("base_rr", 1.50)
 
         if not self.enabled:

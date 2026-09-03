@@ -62,7 +62,7 @@
         "swing_bars": 12,
         "pullback_ema_buffer_points": 100.0,
         "lot_mode": "RISK_PERCENT",
-        "risk_percent": 10,
+        "risk_percent": 2.0,
         "fixed_lot_size": 0.05,
         "sl_type": "SWING_HIGH_LOW",
         "sl_swing_bars": 7,
