@@ -595,15 +595,26 @@ class GoldScalpingBot:
         is_downtrend = b1.get('ema50', 0) < b1.get('ema150', 0)
         rsi = b1.get('rsi14', 50)
 
+        m5_bar_time = b1.get('time')
+        if getattr(self, 'last_captain_bar_time', None) == m5_bar_time:
+            return False, False, ""
+
+        # Volume Filter: Confirm institutional presence (tick volume >= 1.0x 20-bar avg)
+        avg_vol = df['tick_volume'].iloc[-22:-2].mean() if 'tick_volume' in df.columns else 1.0
+        sig_vol = b1.get('tick_volume', avg_vol)
+        is_vol_confirmed = (sig_vol >= avg_vol * 0.95)
+
         # --- MODEL 1: FAST ENTRY (Wick Rejection >= 35% in S/R Zone) ---
         # Fast Buy: Tests Support Zone + Lower Wick >= 35% + Closes Bullish + NOT in steep downtrend
-        if b1['low'] <= (swing_low + 0.60) and (lower_wick / candle_range) >= 0.35 and b1['close'] > b1['open']:
+        if b1['low'] <= (swing_low + 0.60) and (lower_wick / candle_range) >= 0.35 and b1['close'] > b1['open'] and is_vol_confirmed:
             if not is_downtrend or rsi < 35: # Only buy if aligned with trend or extremely oversold
+                self.last_captain_bar_time = m5_bar_time
                 return True, False, "Captain_SMC_Fast (Wick Rejection 35%)"
 
         # Fast Sell: Tests Resistance Zone + Upper Wick >= 35% + Closes Bearish + NOT in steep uptrend
-        if b1['high'] >= (swing_high - 0.60) and (upper_wick / candle_range) >= 0.35 and b1['close'] < b1['open']:
+        if b1['high'] >= (swing_high - 0.60) and (upper_wick / candle_range) >= 0.35 and b1['close'] < b1['open'] and is_vol_confirmed:
             if not is_uptrend or rsi > 65: # Only sell if aligned with trend or extremely overbought
+                self.last_captain_bar_time = m5_bar_time
                 return False, True, "Captain_SMC_Fast (Wick Rejection 35%)"
 
         # --- MODEL 2: CONFIRMED ENTRY (CHoCH / Market Structure Break) ---
@@ -612,11 +623,13 @@ class GoldScalpingBot:
         recent_low = recent_15['low'].min()
 
         # Confirmed Buy: Bullish candle closes above recent swing high
-        if b1['close'] > recent_high and b1['close'] > b1['open'] and (is_uptrend or rsi > 52):
+        if b1['close'] > recent_high and b1['close'] > b1['open'] and (is_uptrend or rsi > 52) and is_vol_confirmed:
+            self.last_captain_bar_time = m5_bar_time
             return True, False, "Captain_SMC_Confirmed (Structure CHoCH Break)"
 
         # Confirmed Sell: Bearish candle closes below recent swing low
-        if b1['close'] < recent_low and b1['close'] < b1['open'] and (is_downtrend or rsi < 48):
+        if b1['close'] < recent_low and b1['close'] < b1['open'] and (is_downtrend or rsi < 48) and is_vol_confirmed:
+            self.last_captain_bar_time = m5_bar_time
             return False, True, "Captain_SMC_Confirmed (Structure CHoCH Break)"
 
         return False, False, ""
@@ -827,20 +840,31 @@ class GoldScalpingBot:
         candle_range = b1['high'] - b1['low']
         if candle_range <= 0.20: return False, False, ""
 
+        m5_bar_time = b1.get('time')
+        if getattr(self, 'last_flash_m5_bar_time', None) == m5_bar_time:
+            return False, False, ""
+
+        candle_body = abs(b1['close'] - b1['open'])
+        if (candle_body / candle_range) < 0.35:
+            return False, False, "" # Reject dojis and weak-body indecision candles
+
         upper_wick = b1['high'] - max(b1['open'], b1['close'])
         lower_wick = min(b1['open'], b1['close']) - b1['low']
         rsi4 = b1.get('rsi4', 50.0)
 
-        # Pure Trend-Following Mode: EMA 9 > EMA 21 Alignment + Pullback Tap
-        is_uptrend = (b1['ema9'] > b1['ema21']) and (b1['ema21'] >= b1.get('ema50', b1['ema21'] - 0.5))
-        is_downtrend = (b1['ema9'] < b1['ema21']) and (b1['ema21'] <= b1.get('ema50', b1['ema21'] + 0.5))
+        # Pure Trend-Following Mode: Strict EMA 9 > EMA 21 > EMA 50 Alignment + Pullback Tap
+        ema50_val = b1.get('ema50', 0)
+        is_uptrend = (b1['ema9'] > b1['ema21']) and (b1['ema21'] > ema50_val)
+        is_downtrend = (b1['ema9'] < b1['ema21']) and (b1['ema21'] < (ema50_val if ema50_val > 0 else 99999))
 
         if is_uptrend and b1['low'] <= (b1['ema9'] + 0.25) and b1['close'] > b1['ema9'] and b1['close'] > b1['open']:
-            if (lower_wick / candle_range) >= 0.25 and 40 <= rsi4 <= 75:
+            if (lower_wick / candle_range) >= 0.30 and 40 <= rsi4 <= 75:
+                self.last_flash_m5_bar_time = m5_bar_time
                 return True, False, "⚡ Flash Scalper: Pure Trend 9 EMA Pullback (BUY)"
 
         if is_downtrend and b1['high'] >= (b1['ema9'] - 0.25) and b1['close'] < b1['ema9'] and b1['close'] < b1['open']:
-            if (upper_wick / candle_range) >= 0.25 and 25 <= rsi4 <= 60:
+            if (upper_wick / candle_range) >= 0.30 and 25 <= rsi4 <= 60:
+                self.last_flash_m5_bar_time = m5_bar_time
                 return False, True, "⚡ Flash Scalper: Pure Trend 9 EMA Pullback (SELL)"
 
         return False, False, ""
@@ -1009,32 +1033,15 @@ class GoldScalpingBot:
             tp1 = ask + (sl_dist * 1.0)
             tp2 = ask + (sl_dist * 1.8)
 
-        total_lot = self.calculate_lot_size(sl_dist, lot_mult)
+        total_lot = self.calculate_lot_size(sl_dist, lot_mult=1.0)
 
-        # Flash Scalper: 1% Risk & Single Clean Position with Swing Buffer SL
-        if strat_id == "FLASH_MICRO_SCALPER" or is_flash_scalper:
-            flash_lot = self.calculate_lot_size(sl_dist, lot_mult=0.50) # 1.0% Risk (Half of 2.0% base)
-            res1 = self.connector.open_order(symbol, "BUY", flash_lot, sl, tp2, magic_p1, f"Gold_Flash")
-            t1 = res1.get("ticket", 0) if isinstance(res1, dict) else 0
-            self.benchmark_tracker.register_trade(t1, 0, symbol, "BUY", ask, sl, flash_lot, strat_id)
-            self.add_log(f"🟢 [BUY OPENED] [{strat_id}] {reason} | Swing Buffer Plan: TP {tp2:.2f} (+{sl_dist*1.45*100:.0f} pts 1:1.45) / SL {sl:.2f} (-{sl_dist*100:.0f} pts) | Lot: {flash_lot} (1.0% Risk)", "SUCCESS")
-        else:
-            # All other 6 setups: Standard 2-Position Split (50% TP1 1.0R / 50% TP2 1.8-2.0R)
-            if total_lot >= 0.02:
-                lot1 = max(0.01, round(total_lot * 0.50, 2))
-                lot2 = max(0.01, round(total_lot - lot1, 2))
-                res1 = self.connector.open_order(symbol, "BUY", lot1, sl, tp1, magic_p1, f"Gold_TP1_{reason[:6]}")
-                res2 = self.connector.open_order(symbol, "BUY", lot2, sl, tp2, magic_p2, f"Gold_TP2_{reason[:6]}")
-                t1 = res1.get("ticket", 0) if isinstance(res1, dict) else 0
-                t2 = res2.get("ticket", 0) if isinstance(res2, dict) else 0
-                self.benchmark_tracker.register_trade(t1, t2, symbol, "BUY", ask, sl, total_lot, strat_id)
-                self.add_log(f"🟢 [BUY OPENED] [{strat_id}] {reason} | 2-Position Plan: TP1 {tp1:.2f} (1.0R) / TP2 {tp2:.2f} (1.8R) | Total Lot: {total_lot} ({lot1}+{lot2})", "SUCCESS")
-            else:
-                lot1 = 0.01
-                res1 = self.connector.open_order(symbol, "BUY", lot1, sl, tp1, magic_p1, f"Gold_TP1_{reason[:6]}")
-                self.add_log(f"🟢 [BUY OPENED] [{strat_id}] {reason} | Single Plan: TP1 {tp1:.2f} | Lot: {lot1}", "SUCCESS")
+        # Single Position Plan across ALL Setups: 1.0% Risk for Clean Statistical Benchmarking
+        res1 = self.connector.open_order(symbol, "BUY", total_lot, sl, tp2, magic_p1, f"Gold_{strat_id[:8]}")
+        t1 = res1.get("ticket", 0) if isinstance(res1, dict) else 0
+        self.benchmark_tracker.register_trade(t1, 0, symbol, "BUY", ask, sl, total_lot, strat_id)
+        self.add_log(f"🟢 [BUY OPENED] [{strat_id}] {reason} | Single 1.0% Risk: TP {tp2:.2f} (+{abs(tp2-ask)*100:.0f} pts) / SL {sl:.2f} (-{sl_dist*100:.0f} pts) | Lot: {total_lot}", "SUCCESS")
         if self.notifier:
-            self.notifier.notify_order_opened("BUY", symbol, total_lot, ask, sl, tp1, reason)
+            self.notifier.notify_order_opened("BUY", symbol, total_lot, ask, sl, tp2, reason)
 
     def execute_sell(self, df: pd.DataFrame, symbol: str, reason: str, is_asian_scalp: bool = False, opt_params: Optional[dict] = None, is_m1_sniper: bool = False, is_flash_scalper: bool = False, strat_id: str = "CAPTAIN_SMC_DUAL"):
         bid = self.connector.get_market_info(symbol).get("bid", 0.0)
@@ -1112,32 +1119,15 @@ class GoldScalpingBot:
             tp1 = bid - (sl_dist * 1.0)
             tp2 = bid - (sl_dist * 1.8)
 
-        total_lot = self.calculate_lot_size(sl_dist, lot_mult)
+        total_lot = self.calculate_lot_size(sl_dist, lot_mult=1.0)
 
-        # Flash Scalper: 1% Risk & Single Clean Position with Swing Buffer SL
-        if strat_id == "FLASH_MICRO_SCALPER" or is_flash_scalper:
-            flash_lot = self.calculate_lot_size(sl_dist, lot_mult=0.50) # 1.0% Risk (Half of 2.0% base)
-            res1 = self.connector.open_order(symbol, "SELL", flash_lot, sl, tp2, magic_p1, f"Gold_Flash")
-            t1 = res1.get("ticket", 0) if isinstance(res1, dict) else 0
-            self.benchmark_tracker.register_trade(t1, 0, symbol, "SELL", bid, sl, flash_lot, strat_id)
-            self.add_log(f"🔴 [SELL OPENED] [{strat_id}] {reason} | Swing Buffer Plan: TP {tp2:.2f} (+{sl_dist*1.45*100:.0f} pts 1:1.45) / SL {sl:.2f} (-{sl_dist*100:.0f} pts) | Lot: {flash_lot} (1.0% Risk)", "SUCCESS")
-        else:
-            # All other 6 setups: Standard 2-Position Split (50% TP1 1.0R / 50% TP2 1.8-2.0R)
-            if total_lot >= 0.02:
-                lot1 = max(0.01, round(total_lot * 0.50, 2))
-                lot2 = max(0.01, round(total_lot - lot1, 2))
-                res1 = self.connector.open_order(symbol, "SELL", lot1, sl, tp1, magic_p1, f"Gold_TP1_{reason[:6]}")
-                res2 = self.connector.open_order(symbol, "SELL", lot2, sl, tp2, magic_p2, f"Gold_TP2_{reason[:6]}")
-                t1 = res1.get("ticket", 0) if isinstance(res1, dict) else 0
-                t2 = res2.get("ticket", 0) if isinstance(res2, dict) else 0
-                self.benchmark_tracker.register_trade(t1, t2, symbol, "SELL", bid, sl, total_lot, strat_id)
-                self.add_log(f"🔴 [SELL OPENED] [{strat_id}] {reason} | 2-Position Plan: TP1 {tp1:.2f} (1.0R) / TP2 {tp2:.2f} (1.8R) | Total Lot: {total_lot} ({lot1}+{lot2})", "SUCCESS")
-            else:
-                lot1 = 0.01
-                res1 = self.connector.open_order(symbol, "SELL", lot1, sl, tp1, magic_p1, f"Gold_TP1_{reason[:6]}")
-                self.add_log(f"🔴 [SELL OPENED] [{strat_id}] {reason} | Single Plan: TP1 {tp1:.2f} | Lot: {lot1}", "SUCCESS")
+        # Single Position Plan across ALL Setups: 1.0% Risk for Clean Statistical Benchmarking
+        res1 = self.connector.open_order(symbol, "SELL", total_lot, sl, tp2, magic_p1, f"Gold_{strat_id[:8]}")
+        t1 = res1.get("ticket", 0) if isinstance(res1, dict) else 0
+        self.benchmark_tracker.register_trade(t1, 0, symbol, "SELL", bid, sl, total_lot, strat_id)
+        self.add_log(f"🔴 [SELL OPENED] [{strat_id}] {reason} | Single 1.0% Risk: TP {tp2:.2f} (+{abs(bid-tp2)*100:.0f} pts) / SL {sl:.2f} (-{sl_dist*100:.0f} pts) | Lot: {total_lot}", "SUCCESS")
         if self.notifier:
-            self.notifier.notify_order_opened("SELL", symbol, total_lot, bid, sl, tp1, reason)
+            self.notifier.notify_order_opened("SELL", symbol, total_lot, bid, sl, tp2, reason)
 
     def calculate_lot_size(self, sl_dist: float, lot_mult: float = 1.0) -> float:
         risk_pct = self.config.get("strategy", {}).get("risk_percent", 1.0)
@@ -1172,7 +1162,23 @@ class GoldScalpingBot:
             pos2_list = [p for p in positions if p.get('magic') == pos2_magic]
             pos3_list = [p for p in positions if p.get('magic') == pos3_magic]
 
-            # Stage 1: When Pos 1 (TP1) is closed -> Move Pos 2 & Pos 3 to Break-Even (+0.30)
+            # Break-Even Lock for Single Position: When price reaches 1.0R in profit, move SL to Break-Even (+0.30 USD)
+            for p1 in pos1_list:
+                open_p = p1.get('price_open', 0.0)
+                sl = p1.get('sl', 0.0)
+                ptype = p1.get('type')
+                if sl > 0:
+                    initial_sl_dist = abs(open_p - sl)
+                    if ptype == "BUY" and sl < open_p and bid >= (open_p + initial_sl_dist):
+                        new_sl = open_p + 0.30
+                        self.connector.modify_position(p1.get('ticket'), new_sl, p1.get('tp'))
+                        self.add_log(f"🛡️ [BREAK-EVEN LOCKED] [{strat_id}] Ticket #{p1.get('ticket')} reached 1.0R | SL locked to {new_sl:.2f}", "SUCCESS")
+                    elif ptype == "SELL" and sl > open_p and ask <= (open_p - initial_sl_dist):
+                        new_sl = open_p - 0.30
+                        self.connector.modify_position(p1.get('ticket'), new_sl, p1.get('tp'))
+                        self.add_log(f"🛡️ [BREAK-EVEN LOCKED] [{strat_id}] Ticket #{p1.get('ticket')} reached 1.0R | SL locked to {new_sl:.2f}", "SUCCESS")
+
+            # Stage 1: Legacy multi-order support (When Pos 1 closes, move Pos 2 & 3 to BE)
             if len(pos1_list) == 0 and (len(pos2_list) > 0 or len(pos3_list) > 0):
                 for p in (pos2_list + pos3_list):
                     open_p = p.get('price_open', 0.0)

@@ -66,15 +66,15 @@
         "swing_bars": 12,
         "pullback_ema_buffer_points": 100.0,
         "lot_mode": "RISK_PERCENT",
-        "risk_percent": 2.0,
+        "risk_percent": 1.0,
         "fixed_lot_size": 0.05,
         "sl_type": "SWING_HIGH_LOW",
         "sl_swing_bars": 7,
         "sl_buffer_points": 50.0,
         "min_sl_points": 150.0,
         "max_sl_points": 1200.0,
-        "risk_reward_ratio": 1.0,
-        "enable_multi_order": true,
+        "risk_reward_ratio": 1.5,
+        "enable_multi_order": false,
         "pos1_lot_ratio": 0.5,
         "pos2_lot_ratio": 0.5,
         "move_be_on_tp1": true,
@@ -120,7 +120,7 @@
     "swing_bars": 12,
     "pullback_ema_buffer_points": 100.0,
     "lot_mode": "RISK_PERCENT",
-    "risk_percent": 2.0,
+    "risk_percent": 1.0,
     "fixed_lot_size": 0.05,
     "sl_type": "SWING_HIGH_LOW",
     "sl_swing_bars": 7,
@@ -128,7 +128,7 @@
     "min_sl_points": 150.0,
     "max_sl_points": 1200.0,
     "risk_reward_ratio": 1.5,
-    "enable_multi_order": true,
+    "enable_multi_order": false,
     "pos1_lot_ratio": 0.5,
     "pos2_lot_ratio": 0.5,
     "move_be_on_tp1": true,
@@ -152,7 +152,7 @@
     "pyramid_lot_ratio": 0.6
   },
   "server": {
-    "host": "127.0.0.1",
+    "host": "0.0.0.0",
     "port": 8000
   }
 }
