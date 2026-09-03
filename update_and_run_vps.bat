@@ -19,6 +19,7 @@ if %ERRORLEVEL% NEQ 0 (
 echo [SUCCESS] Codebase updated to latest version successfully!
 echo.
 
-echo [2/2] Launching WebApp & Bot Engine...
+echo [2/2] Freeing port 8000 and launching WebApp & Bot Engine...
+for /f "tokens=5" %%a in ('netstat -aon ^| findstr :8000') do taskkill /F /PID %%a >nul 2>&1
 call run_webapp.bat
 
