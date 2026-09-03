@@ -158,9 +158,12 @@ async def get_app_config(_: bool = Depends(verify_token)):
     return app_config
 
 @app.get("/api/status")
-async def get_system_status(_: bool = Depends(verify_token)):
+async def get_system_status():
     """Fetch complete live state for currently selected account + portfolio summary."""
-    return account_manager.get_selected_account_state()
+    state = account_manager.get_selected_account_state()
+    if isinstance(state, dict):
+        state["status"] = True
+    return state
 
 @app.get("/api/accounts")
 async def list_accounts(_: bool = Depends(verify_token)):

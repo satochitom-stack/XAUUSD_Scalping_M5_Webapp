@@ -172,8 +172,10 @@ class RealTradeAnalyticsManager:
             return journal_trades
 
         try:
-            if not mt5.terminal_info():
-                mt5.initialize()
+            manual_mt5_path = r"C:\Users\Windows11\AppData\Local\Programs\MetaTrader 5 EXNESS 2\terminal64.exe"
+            if not mt5.terminal_info() or getattr(mt5.account_info(), 'login', 0) != 257508244:
+                mt5.shutdown()
+                mt5.initialize(path=manual_mt5_path)
 
             acc_info = mt5.account_info()
             active_login = acc_info.login if acc_info else 0
@@ -362,8 +364,10 @@ class RealTradeAnalyticsManager:
             return open_trades
 
         try:
-            if not mt5.terminal_info():
-                mt5.initialize()
+            manual_mt5_path = r"C:\Users\Windows11\AppData\Local\Programs\MetaTrader 5 EXNESS 2\terminal64.exe"
+            if not mt5.terminal_info() or getattr(mt5.account_info(), 'login', 0) != 257508244:
+                mt5.shutdown()
+                mt5.initialize(path=manual_mt5_path)
 
             positions = mt5.positions_get()
             if not positions:
