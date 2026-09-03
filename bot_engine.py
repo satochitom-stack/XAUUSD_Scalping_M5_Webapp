@@ -960,16 +960,13 @@ class GoldScalpingBot:
 
         total_lot = self.calculate_lot_size(sl_dist, lot_mult)
 
-        # Flash Scalper: Strict 2-Position Split (50% TP1 1.0R / 50% TP2 1.5R)
+        # Flash Scalper: 1% Risk & Single Clean Position (TP 120-150 pts 1:1.2-1.5)
         if strat_id == "FLASH_MICRO_SCALPER" or is_flash_scalper:
-            lot1 = max(0.01, round(total_lot * 0.50, 2))
-            lot2 = max(0.01, round(total_lot - lot1, 2))
-            res1 = self.connector.open_order(symbol, "BUY", lot1, sl, tp1, magic_p1, f"Gold_TP1_Flash")
-            res2 = self.connector.open_order(symbol, "BUY", lot2, sl, tp2, magic_p2, f"Gold_TP2_Flash")
+            flash_lot = self.calculate_lot_size(sl_dist, lot_mult=0.50) # 1.0% Risk (Half of 2.0% base)
+            res1 = self.connector.open_order(symbol, "BUY", flash_lot, sl, tp2, magic_p1, f"Gold_Flash")
             t1 = res1.get("ticket", 0) if isinstance(res1, dict) else 0
-            t2 = res2.get("ticket", 0) if isinstance(res2, dict) else 0
-            self.benchmark_tracker.register_trade(t1, t2, symbol, "BUY", ask, sl, total_lot, strat_id)
-            self.add_log(f"🟢 [BUY OPENED] [{strat_id}] {reason} | 2-Stage Plan: TP1 {tp1:.2f} (100 pts 1:1.0) / TP2 {tp2:.2f} (150 pts 1:1.5) | Total Lot: {total_lot}", "SUCCESS")
+            self.benchmark_tracker.register_trade(t1, 0, symbol, "BUY", ask, sl, flash_lot, strat_id)
+            self.add_log(f"🟢 [BUY OPENED] [{strat_id}] {reason} | Single Micro-Trade Plan: TP {tp2:.2f} (+150 pts 1:1.5) / SL {sl:.2f} (-100 pts) | Lot: {flash_lot} (1.0% Risk)", "SUCCESS")
         elif total_lot >= 0.03:
             lot1 = max(0.01, round(total_lot * 0.35, 2))
             lot2 = max(0.01, round(total_lot * 0.35, 2))
@@ -1056,16 +1053,13 @@ class GoldScalpingBot:
 
         total_lot = self.calculate_lot_size(sl_dist, lot_mult)
 
-        # Flash Scalper: Strict 2-Position Split (50% TP1 1.0R / 50% TP2 1.5R)
+        # Flash Scalper: 1% Risk & Single Clean Position (TP 120-150 pts 1:1.2-1.5)
         if strat_id == "FLASH_MICRO_SCALPER" or is_flash_scalper:
-            lot1 = max(0.01, round(total_lot * 0.50, 2))
-            lot2 = max(0.01, round(total_lot - lot1, 2))
-            res1 = self.connector.open_order(symbol, "SELL", lot1, sl, tp1, magic_p1, f"Gold_TP1_Flash")
-            res2 = self.connector.open_order(symbol, "SELL", lot2, sl, tp2, magic_p2, f"Gold_TP2_Flash")
+            flash_lot = self.calculate_lot_size(sl_dist, lot_mult=0.50) # 1.0% Risk (Half of 2.0% base)
+            res1 = self.connector.open_order(symbol, "SELL", flash_lot, sl, tp2, magic_p1, f"Gold_Flash")
             t1 = res1.get("ticket", 0) if isinstance(res1, dict) else 0
-            t2 = res2.get("ticket", 0) if isinstance(res2, dict) else 0
-            self.benchmark_tracker.register_trade(t1, t2, symbol, "SELL", bid, sl, total_lot, strat_id)
-            self.add_log(f"🔴 [SELL OPENED] [{strat_id}] {reason} | 2-Stage Plan: TP1 {tp1:.2f} (100 pts 1:1.0) / TP2 {tp2:.2f} (150 pts 1:1.5) | Total Lot: {total_lot}", "SUCCESS")
+            self.benchmark_tracker.register_trade(t1, 0, symbol, "SELL", bid, sl, flash_lot, strat_id)
+            self.add_log(f"🔴 [SELL OPENED] [{strat_id}] {reason} | Single Micro-Trade Plan: TP {tp2:.2f} (+150 pts 1:1.5) / SL {sl:.2f} (-100 pts) | Lot: {flash_lot} (1.0% Risk)", "SUCCESS")
         elif total_lot >= 0.03:
             lot1 = max(0.01, round(total_lot * 0.35, 2))
             lot2 = max(0.01, round(total_lot * 0.35, 2))
