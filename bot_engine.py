@@ -238,9 +238,9 @@ class GoldScalpingBot:
             if any(p.get('magic') in s_magics for p in bot_open_positions):
                 active_setup_count += 1
 
-        max_concurrent_setups = strat_cfg.get("max_concurrent_setups", 3)
-        if active_setup_count >= max_concurrent_setups:
-            self.latest_trend = f"PORTFOLIO RISK CEILING ({active_setup_count}/{max_concurrent_setups} Setups Active)"
+        max_concurrent_setups = strat_cfg.get("max_concurrent_setups", 1) # STRICT: Maximum 1 active setup at a time!
+        if active_setup_count >= max_concurrent_setups or len(bot_open_positions) >= 2:
+            self.latest_trend = f"PORTFOLIO RISK CEILING ({active_setup_count}/{max_concurrent_setups} Setup Active - Protecting Capital)"
             return
 
         # 3. Check Spread Filter (Standard point scaling: 1 pt = $0.01)
@@ -330,8 +330,8 @@ class GoldScalpingBot:
                 if b_sig or s_sig:
                     self._process_single_setup_signal(df, symbol, spread, "M1_SNIPER_CONFIRMATION", "BUY" if b_sig else "SELL", reason, is_m1_sniper=True)
 
-        # --- SETUP 4: Flash Micro-Scalper (9 EMA Quick-Bite) ---
-        if strat_mode in ["ALL", "FLASH_MICRO_SCALPER"]:
+        # --- SETUP 4: Flash Micro-Scalper (Disabled in ALL mode to stop 9 EMA noise stop-outs) ---
+        if strat_mode == "FLASH_MICRO_SCALPER":
             if not self.has_open_positions_for_setup(symbol, "FLASH_MICRO_SCALPER"):
                 b_sig, s_sig, reason = self._check_flash_micro_scalper(df)
                 if b_sig or s_sig:
