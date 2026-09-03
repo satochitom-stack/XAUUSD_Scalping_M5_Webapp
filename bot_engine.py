@@ -796,24 +796,17 @@ class GoldScalpingBot:
         lower_wick = min(b1['open'], b1['close']) - b1['low']
         rsi4 = b1.get('rsi4', 50.0)
 
-        # Mode 1: Micro-Trend Pullback Tap (Follow Trend Wave)
-        is_micro_uptrend = b1['ema9'] > b1['ema21']
-        is_micro_downtrend = b1['ema9'] < b1['ema21']
+        # Pure Trend-Following Mode: EMA 9 > EMA 21 Alignment + Pullback Tap
+        is_uptrend = (b1['ema9'] > b1['ema21']) and (b1['ema21'] >= b1.get('ema50', b1['ema21'] - 0.5))
+        is_downtrend = (b1['ema9'] < b1['ema21']) and (b1['ema21'] <= b1.get('ema50', b1['ema21'] + 0.5))
 
-        if is_micro_uptrend and b1['low'] <= (b1['ema9'] + 0.25) and b1['close'] > b1['ema9'] and b1['close'] > b1['open']:
-            if (lower_wick / candle_range) >= 0.22 and rsi4 >= 30:
-                return True, False, "⚡ Flash Scalper: Micro-Trend 9 EMA Pullback (BUY)"
+        if is_uptrend and b1['low'] <= (b1['ema9'] + 0.25) and b1['close'] > b1['ema9'] and b1['close'] > b1['open']:
+            if (lower_wick / candle_range) >= 0.25 and 40 <= rsi4 <= 75:
+                return True, False, "⚡ Flash Scalper: Pure Trend 9 EMA Pullback (BUY)"
 
-        if is_micro_downtrend and b1['high'] >= (b1['ema9'] - 0.25) and b1['close'] < b1['ema9'] and b1['close'] < b1['open']:
-            if (upper_wick / candle_range) >= 0.22 and rsi4 <= 70:
-                return False, True, "⚡ Flash Scalper: Micro-Trend 9 EMA Pullback (SELL)"
-
-        # Mode 2: Sideways Quick Exhaustion (Mean Reversion to EMA 9)
-        if (b1['ema9'] - b1['low']) >= 1.20 and rsi4 <= 20 and b1['close'] > b1['open']:
-            return True, False, "⚡ Flash Scalper: Sideways Exhaustion Quick-Bite (BUY)"
-
-        if (b1['high'] - b1['ema9']) >= 1.20 and rsi4 >= 80 and b1['close'] < b1['open']:
-            return False, True, "⚡ Flash Scalper: Sideways Exhaustion Quick-Bite (SELL)"
+        if is_downtrend and b1['high'] >= (b1['ema9'] - 0.25) and b1['close'] < b1['ema9'] and b1['close'] < b1['open']:
+            if (upper_wick / candle_range) >= 0.25 and 25 <= rsi4 <= 60:
+                return False, True, "⚡ Flash Scalper: Pure Trend 9 EMA Pullback (SELL)"
 
         return False, False, ""
 
