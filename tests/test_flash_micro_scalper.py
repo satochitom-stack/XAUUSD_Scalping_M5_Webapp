@@ -1,4 +1,4 @@
-﻿import unittest
+import unittest
 from unittest.mock import MagicMock
 import pandas as pd
 import numpy as np
@@ -58,12 +58,13 @@ class TestFlashMicroScalper(unittest.TestCase):
 
     def test_flash_scalper_trend_pullback_buy(self):
         df = self._create_mock_m5_df(2650.0)
-        # Set uptrend: ema9 > ema21
+        # Set uptrend: ema9 > ema21 > ema50
         df['ema9'] = 2652.0
         df['ema21'] = 2650.0
+        df['ema50'] = 2645.0
         df.loc[df.index[-2], 'low'] = 2651.8 # dipped to/near ema9
-        df.loc[df.index[-2], 'open'] = 2652.1
-        df.loc[df.index[-2], 'close'] = 2652.8 # closed green above ema9
+        df.loc[df.index[-2], 'open'] = 2652.2
+        df.loc[df.index[-2], 'close'] = 2652.9 # closed green above ema9
         df.loc[df.index[-2], 'high'] = 2653.0
         df.loc[df.index[-2], 'rsi4'] = 55.0
 
@@ -74,12 +75,13 @@ class TestFlashMicroScalper(unittest.TestCase):
 
     def test_flash_scalper_trend_pullback_sell(self):
         df = self._create_mock_m5_df(2650.0)
-        # Set downtrend: ema9 < ema21
+        # Set downtrend: ema9 < ema21 < ema50
         df['ema9'] = 2648.0
         df['ema21'] = 2650.0
+        df['ema50'] = 2655.0
         df.loc[df.index[-2], 'high'] = 2648.2 # poked to/near ema9
-        df.loc[df.index[-2], 'open'] = 2647.9
-        df.loc[df.index[-2], 'close'] = 2647.2 # closed red below ema9
+        df.loc[df.index[-2], 'open'] = 2647.8
+        df.loc[df.index[-2], 'close'] = 2647.1 # closed red below ema9
         df.loc[df.index[-2], 'low'] = 2647.0
         df.loc[df.index[-2], 'rsi4'] = 45.0
 
@@ -88,21 +90,21 @@ class TestFlashMicroScalper(unittest.TestCase):
         self.assertTrue(sell_sig)
         self.assertIn("Flash Scalper", reason)
 
-    def test_flash_scalper_sideways_exhaustion_buy(self):
+    def test_flash_scalper_sideways_exhaustion_is_disabled_for_safety(self):
         df = self._create_mock_m5_df(2650.0)
         df['ema9'] = 2650.0
         df['ema21'] = 2650.0
-        # Price stretched 1.50 below ema9 + oversold rsi4
+        df['ema50'] = 2650.0
+        # Sideways exhaustion is disabled to protect capital from trend bleeding
         df.loc[df.index[-2], 'low'] = 2648.2
         df.loc[df.index[-2], 'open'] = 2648.3
-        df.loc[df.index[-2], 'close'] = 2648.9 # green close
+        df.loc[df.index[-2], 'close'] = 2648.9
         df.loc[df.index[-2], 'high'] = 2649.0
         df.loc[df.index[-2], 'rsi4'] = 15.0
 
         buy_sig, sell_sig, reason = self.bot._check_flash_micro_scalper(df)
-        self.assertTrue(buy_sig)
+        self.assertFalse(buy_sig)
         self.assertFalse(sell_sig)
-        self.assertIn("Sideways Exhaustion", reason)
 
 
 if __name__ == '__main__':
