@@ -172,9 +172,16 @@ class RealTradeAnalyticsManager:
             return journal_trades
 
         try:
-            # Connect to existing active MT5 terminal without forcing incompatible local path
-            if not mt5.terminal_info():
-                mt5.initialize()
+            manual_mt5_path = r"C:\Users\Windows11\AppData\Local\Programs\MetaTrader 5 EXNESS 2\terminal64.exe"
+            is_manual_request = (mode and mode.lower() == "manual") or (user and ("tom" in user.lower() or "manual" in user.lower()))
+
+            if is_manual_request and os.path.exists(manual_mt5_path):
+                if not mt5.terminal_info() or getattr(mt5.account_info(), 'login', 0) != 257508244:
+                    mt5.shutdown()
+                    mt5.initialize(path=manual_mt5_path)
+            else:
+                if not mt5.terminal_info():
+                    mt5.initialize()
 
             acc_info = mt5.account_info()
             active_login = acc_info.login if acc_info else 0
@@ -363,8 +370,16 @@ class RealTradeAnalyticsManager:
             return open_trades
 
         try:
-            if not mt5.terminal_info():
-                mt5.initialize()
+            manual_mt5_path = r"C:\Users\Windows11\AppData\Local\Programs\MetaTrader 5 EXNESS 2\terminal64.exe"
+            is_manual_request = (user and ("tom" in user.lower() or "manual" in user.lower())) or True # default to manual if available
+
+            if is_manual_request and os.path.exists(manual_mt5_path):
+                if not mt5.terminal_info() or getattr(mt5.account_info(), 'login', 0) != 257508244:
+                    mt5.shutdown()
+                    mt5.initialize(path=manual_mt5_path)
+            else:
+                if not mt5.terminal_info():
+                    mt5.initialize()
 
             positions = mt5.positions_get()
             if not positions:
