@@ -32,6 +32,10 @@ STRATEGY_MAGIC_MAP = {
     "M1_SNIPER_CONFIRMATION": {"base": 555870, "pos1": 555871, "pos2": 555872, "pos3": 555873},
     "NEWS_MOMENTUM_EXPANSION": {"base": 555890, "pos1": 555891, "pos2": 555892, "pos3": 555893},
     "SMC_X_STO_H1": {"base": 555770, "pos1": 555771, "pos2": 555772, "pos3": 555773},
+    "RTM_M4_CONSERVATIVE": {"base": 777004, "pos1": 777014, "pos2": 777024, "pos3": 777034},
+    "RTM_M5_ALL_WEATHER": {"base": 777005, "pos1": 777015, "pos2": 777025, "pos3": 777035},
+    "RTM_M6_ELITE_GROWTH": {"base": 777006, "pos1": 777016, "pos2": 777026, "pos3": 777036},
+    "RTM_M7_MAX_ALPHA": {"base": 777007, "pos1": 777017, "pos2": 777027, "pos3": 777037},
     "EMA_RIBBON": {"base": 555860, "pos1": 555861, "pos2": 555862, "pos3": 555863},
     "BB_SQUEEZE": {"base": 555830, "pos1": 555831, "pos2": 555832, "pos3": 555833},
     "SECRET_EMA_PULLBACK": {"base": 555840, "pos1": 555841, "pos2": 555842, "pos3": 555843}
@@ -360,6 +364,12 @@ class GoldScalpingBot:
                     b_sig, s_sig, reason = self._check_smc_x_sto_h1(symbol)
                     if b_sig or s_sig:
                         self._process_single_setup_signal(df, symbol, spread, "SMC_X_STO_H1", "BUY" if b_sig else "SELL", reason)
+
+            # SETUP 8: RTM Quasimodo Multi-Model Institutional Engine (M15 + H1)
+            rtm_mode = strat_cfg.get("rtm_mode", "ALL")
+            rtm_variants = ["RTM_M4_CONSERVATIVE", "RTM_M5_ALL_WEATHER", "RTM_M6_ELITE_GROWTH", "RTM_M7_MAX_ALPHA"]
+            if strat_mode in ["ALL", "RTM"] or any(strat_mode == v for v in rtm_variants):
+                self._process_rtm_confluence_engine(df, symbol, spread, rtm_mode)
 
             # Secondary Support: EMA Ribbon + RSI Momentum Reset
             if strat_mode in ["ALL", "EMA_RIBBON"]:
@@ -848,6 +858,212 @@ class GoldScalpingBot:
 
         return False, False, ""
 
+    def _check_rtm_confluence_m15(self, symbol: str) -> dict:
+        """
+        👑 RTM Quasimodo Multi-Model Institutional Engine (M15 Sweet Spot + H1 Trend Filter):
+        1. Macro Filter: H1 EMA 50 vs EMA 200 trend alignment.
+        2. Market Structure: Detects Quasimodo reversal (HH -> LL -> Retest Left Shoulder for SELL,
+           or LL -> HH -> Retest Left Shoulder for BUY) using 5-bar fractal pivots.
+        3. Confluence Pillars:
+           - ICT Kill Zones (London 14-17 Thai, NY 19-23 Thai)
+           - Fibonacci OTE Golden Zone (61.8% - 78.6%)
+           - Price Action Rejection (Pinbar with wick >= 35% or Engulfing)
+        4. Quality Grading:
+           - Grade A+ (Score >= 85)
+           - Grade A  (Score 70 - 84)
+           - Grade B  (Score 50 - 69)
+        """
+        try:
+            df_m15 = self.connector.get_rates(symbol, "M15", 70)
+            df_h1 = self.connector.get_rates(symbol, "H1", 60)
+            if df_m15 is None or df_m15.empty or len(df_m15) < 35:
+                return {}
+            if df_h1 is None or df_h1.empty or len(df_h1) < 25:
+                return {}
+
+            m15_bar_time = df_m15['time'].iloc[-2]
+            # M15 Bar Lock: Max 1 evaluation per closed M15 candle
+            if getattr(self, 'last_rtm_m15_bar_time', None) == m15_bar_time:
+                return {}
+
+            # 1. H1 Trend
+            df_h1['ema50'] = df_h1['close'].ewm(span=50, adjust=False).mean()
+            df_h1['ema200'] = df_h1['close'].ewm(span=200, adjust=False).mean()
+            h1_trend = 1 if float(df_h1['ema50'].iloc[-2]) > float(df_h1['ema200'].iloc[-2]) else (-1 if float(df_h1['ema50'].iloc[-2]) < float(df_h1['ema200'].iloc[-2]) else 0)
+
+            # 2. M15 ATR 14
+            hl = df_m15['high'] - df_m15['low']
+            hc = (df_m15['high'] - df_m15['close'].shift()).abs()
+            lc = (df_m15['low'] - df_m15['close'].shift()).abs()
+            tr = pd.concat([hl, hc, lc], axis=1).max(axis=1)
+            atr14 = tr.rolling(window=14).mean()
+            curr_atr = float(atr14.iloc[-2]) if not pd.isna(atr14.iloc[-2]) else 3.5
+
+            # 3. M15 Pivots (window=5)
+            highs_s = df_m15['high'].iloc[:-1]
+            lows_s = df_m15['low'].iloc[:-1]
+            
+            p_highs = {}
+            p_lows = {}
+            for idx in range(5, len(highs_s) - 5):
+                val_h = float(highs_s.iloc[idx])
+                val_l = float(lows_s.iloc[idx])
+                if val_h == float(highs_s.iloc[idx-5:idx+6].max()):
+                    p_highs[idx] = val_h
+                if val_l == float(lows_s.iloc[idx-5:idx+6].min()):
+                    p_lows[idx] = val_l
+
+            s_high_vals = list(p_highs.values())
+            s_low_vals = list(p_lows.values())
+
+            if len(s_high_vals) < 2 or len(s_low_vals) < 2:
+                return {}
+
+            b1 = df_m15.iloc[-2] # Closed M15 candle
+            c = float(b1['close'])
+            h = float(b1['high'])
+            l = float(b1['low'])
+            o = float(b1['open'])
+            candle_range = max(h - l, 0.1)
+
+            # 4. ICT Kill Zones (Thai time UTC+7: London 14-17, NY 19-23)
+            now_hour = (datetime.utcnow().hour + 7) % 24
+            in_kz = (14 <= now_hour <= 17) or (19 <= now_hour <= 23)
+
+            # 5. Check Bearish Quasimodo (SELL)
+            # High1 (QML) -> Low1 -> High2 (HH - Head) -> Low2 (LL - Breakout) -> Retest QML
+            qml_high = s_high_vals[-2]
+            head_hh = s_high_vals[-1]
+            low1 = s_low_vals[-2]
+            break_ll = s_low_vals[-1]
+
+            if head_hh > qml_high and break_ll < low1:
+                # Check price retest at Left Shoulder QML
+                if abs(h - qml_high) <= (0.65 * curr_atr) or (c >= qml_high - (0.4 * curr_atr) and h >= qml_high):
+                    score = 40.0
+                    if in_kz: score += 20.0
+                    swing_range = head_hh - break_ll
+                    if swing_range > 0:
+                        fib_ratio = (qml_high - break_ll) / swing_range
+                        if 0.58 <= fib_ratio <= 0.82: score += 20.0
+                    
+                    has_rejection = (h - max(c, o)) >= (0.35 * candle_range) or (c < o and (o - c) >= (0.4 * candle_range))
+                    if has_rejection: score += 15.0
+                    if h1_trend == -1: score += 10.0
+
+                    if score >= 50.0:
+                        grade = "A+" if score >= 85.0 else ("A" if score >= 70.0 else "B")
+                        stop_loss = head_hh + (0.3 * curr_atr)
+                        self.last_rtm_m15_bar_time = m15_bar_time
+                        return {
+                            "action": "SELL",
+                            "score": score,
+                            "grade": grade,
+                            "sl": stop_loss,
+                            "m15_time": m15_bar_time,
+                            "reason": f"RTM Quasimodo Bearish QML [{grade}] ({score:.0f} pts)"
+                        }
+
+            # 6. Check Bullish Quasimodo (BUY)
+            # Low1 (QML) -> High1 -> Low2 (LL - Head) -> High2 (HH - Breakout) -> Retest QML
+            qml_low = s_low_vals[-2]
+            head_ll = s_low_vals[-1]
+            high1 = s_high_vals[-2]
+            break_hh = s_high_vals[-1]
+
+            if head_ll < qml_low and break_hh > high1:
+                if abs(l - qml_low) <= (0.65 * curr_atr) or (c <= qml_low + (0.4 * curr_atr) and l <= qml_low):
+                    score = 40.0
+                    if in_kz: score += 20.0
+                    swing_range = break_hh - head_ll
+                    if swing_range > 0:
+                        fib_ratio = (break_hh - qml_low) / swing_range
+                        if 0.58 <= fib_ratio <= 0.82: score += 20.0
+
+                    has_rejection = (min(c, o) - l) >= (0.35 * candle_range) or (c > o and (c - o) >= (0.4 * candle_range))
+                    if has_rejection: score += 15.0
+                    if h1_trend == 1: score += 10.0
+
+                    if score >= 50.0:
+                        grade = "A+" if score >= 85.0 else ("A" if score >= 70.0 else "B")
+                        stop_loss = head_ll - (0.3 * curr_atr)
+                        self.last_rtm_m15_bar_time = m15_bar_time
+                        return {
+                            "action": "BUY",
+                            "score": score,
+                            "grade": grade,
+                            "sl": stop_loss,
+                            "m15_time": m15_bar_time,
+                            "reason": f"RTM Quasimodo Bullish QML [{grade}] ({score:.0f} pts)"
+                        }
+
+        except Exception as e:
+            logger.error(f"Error checking RTM Confluence M15: {e}")
+
+        return {}
+
+    def _process_rtm_confluence_engine(self, df: pd.DataFrame, symbol: str, spread: float, rtm_mode: str = "ALL"):
+        """Dispatches RTM signals to the selected active mode or ALL modes concurrently."""
+        sig = self._check_rtm_confluence_m15(symbol)
+        if not sig:
+            return
+
+        action = sig["action"]
+        grade = sig["grade"]
+        score = sig["score"]
+        sl = sig["sl"]
+        reason = sig["reason"]
+
+        # Eligible models configuration
+        eligible_models = []
+        if rtm_mode in ["ALL", "MODEL_4"]:
+            if grade in ["A+", "A"]:
+                eligible_models.append({
+                    "strat_id": "RTM_M4_CONSERVATIVE",
+                    "lot_mult": 1.0,
+                    "tp_ratio": 3.0
+                })
+
+        if rtm_mode in ["ALL", "MODEL_5"]:
+            if grade in ["A+", "A", "B"]:
+                lot_m = 2.0 if grade == "A+" else (1.0 if grade == "A" else 0.5)
+                eligible_models.append({
+                    "strat_id": "RTM_M5_ALL_WEATHER",
+                    "lot_mult": lot_m,
+                    "tp_ratio": 3.0
+                })
+
+        if rtm_mode in ["ALL", "MODEL_6"]:
+            if grade in ["A+", "A"]:
+                lot_m = 2.0 if grade == "A+" else 1.0
+                eligible_models.append({
+                    "strat_id": "RTM_M6_ELITE_GROWTH",
+                    "lot_mult": lot_m,
+                    "tp_ratio": 3.0
+                })
+
+        if rtm_mode in ["ALL", "MODEL_7"]:
+            if grade in ["A+", "A"]:
+                lot_m = 2.0 if grade == "A+" else 1.0
+                eligible_models.append({
+                    "strat_id": "RTM_M7_MAX_ALPHA",
+                    "lot_mult": lot_m,
+                    "tp_ratio": 3.5
+                })
+
+        for m in eligible_models:
+            s_id = m["strat_id"]
+            if not self.has_open_positions_for_setup(symbol, s_id):
+                opt = {
+                    "custom_sl": sl,
+                    "tp_ratio": m["tp_ratio"],
+                    "lot_multiplier": m["lot_mult"]
+                }
+                if action == "BUY":
+                    self.execute_buy(df, symbol, f"{reason} | {s_id}", opt_params=opt, strat_id=s_id)
+                elif action == "SELL":
+                    self.execute_sell(df, symbol, f"{reason} | {s_id}", opt_params=opt, strat_id=s_id)
+
     def _check_m1_sniper_confirmation(self, symbol: str, df_m5: pd.DataFrame, strat_mode: str = "ALL") -> Tuple[bool, bool, str]:
         """
         ⚡ M1 Sniper Confirmation (Inspired by Golfpy Trade Multi-Timeframe Framework):
@@ -1160,6 +1376,25 @@ class GoldScalpingBot:
             if sl_dist > 9.00: sl = ask - 9.00; sl_dist = 9.00
             tp1 = ask + (sl_dist * 1.0)
             tp2 = ask + (sl_dist * 2.0)
+        elif strat_id.startswith("RTM_") or "RTM" in reason:
+            custom_sl = opt.get("custom_sl")
+            custom_tp = opt.get("custom_tp")
+            if custom_sl and custom_sl < ask:
+                sl = float(custom_sl)
+                sl_dist = ask - sl
+            else:
+                lowest_low = float(df['low'].iloc[-15:-1].min())
+                sl_buffer = 0.50 * sl_mult
+                sl = lowest_low - sl_buffer
+                sl_dist = ask - sl
+            if sl_dist < 3.50: sl = ask - 3.50; sl_dist = 3.50
+            if sl_dist > 8.50: sl = ask - 8.50; sl_dist = 8.50
+            target_rr = opt.get("tp_ratio", 3.0)
+            if custom_tp and custom_tp > ask:
+                tp2 = float(custom_tp)
+            else:
+                tp2 = ask + (sl_dist * target_rr)
+            tp1 = ask + (sl_dist * 1.0)
         else:
             # News Momentum / Breakout / Default
             lowest_low = df['low'].iloc[-10:-1].min()
@@ -1171,7 +1406,7 @@ class GoldScalpingBot:
             tp1 = ask + (sl_dist * 1.0)
             tp2 = ask + (sl_dist * 1.8)
 
-        total_lot = self.calculate_lot_size(sl_dist, lot_mult=1.0)
+        total_lot = self.calculate_lot_size(sl_dist, lot_mult=lot_mult)
 
         # Single Position Plan across ALL Setups: 1.0% Risk for Clean Statistical Benchmarking
         res1 = self.connector.open_order(symbol, "BUY", total_lot, sl, tp2, magic_p1, f"Gold_{strat_id[:8]}")
@@ -1279,6 +1514,25 @@ class GoldScalpingBot:
             if sl_dist > 9.00: sl = bid + 9.00; sl_dist = 9.00
             tp1 = bid - (sl_dist * 1.0)
             tp2 = bid - (sl_dist * 2.0)
+        elif strat_id.startswith("RTM_") or "RTM" in reason:
+            custom_sl = opt.get("custom_sl")
+            custom_tp = opt.get("custom_tp")
+            if custom_sl and custom_sl > bid:
+                sl = float(custom_sl)
+                sl_dist = sl - bid
+            else:
+                highest_high = float(df['high'].iloc[-15:-1].max())
+                sl_buffer = 0.50 * sl_mult
+                sl = highest_high + sl_buffer
+                sl_dist = sl - bid
+            if sl_dist < 3.50: sl = bid + 3.50; sl_dist = 3.50
+            if sl_dist > 8.50: sl = bid + 8.50; sl_dist = 8.50
+            target_rr = opt.get("tp_ratio", 3.0)
+            if custom_tp and custom_tp < bid:
+                tp2 = float(custom_tp)
+            else:
+                tp2 = bid - (sl_dist * target_rr)
+            tp1 = bid - (sl_dist * 1.0)
         else:
             # News Momentum / Breakout / Default
             highest_high = df['high'].iloc[-10:-1].max()
@@ -1290,7 +1544,7 @@ class GoldScalpingBot:
             tp1 = bid - (sl_dist * 1.0)
             tp2 = bid - (sl_dist * 1.8)
 
-        total_lot = self.calculate_lot_size(sl_dist, lot_mult=1.0)
+        total_lot = self.calculate_lot_size(sl_dist, lot_mult=lot_mult)
 
         # Single Position Plan across ALL Setups: 1.0% Risk for Clean Statistical Benchmarking
         res1 = self.connector.open_order(symbol, "SELL", total_lot, sl, tp2, magic_p1, f"Gold_{strat_id[:8]}")

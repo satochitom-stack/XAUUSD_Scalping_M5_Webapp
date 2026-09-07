@@ -96,7 +96,8 @@
         "max_pyramid_layers": 2,
         "pyramid_step_points": 350.0,
         "pyramid_lot_ratio": 0.6,
-        "strategy_mode": "ALL"
+        "strategy_mode": "ALL",
+        "rtm_mode": "ALL"
       }
     }
   ],
@@ -149,7 +150,8 @@
     "enable_trend_pyramiding": true,
     "max_pyramid_layers": 2,
     "pyramid_step_points": 350.0,
-    "pyramid_lot_ratio": 0.6
+    "pyramid_lot_ratio": 0.6,
+    "rtm_mode": "ALL"
   },
   "server": {
     "host": "0.0.0.0",

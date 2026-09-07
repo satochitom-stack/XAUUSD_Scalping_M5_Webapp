@@ -103,6 +103,46 @@ class RealTradeAnalyticsManager:
             "best_session": "London & NY (14:00 - 04:00)",
             "magic_numbers": [555770, 555771, 555772, 555773],
             "description": "ระบบ SMCxSTO กฎข้อเดียว: เทรนด์ EMA 50/200 + โซน Discount/Premium (ATR) + Order Block + Stochastic Oversold/Overbought"
+        },
+        "RTM_M4_CONSERVATIVE": {
+            "id": "RTM_M4_CONSERVATIVE",
+            "name": "RTM Quasimodo M4 (Conservative)",
+            "icon": "🛡️",
+            "category": "RTM_PRO",
+            "timeframe": "M15 (H1 Filter)",
+            "best_session": "London & NY (14:00 - 23:00)",
+            "magic_numbers": [777004, 777014, 777024, 777034],
+            "description": "RTM Quasimodo + ICT + Fib 61.8-78.6% (เกรด A/A+ เท่านั้น | ความเสี่ยงคงที่ 1.0% | TP 3.0R)"
+        },
+        "RTM_M5_ALL_WEATHER": {
+            "id": "RTM_M5_ALL_WEATHER",
+            "name": "RTM Quasimodo M5 (All-Weather)",
+            "icon": "🌊",
+            "category": "RTM_PRO",
+            "timeframe": "M15 (H1 Filter)",
+            "best_session": "London & NY (14:00 - 23:00)",
+            "magic_numbers": [777005, 777015, 777025, 777035],
+            "description": "RTM Quasimodo รองรับทุกสภาพตลาด (เกรด B=0.5%, A=1.0%, A+=2.0% | TP 3.0R)"
+        },
+        "RTM_M6_ELITE_GROWTH": {
+            "id": "RTM_M6_ELITE_GROWTH",
+            "name": "RTM Quasimodo M6 (Elite Growth)",
+            "icon": "👑",
+            "category": "RTM_PRO",
+            "timeframe": "M15 (H1 Filter)",
+            "best_session": "London & NY (14:00 - 23:00)",
+            "magic_numbers": [777006, 777016, 777026, 777036],
+            "description": "RTM Elite Confluence คัดเฉพาะไม้คุณภาพสูง (เกรด A=1.0%, A+=2.0% | TP 3.0R)"
+        },
+        "RTM_M7_MAX_ALPHA": {
+            "id": "RTM_M7_MAX_ALPHA",
+            "name": "RTM Quasimodo M7 (Max Alpha)",
+            "icon": "🎯",
+            "category": "RTM_PRO",
+            "timeframe": "M15 (H1 Filter)",
+            "best_session": "London & NY (14:00 - 23:00)",
+            "magic_numbers": [777007, 777017, 777027, 777037],
+            "description": "RTM Elite Confluence รันเทรนด์เป้าไกล (เกรด A=1.0%, A+=2.0% | TP 3.5R)"
         }
     }
 
@@ -133,10 +173,10 @@ class RealTradeAnalyticsManager:
                     is_bot_deal = False
                     comment_lower = (d.comment or "").lower()
                     
-                    bot_magics = [555888, 555889, 555890, 777888, 777889, 777890]
+                    bot_magics = [555888, 555889, 555890, 777888, 777889, 777890, 555770, 555771, 555772, 555773, 777004, 777005, 777006, 777007]
                     if d.magic in bot_magics or d.magic > 10000:
                         is_bot_deal = True
-                    elif any(k in comment_lower for k in ["gold_", "bot", "ea", "ema50", "smc", "asian", "squeeze", "ribbon"]):
+                    elif any(k in comment_lower for k in ["gold_", "bot", "ea", "ema50", "smc", "asian", "squeeze", "ribbon", "rtm", "devil"]):
                         is_bot_deal = True
 
                     if not is_bot_deal:
@@ -494,6 +534,18 @@ class RealTradeAnalyticsManager:
         # 6. SMCxSTO ระบบปีศาจ (H1 Devil System by SMC by Bossz)
         if "sto" in comment or "devil" in comment or "smcxsto" in comment or (magic >= 555770 and magic <= 555773):
             return "SMC_X_STO_H1"
+
+        # 7. RTM Quasimodo Multi-Model Setups (M4, M5, M6, M7)
+        if magic in [777004, 777014, 777024, 777034] or "rtm_m4" in comment or "m4_cons" in comment:
+            return "RTM_M4_CONSERVATIVE"
+        if magic in [777005, 777015, 777025, 777035] or "rtm_m5" in comment or "m5_allw" in comment:
+            return "RTM_M5_ALL_WEATHER"
+        if magic in [777006, 777016, 777026, 777036] or "rtm_m6" in comment or "m6_elite" in comment:
+            return "RTM_M6_ELITE_GROWTH"
+        if magic in [777007, 777017, 777027, 777037] or "rtm_m7" in comment or "m7_alpha" in comment:
+            return "RTM_M7_MAX_ALPHA"
+        if "rtm" in comment:
+            return "RTM_M6_ELITE_GROWTH"
 
         # Default classification based on deal time if opened by M5 EA
         if magic in [555888, 555889, 555890]:
