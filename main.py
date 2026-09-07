@@ -485,9 +485,42 @@ async def get_system_version():
         ]
     }
 
+@app.post("/api/system/reload")
+async def hot_reload_modules(auth: bool = Depends(verify_token)):
+    """Hot-reloads bot_engine and swaps running bot instances without restarting uvicorn."""
+    import importlib
+    try:
+        import bot_engine
+        importlib.reload(bot_engine)
+        import strategy_analytics
+        importlib.reload(strategy_analytics)
+
+        reloaded_accounts = []
+        for acc_id, acc in account_manager.accounts.items():
+            if hasattr(acc, "bot"):
+                was_running = acc.bot.is_running
+                old_logs = getattr(acc.bot, "logs", [])
+                new_bot = bot_engine.GoldScalpingBot(acc.connector, acc.bot_config)
+                new_bot.account_name = acc.name
+                new_bot.is_running = was_running
+                new_bot.logs = old_logs
+                new_bot.daily_max_loss_reached = False
+                new_bot.daily_target_reached = False
+                acc.bot = new_bot
+                reloaded_accounts.append(acc_id)
+
+        return {
+            "status": True,
+            "message": f"Hot-reloaded bot_engine and {len(reloaded_accounts)} account instances.",
+            "accounts": reloaded_accounts
+        }
+    except Exception as e:
+        logger.error(f"Hot reload error: {e}")
+        return JSONResponse(status_code=500, content={"status": False, "error": str(e)})
+
 @app.post("/api/system/update")
 async def trigger_git_update(auth: bool = Depends(verify_token)):
-    """Pulls the latest code from GitHub origin main directly on the server."""
+    """Pulls the latest code from GitHub origin main directly on the server and hot-reloads."""
     import subprocess
     try:
         res = subprocess.run(
@@ -497,11 +530,20 @@ async def trigger_git_update(auth: bool = Depends(verify_token)):
             text=True,
             timeout=30
         )
+        reload_info = "Not attempted"
+        if res.returncode == 0:
+            try:
+                reload_res = await hot_reload_modules(auth=True)
+                reload_info = reload_res
+            except Exception as re_err:
+                reload_info = f"Reload error: {re_err}"
+
         return {
             "status": res.returncode == 0,
             "stdout": res.stdout,
             "stderr": res.stderr,
-            "returncode": res.returncode
+            "returncode": res.returncode,
+            "reload": reload_info
         }
     except Exception as e:
         logger.error(f"Error running git pull: {e}")

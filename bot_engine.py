@@ -108,8 +108,12 @@ class GoldScalpingBot:
     def start(self):
         self.is_running = True
         self.bot_status = "RUNNING"
-        self.day_starting_equity = self.connector.get_account_info().get("equity", 10000.0)
+        acc = self.connector.get_account_info()
+        self.day_starting_equity = acc.get("balance", acc.get("equity", 10000.0))
         self.current_day = datetime.now().date()
+        self.daily_target_reached = False
+        self.daily_max_loss_reached = False
+        self.pause_until_time = 0
         self.add_log("🚀 Scalping Bot Engine Started successfully.", "SUCCESS")
 
     def stop(self):
@@ -125,28 +129,29 @@ class GoldScalpingBot:
         today = datetime.now().date()
         acc = self.connector.get_account_info()
         equity = acc.get("equity", 10000.0)
+        balance = acc.get("balance", 10000.0)
 
         if self.current_day != today or self.day_starting_equity == 0.0:
             self.current_day = today
-            self.day_starting_equity = equity
+            self.day_starting_equity = balance
             self.daily_target_reached = False
             self.daily_max_loss_reached = False
             self.pause_until_time = 0
-            self.add_log(f"📅 New trading day initialized. Base Equity: ${self.day_starting_equity:.2f}", "INFO")
+            self.add_log(f"📅 New trading day initialized. Base Capital: ${self.day_starting_equity:.2f}", "INFO")
 
-        # Deposit or Capital Adjustment Detection
-        if self.day_starting_equity > 0 and (equity > (self.day_starting_equity * 1.20) or equity < (self.day_starting_equity * 0.80)):
+        # Deposit or Capital Adjustment Detection (Based on actual BALANCE to ignore floating PnL swings)
+        if self.day_starting_equity > 0 and (balance > (self.day_starting_equity * 1.20) or balance < (self.day_starting_equity * 0.80)):
             old_base = self.day_starting_equity
-            self.day_starting_equity = equity
+            self.day_starting_equity = balance
             self.daily_target_reached = False
             self.daily_max_loss_reached = False
-            self.add_log(f"💳 Deposit/Balance adjustment detected (${old_base:.2f} ➔ ${equity:.2f}). Base Equity updated & ready to trade!", "INFO")
+            self.add_log(f"💳 Deposit/Balance adjustment detected (${old_base:.2f} ➔ ${balance:.2f}). Base Capital updated & ready to trade!", "INFO")
 
         # Daily Profit & Loss Safety Guard
         if self.day_starting_equity > 0:
             strat_cfg = self.config.get("strategy", {})
-            daily_target_pct = strat_cfg.get("daily_target_percent", 5.0) # Target +5%
-            daily_max_loss_pct = strat_cfg.get("daily_max_loss_percent", 3.0) # Max Loss -3%
+            daily_target_pct = strat_cfg.get("daily_target_percent", 10.0) # Target +10%
+            daily_max_loss_pct = strat_cfg.get("daily_max_loss_percent", 5.0) # Max Loss -5%
 
             pnl_pct = ((equity - self.day_starting_equity) / self.day_starting_equity) * 100.0
 
