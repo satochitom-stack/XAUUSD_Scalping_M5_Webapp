@@ -93,6 +93,67 @@ class RealTradeAnalyticsManager:
             "best_session": "High-Impact News Events (USD)",
             "magic_numbers": [555890, 555891, 555892, 555893, 666888, 666889, 666890],
             "description": "ดักจับแท่งเทียน Breakout ความผันผวนสูงช่วงข่าวใหญ่ (CPI, NFP, FOMC) พร้อม Trailing Stop กว้าง"
+        },
+        # --- 📁 เซตอัพเดิม (Legacy Setups - เก็บสถิติแยกต่างหาก) ---
+        "LEGACY_CAPTAIN_SMC": {
+            "id": "LEGACY_CAPTAIN_SMC",
+            "name": "Captain SMC Signal (เซตอัพเดิม)",
+            "icon": "⭐",
+            "category": "LEGACY_ARCHIVE",
+            "timeframe": "M5",
+            "best_session": "London & NY (เซตอัพเดิม)",
+            "magic_numbers": [555880, 555881, 555882, 555883],
+            "description": "Smart Money Concept M5 Dual Auto (ปิดการเทรด/เก็บสถิติแยก)"
+        },
+        "LEGACY_FLASH_SCALPER": {
+            "id": "LEGACY_FLASH_SCALPER",
+            "name": "Flash Micro-Scalper (เซตอัพเดิม)",
+            "icon": "⚡",
+            "category": "LEGACY_ARCHIVE",
+            "timeframe": "M5",
+            "best_session": "All Sessions (เซตอัพเดิม)",
+            "magic_numbers": [555800, 555801, 555802, 555803],
+            "description": "เกาะคลื่น 9 EMA สั้น (ปิดการเทรด/เก็บสถิติแยก)"
+        },
+        "LEGACY_EMA50_H1": {
+            "id": "LEGACY_EMA50_H1",
+            "name": "EMA 50 + 3 Candles (เซตอัพเดิม)",
+            "icon": "📈",
+            "category": "LEGACY_ARCHIVE",
+            "timeframe": "H1",
+            "best_session": "London & NY (เซตอัพเดิม)",
+            "magic_numbers": [555850, 555851, 555852, 555853],
+            "description": "เทรนด์ EMA 50 บน H1 (ปิดการเทรด/เก็บสถิติแยก)"
+        },
+        "LEGACY_EMA_RIBBON": {
+            "id": "LEGACY_EMA_RIBBON",
+            "name": "EMA Ribbon Momentum (เซตอัพเดิม)",
+            "icon": "🌊",
+            "category": "LEGACY_ARCHIVE",
+            "timeframe": "M5",
+            "best_session": "Trend Sessions (เซตอัพเดิม)",
+            "magic_numbers": [555860, 555861, 555862, 555863],
+            "description": "EMA Ribbon 8-21-55 + RSI Momentum (ปิดการเทรด/เก็บสถิติแยก)"
+        },
+        "LEGACY_TKT_SMC": {
+            "id": "LEGACY_TKT_SMC",
+            "name": "TKT SMC Gold Pro v8.0 (เซตอัพเดิม)",
+            "icon": "⚜️",
+            "category": "LEGACY_ARCHIVE",
+            "timeframe": "M15",
+            "best_session": "London & NY (เซตอัพเดิม)",
+            "magic_numbers": [555810, 555811, 555812, 555813],
+            "description": "SMC Confluence Score M15 (ปิดการเทรด/เก็บสถิติแยก)"
+        },
+        "LEGACY_M1_SNIPER": {
+            "id": "LEGACY_M1_SNIPER",
+            "name": "M1 Sniper Confirmation (เซตอัพเดิม)",
+            "icon": "🎯",
+            "category": "LEGACY_ARCHIVE",
+            "timeframe": "M1",
+            "best_session": "Kill Zones (เซตอัพเดิม)",
+            "magic_numbers": [555870, 555871, 555872, 555873],
+            "description": "ย่อยโซน M1 BOS เข้าคมกริบ (ปิดการเทรด/เก็บสถิติแยก)"
         }
     }
 
@@ -227,14 +288,21 @@ class RealTradeAnalyticsManager:
 
             bot_magics = [555888, 555889, 555890, 777888, 777889, 777890, 333888, 333889, 333890, 555770, 555771, 555772, 555773]
             strategy_name_map = {
-                "CAPTAIN_SMC_DUAL": "Captain SMC Signal V1.2 (Dual Auto)",
-                "TKT_SMC_GOLD_PRO_M15": "TKT SMC Gold Pro v8.0 (M15)",
+                # 🟢 4 เสาหลัก (Active Models)
                 "ASIAN_RANGE_SNIPER": "Asian Range Sniper: Mean Reversion",
-                "EMA50_3CANDLES_H1": "EMA 50 + 3 Confirmation Candles (H1 Pro)",
-                "NEWS_MOMENTUM_EXPANSION": "News Momentum Expansion",
-                "M1_SNIPER_CONFIRMATION": "M1 Sniper Confirmation (Refine Zone)",
-                "FLASH_MICRO_SCALPER": "Flash Micro-Scalper (9 EMA Quick-Bite)",
-                "SMC_X_STO_H1": "SMCxSTO ระบบปีศาจ (H1 Devil System)"
+                "RTM_M4_CONSERVATIVE": "RTM Quasimodo M4 (Conservative)",
+                "RTM_M5_ALL_WEATHER": "RTM Quasimodo M5 (All-Weather)",
+                "RTM_M6_ELITE_GROWTH": "RTM Quasimodo M6 (Elite Growth)",
+                "RTM_M7_MAX_ALPHA": "RTM Quasimodo M7 (Max Alpha)",
+                "SMC_X_STO_H1": "SMC x STO Devil (H1 Devil System)",
+                "NEWS_MOMENTUM_EXPANSION": "News Momentum Expansion (Spikes)",
+                # 📁 เซตอัพเดิม (Legacy Setups - เก็บสถิติแยกต่างหาก)
+                "LEGACY_CAPTAIN_SMC": "Captain SMC Signal (เซตอัพเดิม)",
+                "LEGACY_FLASH_SCALPER": "Flash Micro-Scalper (เซตอัพเดิม)",
+                "LEGACY_EMA50_H1": "EMA 50 + 3 Candles (เซตอัพเดิม)",
+                "LEGACY_EMA_RIBBON": "EMA Ribbon Momentum (เซตอัพเดิม)",
+                "LEGACY_TKT_SMC": "TKT SMC Gold Pro (เซตอัพเดิม)",
+                "LEGACY_M1_SNIPER": "M1 Sniper Confirmation (เซตอัพเดิม)"
             }
 
             for pid, p in positions.items():
@@ -453,7 +521,7 @@ class RealTradeAnalyticsManager:
         magic = deal.magic
         comment = (deal.comment or "").lower()
 
-        # 1. RTM Quasimodo Multi-Model Setups (M4, M5, M6, M7)
+        # 1. Active: RTM Quasimodo Multi-Model Setups (M4, M5, M6, M7)
         if magic in [777004, 777014, 777024, 777034] or "rtm_m4" in comment or "m4_cons" in comment:
             return "RTM_M4_CONSERVATIVE"
         if magic in [777005, 777015, 777025, 777035] or "rtm_m5" in comment or "m5_allw" in comment:
@@ -465,24 +533,44 @@ class RealTradeAnalyticsManager:
         if "rtm" in comment or "quasimodo" in comment:
             return "RTM_M6_ELITE_GROWTH"
 
-        # 2. SMCxSTO ระบบปีศาจ (H1 Devil System by SMC by Bossz)
-        if "sto" in comment or "devil" in comment or "smcxsto" in comment or (magic >= 555770 and magic <= 555773):
+        # 2. Active: SMCxSTO ระบบปีศาจ (H1 Devil System by SMC by Bossz)
+        if "sto" in comment or "devil" in comment or "smcxsto" in comment or (555770 <= magic <= 555773):
             return "SMC_X_STO_H1"
 
-        # 3. High-Impact News Momentum Expansion (News Spike)
-        if "news" in comment or "momentum" in comment or (magic >= 555890 and magic <= 555893) or magic in [666888, 666889, 666890]:
+        # 3. Active: High-Impact News Momentum Expansion (News Spike)
+        if "news" in comment or "goldm5_pro" in comment or (555889 <= magic <= 555893) or magic in [666888, 666889, 666890]:
             return "NEWS_MOMENTUM_EXPANSION"
 
-        # 4. Asian Range Sniper (00:00 - 07:00 Server / 07:00 - 14:00 Thai)
-        if "asian" in comment or "⛩" in comment or (magic >= 555820 and magic <= 555823):
+        # 4. Active: Asian Range Sniper
+        if "asian" in comment or "⛩" in comment or "gold_asian" in comment or (555820 <= magic <= 555823):
             return "ASIAN_RANGE_SNIPER"
 
-        # Default classification based on deal time if opened during Asian session
-        deal_hour = datetime.fromtimestamp(deal.time).hour
-        if 0 <= deal_hour < 7:
-            return "ASIAN_RANGE_SNIPER"
+        # --- 📁 เซตอัพเดิม (Legacy Setups - เก็บสถิติแยกต่างหาก 100%) ---
+        # 5. Legacy: Flash Micro-Scalper
+        if "flash" in comment or (555800 <= magic <= 555803):
+            return "LEGACY_FLASH_SCALPER"
 
-        return "RTM_M5_ALL_WEATHER"
+        # 6. Legacy: EMA 50 + 3 Confirmation Candles H1
+        if "ema50" in comment or (555850 <= magic <= 555853):
+            return "LEGACY_EMA50_H1"
+
+        # 7. Legacy: Captain SMC Signal V1.2
+        if "captain" in comment or (555880 <= magic <= 555883):
+            return "LEGACY_CAPTAIN_SMC"
+
+        # 8. Legacy: EMA Ribbon + RSI Momentum
+        if "ribb" in comment or (555860 <= magic <= 555863):
+            return "LEGACY_EMA_RIBBON"
+
+        # 9. Legacy: M1 Sniper Confirmation
+        if "m1_snipe" in comment or "refine" in comment or (555870 <= magic <= 555873):
+            return "LEGACY_M1_SNIPER"
+
+        # 10. Legacy: TKT SMC Gold Pro v8.0
+        if "tkt" in comment or (555810 <= magic <= 555813):
+            return "LEGACY_TKT_SMC"
+
+        return "LEGACY_CAPTAIN_SMC"
 
     def get_real_stats_summary(self) -> dict:
         """Calculate 100% verified real trading statistics for BOTS ONLY from MT5 deal history."""
