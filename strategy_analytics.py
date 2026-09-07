@@ -536,25 +536,6 @@ class RealTradeAnalyticsManager:
         total_wins = 0
         total_losses = 0
 
-        # Accumulate real bot deals only
-        for d in deals:
-            st_id = d["strategy_id"]
-            if st_id not in setups_data:
-                st_id = "RTM_M5_ALL_WEATHER"
-
-            st = setups_data[st_id]
-            profit = d["net_profit"]
-            st["total_trades"] += 1
-            st["total_profit_money"] = round(st["total_profit_money"] + profit, 2)
-            total_bot_profit = round(total_bot_profit + profit, 2)
-
-            if profit > 0:
-                st["wins"] += 1
-                total_wins += 1
-                st["gross_profit"] = round(st["gross_profit"] + profit, 2)
-                total_gross_profit = round(total_gross_profit + profit, 2)
-            elif profit < 0:
-                st["losses"] += 1
         # Fetch Account balance for realistic Drawdown % calculation
         acc_balance = 1000.0
         if MT5_AVAILABLE:
