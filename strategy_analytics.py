@@ -547,22 +547,73 @@ class RealTradeAnalyticsManager:
                 total_gross_profit = round(total_gross_profit + profit, 2)
             elif profit < 0:
                 st["losses"] += 1
+        # Fetch Account balance for realistic Drawdown % calculation
+        acc_balance = 1000.0
+        if MT5_AVAILABLE:
+            try:
+                acc = mt5.account_info()
+                if acc and getattr(acc, 'balance', 0) > 0:
+                    acc_balance = float(acc.balance)
+            except Exception:
+                pass
+
+        # Collect deals per strategy for individual Drawdown calculation
+        strat_deals = {k: [] for k in setups_data}
+
+        # Accumulate real bot deals only
+        for d in deals:
+            st_id = d["strategy_id"]
+            if st_id not in setups_data:
+                st_id = "RTM_M5_ALL_WEATHER"
+
+            st = setups_data[st_id]
+            profit = d["net_profit"]
+            st["total_trades"] += 1
+            st["total_profit_money"] = round(st["total_profit_money"] + profit, 2)
+            total_bot_profit = round(total_bot_profit + profit, 2)
+
+            if profit > 0:
+                st["wins"] += 1
+                total_wins += 1
+                st["gross_profit"] = round(st["gross_profit"] + profit, 2)
+                total_gross_profit = round(total_gross_profit + profit, 2)
+            elif profit < 0:
+                st["losses"] += 1
                 total_losses += 1
                 st["gross_loss"] = round(st["gross_loss"] + abs(profit), 2)
                 total_gross_loss = round(total_gross_loss + abs(profit), 2)
 
+            strat_deals[st_id].append(d)
             if len(st["recent_deals"]) < 10:
                 st["recent_deals"].append(d)
 
-        # Compute Winrate and Profit Factor for each strategy
-        for st in setups_data.values():
+        # Compute Winrate, Profit Factor, and Drawdown for each strategy
+        for k, st in setups_data.items():
             if st["total_trades"] > 0:
                 st["winrate_pct"] = round((st["wins"] / st["total_trades"]) * 100.0, 1)
                 st["profit_factor"] = round((st["gross_profit"] / (st["gross_loss"] + 1e-9)), 2) if st["gross_loss"] > 0 else (round(st["gross_profit"], 2) if st["gross_profit"] > 0 else 0.0)
                 st["status"] = f"บอทเทรดแล้ว ({st['total_trades']} ไม้)"
+
+                # Calculate real Peak-to-Trough Drawdown
+                s_deals = sorted(strat_deals[k], key=lambda x: x["time"])
+                s_cum = 0.0
+                s_peak = 0.0
+                s_max_dd_usd = 0.0
+                for deal_item in s_deals:
+                    s_cum += deal_item["net_profit"]
+                    if s_cum > s_peak:
+                        s_peak = s_cum
+                    dd_val = s_peak - s_cum
+                    if dd_val > s_max_dd_usd:
+                        s_max_dd_usd = dd_val
+
+                st["max_drawdown_usd"] = round(s_max_dd_usd, 2)
+                st["max_drawdown_pct"] = round((s_max_dd_usd / acc_balance) * 100.0, 2) if acc_balance > 0 else 0.0
             else:
                 st["winrate_pct"] = 0.0
                 st["profit_factor"] = 0.0
+                st["max_drawdown_usd"] = 0.0
+                st["max_drawdown_pct"] = 0.0
                 st["status"] = "🟢 บอทรันพร้อมเทรด (0 ไม้)"
 
         # Set active status tags based on session
@@ -587,13 +638,28 @@ class RealTradeAnalyticsManager:
         overall_winrate = round((total_wins / total_trades * 100.0), 1) if total_trades > 0 else 0.0
         bot_profit_factor = round((total_gross_profit / (total_gross_loss + 1e-9)), 2) if total_gross_loss > 0 else 0.0
 
+        # Calculate Overall Portfolio Max Drawdown from closed deals
+        sorted_all_deals = sorted(deals, key=lambda x: x["time"])
+        port_cum = 0.0
+        port_peak = 0.0
+        port_max_dd_usd = 0.0
+        for d in sorted_all_deals:
+            port_cum += d["net_profit"]
+            if port_cum > port_peak:
+                port_peak = port_cum
+            d_drop = port_peak - port_cum
+            if d_drop > port_max_dd_usd:
+                port_max_dd_usd = d_drop
+
+        port_max_dd_pct = round((port_max_dd_usd / acc_balance) * 100.0, 2) if (acc_balance > 0 and total_trades > 0) else 0.0
+
         # Sort setups
         setups_list = list(setups_data.values())
         setups_list.sort(key=lambda s: (s["total_trades"], s["winrate_pct"]), reverse=True)
         
         # Best setup from real bot trades
         traded_setups = [s for s in setups_list if s["total_trades"] > 0]
-        best_setup = max(traded_setups, key=lambda s: s["winrate_pct"]) if traded_setups else setups_list[0]
+        best_setup = max(traded_setups, key=lambda s: (s["winrate_pct"], s["total_profit_money"])) if traded_setups else None
 
         return {
             "overview": {
@@ -604,9 +670,11 @@ class RealTradeAnalyticsManager:
                 "overall_winrate_pct": overall_winrate,
                 "total_net_profit": total_bot_profit,
                 "profit_factor": bot_profit_factor,
-                "best_setup_name": best_setup["name"],
-                "best_setup_winrate": best_setup["winrate_pct"],
-                "best_setup_icon": best_setup["icon"]
+                "max_drawdown_pct": port_max_dd_pct,
+                "max_drawdown_usd": round(port_max_dd_usd, 2),
+                "best_setup_name": best_setup["name"] if best_setup else "รอประเดิมสถิติ (รอปิดไม้แรก)",
+                "best_setup_winrate": best_setup["winrate_pct"] if best_setup else 0.0,
+                "best_setup_icon": best_setup["icon"] if best_setup else "🎯"
             },
             "setups": setups_list,
             "real_deals_journal": deals # all real bot deals
