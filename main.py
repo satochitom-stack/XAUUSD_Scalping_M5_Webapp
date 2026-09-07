@@ -494,6 +494,7 @@ async def hot_reload_modules(auth: bool = Depends(verify_token)):
         importlib.reload(bot_engine)
         import strategy_analytics
         importlib.reload(strategy_analytics)
+        account_manager.analytics = strategy_analytics.RealTradeAnalyticsManager()
 
         reloaded_accounts = []
         for acc_id, acc in account_manager.accounts.items():

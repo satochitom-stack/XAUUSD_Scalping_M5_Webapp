@@ -652,7 +652,7 @@ class RealTradeAnalyticsManager:
                 st["winrate_pct"] = 0.0
                 st["profit_factor"] = 0.0
                 st["avg_realized_rr"] = 0.0
-                st["target_rr"] = 3.5 if k == "RTM_M7_MAX_ALPHA" else (2.0 if k == "SMC_X_STO_H1" else (1.8 if k == "NEWS_MOMENTUM_EXPANSION" else 3.0))
+                st["target_rr"] = 3.5 if k == "RTM_M7_MAX_ALPHA" else (2.0 if ("RTM_" in k or k == "SMC_X_STO_H1") else (1.8 if k in ["NEWS_MOMENTUM_EXPANSION", "ASIAN_RANGE_SNIPER"] else 2.0))
                 st["exit_stages"] = {"full_tp": 0, "trailing_lock": 0, "mid_profit": 0, "break_even": 0, "full_sl": 0, "early_cut": 0}
                 st["max_drawdown_usd"] = 0.0
                 st["max_drawdown_pct"] = 0.0
@@ -668,7 +668,7 @@ class RealTradeAnalyticsManager:
         if "RTM_M5_ALL_WEATHER" in setups_data:
             setups_data["RTM_M5_ALL_WEATHER"]["status"] = "🟢 ACTIVE (All-Weather Grade B/A/A+)"
         if "RTM_M6_ELITE_GROWTH" in setups_data:
-            setups_data["RTM_M6_ELITE_GROWTH"]["status"] = "🟢 ACTIVE (Elite Growth 3.0R)"
+            setups_data["RTM_M6_ELITE_GROWTH"]["status"] = "🟢 ACTIVE (Elite Growth 2.0R)"
         if "RTM_M7_MAX_ALPHA" in setups_data:
             setups_data["RTM_M7_MAX_ALPHA"]["status"] = "🟢 ACTIVE (Max Alpha 3.5R)"
         if "SMC_X_STO_H1" in setups_data:
