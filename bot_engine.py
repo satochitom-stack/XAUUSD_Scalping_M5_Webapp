@@ -232,9 +232,17 @@ class GoldScalpingBot:
             if any(p.get('magic') in s_magics for p in bot_open_positions):
                 active_setup_count += 1
 
-        max_concurrent_setups = strat_cfg.get("max_concurrent_setups", 3)
+        # Allow each setup to execute concurrently if its conditions are met (up to all 7 active models)
+        max_concurrent_setups = strat_cfg.get("max_concurrent_setups", len(STRATEGY_MAGIC_MAP))
         if active_setup_count >= max_concurrent_setups:
             self.latest_trend = f"PORTFOLIO RISK CEILING ({active_setup_count}/{max_concurrent_setups} Setups Active)"
+            return
+
+        # Account Margin Safeguard: Ensure margin level is healthy before opening additional setups
+        acc_info = self.connector.get_account_info()
+        margin_level = acc_info.get("margin_level", 0.0)
+        if margin_level > 0 and margin_level < 150.0:
+            self.latest_trend = f"LOW MARGIN GUARD (Margin Level {margin_level:.0f}% < 150%)"
             return
 
         # 3. Check Spread Filter (Standard point scaling: 1 pt = $0.01)
@@ -296,8 +304,8 @@ class GoldScalpingBot:
         # 5. INDEPENDENT MULTI-SETUP EVALUATION & EXECUTION PIPELINE
         # -------------------------------------------------------------
         
-        # --- PILLAR 1: High-Impact News Momentum Expansion (Event-Driven) ---
-        if strat_mode in ["ALL", "NEWS_MOMENTUM_EXPANSION"] and news_status.get("is_news_active"):
+        # --- PILLAR 1: High-Impact News Momentum Expansion (Event-Driven & Volatility Breakout) ---
+        if strat_mode in ["ALL", "NEWS_MOMENTUM_EXPANSION"]:
             if not self.has_open_positions_for_setup(symbol, "NEWS_MOMENTUM_EXPANSION"):
                 b_sig, s_sig, reason = self._check_news_momentum_expansion(df, news_status)
                 if b_sig or s_sig:
@@ -318,11 +326,10 @@ class GoldScalpingBot:
                     self._process_single_setup_signal(df, symbol, spread, "SMC_X_STO_H1", "BUY" if b_sig else "SELL", reason)
 
         # --- PILLAR 4: RTM Quasimodo Multi-Model Institutional Engine (M15 + H1 Filter) ---
-        if session != "ASIAN SESSION" or strat_mode in ["RTM", "RTM_M4_CONSERVATIVE", "RTM_M5_ALL_WEATHER", "RTM_M6_ELITE_GROWTH", "RTM_M7_MAX_ALPHA"]:
-            rtm_mode = strat_cfg.get("rtm_mode", "ALL")
-            rtm_variants = ["RTM_M4_CONSERVATIVE", "RTM_M5_ALL_WEATHER", "RTM_M6_ELITE_GROWTH", "RTM_M7_MAX_ALPHA"]
-            if strat_mode in ["ALL", "RTM"] or any(strat_mode == v for v in rtm_variants):
-                self._process_rtm_confluence_engine(df, symbol, spread, rtm_mode)
+        rtm_mode = strat_cfg.get("rtm_mode", "ALL")
+        rtm_variants = ["RTM_M4_CONSERVATIVE", "RTM_M5_ALL_WEATHER", "RTM_M6_ELITE_GROWTH", "RTM_M7_MAX_ALPHA"]
+        if strat_mode in ["ALL", "RTM"] or any(strat_mode == v for v in rtm_variants):
+            self._process_rtm_confluence_engine(df, symbol, spread, rtm_mode)
 
         # Update Trend Badge with News Radar
         if news_status.get("is_news_active"):
@@ -974,16 +981,6 @@ class GoldScalpingBot:
         if self.notifier:
             self.notifier.notify_order_opened("SELL", symbol, total_lot, bid, sl, tp2, reason)
 
-        total_lot = self.calculate_lot_size(sl_dist, lot_mult=lot_mult)
-
-        # Single Position Plan across ALL Setups: 1.0% Risk for Clean Statistical Benchmarking
-        res1 = self.connector.open_order(symbol, "SELL", total_lot, sl, tp2, magic_p1, f"Gold_{strat_id[:8]}")
-        t1 = res1.get("ticket", 0) if isinstance(res1, dict) else 0
-        self.benchmark_tracker.register_trade(t1, 0, symbol, "SELL", bid, sl, total_lot, strat_id)
-        self.add_log(f"🔴 [SELL OPENED] [{strat_id}] {reason} | Single 1.0% Risk: TP {tp2:.2f} (+{abs(bid-tp2)*100:.0f} pts) / SL {sl:.2f} (-{sl_dist*100:.0f} pts) | Lot: {total_lot}", "SUCCESS")
-        if self.notifier:
-            self.notifier.notify_order_opened("SELL", symbol, total_lot, bid, sl, tp2, reason)
-
     def calculate_lot_size(self, sl_dist: float, lot_mult: float = 1.0) -> float:
         risk_pct = self.config.get("strategy", {}).get("risk_percent", 1.0)
         acc = self.connector.get_account_info()
@@ -1073,31 +1070,12 @@ class GoldScalpingBot:
         bid = m_info.get('bid', 0.0)
         ask = m_info.get('ask', 0.0)
 
-        # Update Parallel Exit Benchmark Price Tracker
+        # Parallel Exit Benchmark Price Tracker
         if len(positions) > 0:
             rates = self.connector.get_rates(symbol, "M5", 2)
             if not rates.empty:
                 b1 = rates.iloc[-1]
                 self.benchmark_tracker.update_price(symbol, float(b1['high']), float(b1['low']), bid, ask)
-
-        if len(pos1_list) == 0 and len(pos2_list) > 0:
-            for p2 in pos2_list:
-                open_p = p2.get('price_open', 0.0)
-                sl = p2.get('sl', 0.0)
-                ptype = p2.get('type')
-
-                if ptype == "BUY" and sl < open_p and bid > (open_p + 0.30):
-                    new_sl = open_p + 0.30
-                    self.connector.modify_position(p2.get('ticket'), new_sl, p2.get('tp'))
-                    self.add_log(f"🛡️ [BREAK-EVEN LOCKED] Runner #{p2.get('ticket')} SL locked at {new_sl:.2f}", "SUCCESS")
-                    if self.notifier:
-                        self.notifier.notify_break_even(p2.get('ticket'), symbol, new_sl)
-                elif ptype == "SELL" and (sl > open_p or sl == 0) and ask < (open_p - 0.30):
-                    new_sl = open_p - 0.30
-                    self.connector.modify_position(p2.get('ticket'), new_sl, p2.get('tp'))
-                    self.add_log(f"🛡️ [BREAK-EVEN LOCKED] Runner #{p2.get('ticket')} SL locked at {new_sl:.2f}", "SUCCESS")
-                    if self.notifier:
-                        self.notifier.notify_break_even(p2.get('ticket'), symbol, new_sl)
 
     def check_and_execute_pyramiding(self, df: pd.DataFrame, symbol: str, ea_positions: list, regime_info: dict):
         """Execute risk-free trend pyramiding (scaling-in) when runner SL is already locked at Break-Even."""

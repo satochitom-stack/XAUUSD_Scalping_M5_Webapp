@@ -91,5 +91,49 @@ class TestRTMEngine(unittest.TestCase):
         self.bot._process_rtm_confluence_engine(dummy_df, "XAUUSDc", 20.0, rtm_mode="ALL")
         self.assertEqual(self.mock_connector.open_order.call_count, 4)
 
+    def test_concurrent_setups_isolation(self):
+        """Test that having an open position in Setup A does not block Setup B, C, or D."""
+        asian_pos1_magic = STRATEGY_MAGIC_MAP["ASIAN_RANGE_SNIPER"]["pos1"]
+        self.mock_connector.get_open_positions.return_value = [
+            {"ticket": 111, "magic": asian_pos1_magic, "symbol": "XAUUSDc", "type": "BUY"}
+        ]
+        
+        # ASIAN_RANGE_SNIPER has open position
+        self.assertTrue(self.bot.has_open_positions_for_setup("XAUUSDc", "ASIAN_RANGE_SNIPER"))
+        
+        # All other setups must NOT be blocked and report False
+        self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "SMC_X_STO_H1"))
+        self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "RTM_M4_CONSERVATIVE"))
+        self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "RTM_M5_ALL_WEATHER"))
+        self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "RTM_M6_ELITE_GROWTH"))
+        self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "RTM_M7_MAX_ALPHA"))
+        self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "NEWS_MOMENTUM_EXPANSION"))
+
+    def test_execute_sell_single_order(self):
+        """Test that execute_sell places exactly 1 order per call, avoiding duplicate orders."""
+        self.mock_connector.get_market_info.return_value = {"ask": 2700.0, "bid": 2699.8, "spread": 20.0}
+        self.mock_connector.get_account_info.return_value = {"balance": 10000.0, "equity": 10000.0}
+        self.mock_connector.open_order.return_value = {"ticket": 88888}
+        dummy_df = pd.DataFrame({'close': [2700.0]*20, 'low': [2695.0]*20, 'high': [2705.0]*20})
+
+        self.bot.execute_sell(dummy_df, "XAUUSDc", "Test Sell Signal", strat_id="SMC_X_STO_H1")
+        self.assertEqual(self.mock_connector.open_order.call_count, 1)
+
+    def test_max_concurrent_setups_allows_all_models(self):
+        """Test that max_concurrent_setups defaults to len(STRATEGY_MAGIC_MAP) (7) and permits concurrent positions."""
+        self.mock_connector.get_market_info.return_value = {"ask": 2700.0, "bid": 2699.8, "spread": 20.0}
+        self.mock_connector.get_account_info.return_value = {"balance": 10000.0, "equity": 10000.0, "margin_level": 500.0}
+        
+        # Simulate 3 active setups already running
+        self.mock_connector.get_open_positions.return_value = [
+            {"ticket": 1, "magic": STRATEGY_MAGIC_MAP["ASIAN_RANGE_SNIPER"]["pos1"], "symbol": "XAUUSDc", "type": "BUY"},
+            {"ticket": 2, "magic": STRATEGY_MAGIC_MAP["SMC_X_STO_H1"]["pos1"], "symbol": "XAUUSDc", "type": "BUY"},
+            {"ticket": 3, "magic": STRATEGY_MAGIC_MAP["RTM_M4_CONSERVATIVE"]["pos1"], "symbol": "XAUUSDc", "type": "BUY"}
+        ]
+        
+        # Verify 4th setup is NOT blocked by has_open_positions_for_setup
+        self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "RTM_M5_ALL_WEATHER"))
+        self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "NEWS_MOMENTUM_EXPANSION"))
+
 if __name__ == "__main__":
     unittest.main()

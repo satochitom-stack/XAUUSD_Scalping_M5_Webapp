@@ -1,37 +1,7 @@
-﻿{
+{
   "enabled": true,
-  "last_updated": "2026-09-01T11:25:00.000000",
+  "last_updated": "2026-09-07T15:00:00.000000",
   "strategy_stats": {
-    "TKT_SMC_GOLD_PRO_M15": {
-      "name": "TKT SMC Gold Pro v8.0 (M15)",
-      "trades": 0,
-      "wins": 0,
-      "losses": 0,
-      "winrate": 81.0,
-      "profit": 0.0,
-      "profit_factor": 1.8,
-      "streak": 0,
-      "weight": 1.15,
-      "base_rr": 1.5,
-      "current_dynamic_rr": 1.5,
-      "trailing_type": "CONFLUENCE_STAGE",
-      "active": true
-    },
-    "CAPTAIN_SMC_DUAL": {
-      "name": "Captain SMC Signal V1.2 (Dual Auto)",
-      "trades": 8,
-      "wins": 4,
-      "losses": 4,
-      "winrate": 50.0,
-      "profit": 7.1,
-      "profit_factor": 1.18,
-      "streak": 1,
-      "weight": 1.15,
-      "base_rr": 1.7,
-      "current_dynamic_rr": 1.7,
-      "trailing_type": "TIGHT_LOCK",
-      "active": true
-    },
     "ASIAN_RANGE_SNIPER": {
       "name": "Asian Range Sniper Reversion",
       "trades": 0,
@@ -47,8 +17,68 @@
       "trailing_type": "TIGHT_LOCK",
       "active": true
     },
-    "EMA50_3CANDLES_H1": {
-      "name": "EMA 50 + 3 Candles (H1 Pro)",
+    "RTM_M4_CONSERVATIVE": {
+      "name": "RTM Quasimodo M4 (Conservative)",
+      "trades": 0,
+      "wins": 0,
+      "losses": 0,
+      "winrate": 82.0,
+      "profit": 0.0,
+      "profit_factor": 2.0,
+      "streak": 0,
+      "weight": 1.15,
+      "base_rr": 3.0,
+      "current_dynamic_rr": 3.0,
+      "trailing_type": "CONFLUENCE_STAGE",
+      "active": true
+    },
+    "RTM_M5_ALL_WEATHER": {
+      "name": "RTM Quasimodo M5 (All-Weather)",
+      "trades": 0,
+      "wins": 0,
+      "losses": 0,
+      "winrate": 78.0,
+      "profit": 0.0,
+      "profit_factor": 1.9,
+      "streak": 0,
+      "weight": 1.15,
+      "base_rr": 3.0,
+      "current_dynamic_rr": 3.0,
+      "trailing_type": "CONFLUENCE_STAGE",
+      "active": true
+    },
+    "RTM_M6_ELITE_GROWTH": {
+      "name": "RTM Quasimodo M6 (Elite Growth)",
+      "trades": 0,
+      "wins": 0,
+      "losses": 0,
+      "winrate": 80.0,
+      "profit": 0.0,
+      "profit_factor": 2.1,
+      "streak": 0,
+      "weight": 1.15,
+      "base_rr": 3.0,
+      "current_dynamic_rr": 3.0,
+      "trailing_type": "CONFLUENCE_STAGE",
+      "active": true
+    },
+    "RTM_M7_MAX_ALPHA": {
+      "name": "RTM Quasimodo M7 (Max Alpha)",
+      "trades": 0,
+      "wins": 0,
+      "losses": 0,
+      "winrate": 79.0,
+      "profit": 0.0,
+      "profit_factor": 2.2,
+      "streak": 0,
+      "weight": 1.15,
+      "base_rr": 3.5,
+      "current_dynamic_rr": 3.5,
+      "trailing_type": "CONFLUENCE_STAGE",
+      "active": true
+    },
+    "SMC_X_STO_H1": {
+      "name": "SMCxSTO ระบบปีศาจ (H1 Devil System)",
       "trades": 0,
       "wins": 0,
       "losses": 0,
@@ -57,9 +87,9 @@
       "profit_factor": 1.8,
       "streak": 0,
       "weight": 1.15,
-      "base_rr": 1.75,
-      "current_dynamic_rr": 1.75,
-      "trailing_type": "EMA_TRAIL",
+      "base_rr": 2.0,
+      "current_dynamic_rr": 2.0,
+      "trailing_type": "CONFLUENCE_STAGE",
       "active": true
     },
     "NEWS_MOMENTUM_EXPANSION": {
@@ -78,70 +108,5 @@
       "active": true
     }
   },
-  "trade_history": [
-    {
-      "ticket": 3859671394,
-      "time": "2026-08-28 20:30:28",
-      "strategy": "CAPTAIN_SMC_DUAL",
-      "profit": 16.1,
-      "pips": 16.0,
-      "reason": "Captain SMC TP1 Hit"
-    },
-    {
-      "ticket": 3859814067,
-      "time": "2026-08-28 20:30:28",
-      "strategy": "CAPTAIN_SMC_DUAL",
-      "profit": 0.3,
-      "pips": 3.0,
-      "reason": "Captain SMC Runner Break-Even"
-    },
-    {
-      "ticket": 3867892477,
-      "time": "2026-08-31 16:45:46",
-      "strategy": "CAPTAIN_SMC_DUAL",
-      "profit": -14.8,
-      "pips": 0.0,
-      "reason": "[sl 4439.11700]"
-    },
-    {
-      "ticket": 3867892503,
-      "time": "2026-08-31 16:45:46",
-      "strategy": "CAPTAIN_SMC_DUAL",
-      "profit": -14.8,
-      "pips": 0.0,
-      "reason": "[sl 4439.11700]"
-    },
-    {
-      "ticket": 3868655405,
-      "time": "2026-08-31 16:45:46",
-      "strategy": "CAPTAIN_SMC_DUAL",
-      "profit": -5.1,
-      "pips": 0.0,
-      "reason": "[sl 4448.87100]"
-    },
-    {
-      "ticket": 3868655429,
-      "time": "2026-08-31 16:45:46",
-      "strategy": "CAPTAIN_SMC_DUAL",
-      "profit": -5.0,
-      "pips": 0.0,
-      "reason": "[sl 4448.871]"
-    },
-    {
-      "ticket": 3869671659,
-      "time": "2026-08-31 18:25:54",
-      "strategy": "CAPTAIN_SMC_DUAL",
-      "profit": 29.5,
-      "pips": 29.5,
-      "reason": "[tp 4460.17400]"
-    },
-    {
-      "ticket": 3869932651,
-      "time": "2026-08-31 19:09:08",
-      "strategy": "CAPTAIN_SMC_DUAL",
-      "profit": 0.9,
-      "pips": 1.0,
-      "reason": "[sl 4450.71600]"
-    }
-  ]
+  "trade_history": []
 }
