@@ -452,7 +452,59 @@ async def get_closed_trades_for_journal(
     """
     Fetch closed trades from MT5 to record in TradeLogView in FXLOG PRO.
     """
-    return await export_trades_for_journal(days=days, mode=mode, user=user)
+@app.get("/api/system/version")
+async def get_system_version():
+    """Returns latest git commit and strategy catalog info."""
+    import subprocess
+    try:
+        res = subprocess.run(
+            ["git", "log", "-1", "--oneline"],
+            cwd=BASE_DIR,
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        commit_str = res.stdout.strip() if res.returncode == 0 else "Unknown"
+    except Exception as e:
+        commit_str = f"Error: {e}"
+    
+    return {
+        "status": True,
+        "latest_commit": commit_str,
+        "strategies_count": 8,
+        "strategies": [
+            "SMC_X_STO_H1",
+            "CAPTAIN_SMC_DUAL",
+            "TKT_SMC_GOLD_PRO_M15",
+            "ASIAN_RANGE_SNIPER",
+            "EMA50_3CANDLES_H1",
+            "FLASH_MICRO_SCALPER",
+            "M1_SNIPER_CONFIRMATION",
+            "NEWS_MOMENTUM_EXPANSION"
+        ]
+    }
+
+@app.post("/api/system/update")
+async def trigger_git_update(auth: bool = Depends(verify_token)):
+    """Pulls the latest code from GitHub origin main directly on the server."""
+    import subprocess
+    try:
+        res = subprocess.run(
+            ["git", "pull", "origin", "main"],
+            cwd=BASE_DIR,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        return {
+            "status": res.returncode == 0,
+            "stdout": res.stdout,
+            "stderr": res.stderr,
+            "returncode": res.returncode
+        }
+    except Exception as e:
+        logger.error(f"Error running git pull: {e}")
+        return JSONResponse(status_code=500, content={"status": False, "error": str(e)})
 
 if __name__ == "__main__":
     import uvicorn
