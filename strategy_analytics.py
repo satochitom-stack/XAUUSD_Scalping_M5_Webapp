@@ -93,69 +93,22 @@ class RealTradeAnalyticsManager:
             "best_session": "High-Impact News Events (USD)",
             "magic_numbers": [555890, 555891, 555892, 555893, 666888, 666889, 666890],
             "description": "ดักจับแท่งเทียน Breakout ความผันผวนสูงช่วงข่าวใหญ่ (CPI, NFP, FOMC) พร้อม Trailing Stop กว้าง"
-        },
-        # --- 📁 เซตอัพเดิม (Legacy Setups - เก็บสถิติแยกต่างหาก) ---
-        "LEGACY_CAPTAIN_SMC": {
-            "id": "LEGACY_CAPTAIN_SMC",
-            "name": "Captain SMC Signal (เซตอัพเดิม)",
-            "icon": "⭐",
-            "category": "LEGACY_ARCHIVE",
-            "timeframe": "M5",
-            "best_session": "London & NY (เซตอัพเดิม)",
-            "magic_numbers": [555880, 555881, 555882, 555883],
-            "description": "Smart Money Concept M5 Dual Auto (ปิดการเทรด/เก็บสถิติแยก)"
-        },
-        "LEGACY_FLASH_SCALPER": {
-            "id": "LEGACY_FLASH_SCALPER",
-            "name": "Flash Micro-Scalper (เซตอัพเดิม)",
-            "icon": "⚡",
-            "category": "LEGACY_ARCHIVE",
-            "timeframe": "M5",
-            "best_session": "All Sessions (เซตอัพเดิม)",
-            "magic_numbers": [555800, 555801, 555802, 555803],
-            "description": "เกาะคลื่น 9 EMA สั้น (ปิดการเทรด/เก็บสถิติแยก)"
-        },
-        "LEGACY_EMA50_H1": {
-            "id": "LEGACY_EMA50_H1",
-            "name": "EMA 50 + 3 Candles (เซตอัพเดิม)",
-            "icon": "📈",
-            "category": "LEGACY_ARCHIVE",
-            "timeframe": "H1",
-            "best_session": "London & NY (เซตอัพเดิม)",
-            "magic_numbers": [555850, 555851, 555852, 555853],
-            "description": "เทรนด์ EMA 50 บน H1 (ปิดการเทรด/เก็บสถิติแยก)"
-        },
-        "LEGACY_EMA_RIBBON": {
-            "id": "LEGACY_EMA_RIBBON",
-            "name": "EMA Ribbon Momentum (เซตอัพเดิม)",
-            "icon": "🌊",
-            "category": "LEGACY_ARCHIVE",
-            "timeframe": "M5",
-            "best_session": "Trend Sessions (เซตอัพเดิม)",
-            "magic_numbers": [555860, 555861, 555862, 555863],
-            "description": "EMA Ribbon 8-21-55 + RSI Momentum (ปิดการเทรด/เก็บสถิติแยก)"
-        },
-        "LEGACY_TKT_SMC": {
-            "id": "LEGACY_TKT_SMC",
-            "name": "TKT SMC Gold Pro v8.0 (เซตอัพเดิม)",
-            "icon": "⚜️",
-            "category": "LEGACY_ARCHIVE",
-            "timeframe": "M15",
-            "best_session": "London & NY (เซตอัพเดิม)",
-            "magic_numbers": [555810, 555811, 555812, 555813],
-            "description": "SMC Confluence Score M15 (ปิดการเทรด/เก็บสถิติแยก)"
-        },
-        "LEGACY_M1_SNIPER": {
-            "id": "LEGACY_M1_SNIPER",
-            "name": "M1 Sniper Confirmation (เซตอัพเดิม)",
-            "icon": "🎯",
-            "category": "LEGACY_ARCHIVE",
-            "timeframe": "M1",
-            "best_session": "Kill Zones (เซตอัพเดิม)",
-            "magic_numbers": [555870, 555871, 555872, 555873],
-            "description": "ย่อยโซน M1 BOS เข้าคมกริบ (ปิดการเทรด/เก็บสถิติแยก)"
         }
     }
+
+    # Allowed Magic Numbers for Elite 4 Pillars (7 active models)
+    ELITE_MAGIC_NUMBERS = {
+        777004, 777014, 777024, 777034,  # RTM M4
+        777005, 777015, 777025, 777035,  # RTM M5
+        777006, 777016, 777026, 777036,  # RTM M6
+        777007, 777017, 777027, 777037,  # RTM M7
+        555770, 555771, 555772, 555773,  # SMC x STO H1
+        555820, 555821, 555822, 555823,  # Asian Range Sniper
+        555890, 555891, 555892, 555893, 666888, 666889, 666890  # News Momentum Expansion
+    }
+    
+    # System Epoch Cutoff: Start recording fresh from 2026-09-07 15:00:00 (Today's update)
+    EPOCH_START_TIME = datetime(2026, 9, 7, 15, 0, 0)
 
     def __init__(self, connector=None):
         self.connector = connector
@@ -179,22 +132,16 @@ class RealTradeAnalyticsManager:
                     if d.entry not in [1, 2, 3] or not d.symbol:
                         continue
 
-                    # FILTER: Only include deals created by Auto Bots
-                    # (Magic Number > 0 or comment containing Bot identifiers)
-                    is_bot_deal = False
-                    comment_lower = (d.comment or "").lower()
-                    
-                    bot_magics = [555888, 555889, 555890, 777888, 777889, 777890, 555770, 555771, 555772, 555773, 777004, 777005, 777006, 777007]
-                    if d.magic in bot_magics or d.magic > 10000:
-                        is_bot_deal = True
-                    elif any(k in comment_lower for k in ["gold_", "bot", "ea", "ema50", "smc", "asian", "squeeze", "ribbon", "rtm", "devil"]):
-                        is_bot_deal = True
-
-                    if not is_bot_deal:
-                        # Skip manual trade!
+                    # FILTER 1: Time Cutoff (Only deals from system epoch 2026-09-07 15:00:00 onwards)
+                    deal_dt = datetime.fromtimestamp(d.time)
+                    if deal_dt < self.EPOCH_START_TIME:
                         continue
 
-                    close_time = datetime.fromtimestamp(d.time).strftime("%Y-%m-%d %H:%M:%S")
+                    # FILTER 2: Only include deals created by Elite 4 Pillars Auto Bots
+                    if d.magic not in self.ELITE_MAGIC_NUMBERS:
+                        continue
+
+                    close_time = deal_dt.strftime("%Y-%m-%d %H:%M:%S")
                     strategy_id = self._classify_deal_strategy(d)
 
                     closed_deals.append({
@@ -286,23 +233,15 @@ class RealTradeAnalyticsManager:
                 elif d.entry in [1, 2, 3]:
                     positions[pid]["out"].append(d)
 
-            bot_magics = [555888, 555889, 555890, 777888, 777889, 777890, 333888, 333889, 333890, 555770, 555771, 555772, 555773]
             strategy_name_map = {
-                # 🟢 4 เสาหลัก (Active Models)
+                # 🟢 4 เสาหลัก (Active Models Only)
                 "ASIAN_RANGE_SNIPER": "Asian Range Sniper: Mean Reversion",
                 "RTM_M4_CONSERVATIVE": "RTM Quasimodo M4 (Conservative)",
                 "RTM_M5_ALL_WEATHER": "RTM Quasimodo M5 (All-Weather)",
                 "RTM_M6_ELITE_GROWTH": "RTM Quasimodo M6 (Elite Growth)",
                 "RTM_M7_MAX_ALPHA": "RTM Quasimodo M7 (Max Alpha)",
                 "SMC_X_STO_H1": "SMC x STO Devil (H1 Devil System)",
-                "NEWS_MOMENTUM_EXPANSION": "News Momentum Expansion (Spikes)",
-                # 📁 เซตอัพเดิม (Legacy Setups - เก็บสถิติแยกต่างหาก)
-                "LEGACY_CAPTAIN_SMC": "Captain SMC Signal (เซตอัพเดิม)",
-                "LEGACY_FLASH_SCALPER": "Flash Micro-Scalper (เซตอัพเดิม)",
-                "LEGACY_EMA50_H1": "EMA 50 + 3 Candles (เซตอัพเดิม)",
-                "LEGACY_EMA_RIBBON": "EMA Ribbon Momentum (เซตอัพเดิม)",
-                "LEGACY_TKT_SMC": "TKT SMC Gold Pro (เซตอัพเดิม)",
-                "LEGACY_M1_SNIPER": "M1 Sniper Confirmation (เซตอัพเดิม)"
+                "NEWS_MOMENTUM_EXPANSION": "News Momentum Expansion (Spikes)"
             }
 
             for pid, p in positions.items():
@@ -313,9 +252,9 @@ class RealTradeAnalyticsManager:
                 out_deals = p["out"]
                 last_out = out_deals[-1]
 
-                is_bot = (in_deal.magic in bot_magics) or (in_deal.magic > 10000)
+                is_bot = (in_deal.magic in self.ELITE_MAGIC_NUMBERS) or (in_deal.magic > 10000)
                 comment_lower = (in_deal.comment or "").lower() + " " + (last_out.comment or "").lower()
-                if any(k in comment_lower for k in ["gold_", "bot", "ea", "ema50", "smc", "asian", "squeeze", "ribbon", "flash"]):
+                if any(k in comment_lower for k in ["gold_", "bot", "ea", "ema50", "smc", "asian", "squeeze", "ribbon", "flash", "rtm", "devil"]):
                     is_bot = True
 
                 # Apply mode filter
@@ -323,6 +262,14 @@ class RealTradeAnalyticsManager:
                     continue
                 if resolved_mode == "bot" and not is_bot:
                     continue
+
+                # For Bot Trades: Enforce fresh epoch cutoff and elite magic numbers
+                close_dt = datetime.fromtimestamp(last_out.time)
+                if is_bot:
+                    if close_dt < self.EPOCH_START_TIME:
+                        continue
+                    if in_deal.magic not in self.ELITE_MAGIC_NUMBERS:
+                        continue
 
                 # Calculate financials
                 entry_price = round(float(in_deal.price), 3)
@@ -545,32 +492,7 @@ class RealTradeAnalyticsManager:
         if "asian" in comment or "⛩" in comment or "gold_asian" in comment or (555820 <= magic <= 555823):
             return "ASIAN_RANGE_SNIPER"
 
-        # --- 📁 เซตอัพเดิม (Legacy Setups - เก็บสถิติแยกต่างหาก 100%) ---
-        # 5. Legacy: Flash Micro-Scalper
-        if "flash" in comment or (555800 <= magic <= 555803):
-            return "LEGACY_FLASH_SCALPER"
-
-        # 6. Legacy: EMA 50 + 3 Confirmation Candles H1
-        if "ema50" in comment or (555850 <= magic <= 555853):
-            return "LEGACY_EMA50_H1"
-
-        # 7. Legacy: Captain SMC Signal V1.2
-        if "captain" in comment or (555880 <= magic <= 555883):
-            return "LEGACY_CAPTAIN_SMC"
-
-        # 8. Legacy: EMA Ribbon + RSI Momentum
-        if "ribb" in comment or (555860 <= magic <= 555863):
-            return "LEGACY_EMA_RIBBON"
-
-        # 9. Legacy: M1 Sniper Confirmation
-        if "m1_snipe" in comment or "refine" in comment or (555870 <= magic <= 555873):
-            return "LEGACY_M1_SNIPER"
-
-        # 10. Legacy: TKT SMC Gold Pro v8.0
-        if "tkt" in comment or (555810 <= magic <= 555813):
-            return "LEGACY_TKT_SMC"
-
-        return "LEGACY_CAPTAIN_SMC"
+        return "RTM_M5_ALL_WEATHER"
 
     def get_real_stats_summary(self) -> dict:
         """Calculate 100% verified real trading statistics for BOTS ONLY from MT5 deal history."""
@@ -595,8 +517,8 @@ class RealTradeAnalyticsManager:
                 "gross_profit": 0.0,
                 "gross_loss": 0.0,
                 "profit_factor": 0.0,
-                "avg_rr": "1:1.5",
-                "status": "รอไม้บอท (0 Trades)",
+                "avg_rr": "1:2.0",
+                "status": "🟢 บอทรันพร้อมเทรด (0 ไม้)",
                 "recent_deals": []
             }
 
@@ -610,7 +532,7 @@ class RealTradeAnalyticsManager:
         for d in deals:
             st_id = d["strategy_id"]
             if st_id not in setups_data:
-                st_id = "SECRET_EMA_PULLBACK"
+                st_id = "RTM_M5_ALL_WEATHER"
 
             st = setups_data[st_id]
             profit = d["net_profit"]
@@ -641,19 +563,25 @@ class RealTradeAnalyticsManager:
             else:
                 st["winrate_pct"] = 0.0
                 st["profit_factor"] = 0.0
-                st["status"] = "รอไม้บอท (0 Trades)"
+                st["status"] = "🟢 บอทรันพร้อมเทรด (0 ไม้)"
 
         # Set active status tags based on session
         now_hour = datetime.now().hour
         is_asian = (7 <= now_hour < 14)
         if "ASIAN_RANGE_SNIPER" in setups_data:
-            setups_data["ASIAN_RANGE_SNIPER"]["status"] = "🟢 ACTIVE (ตลาดเอเชีย)" if is_asian else "⚪ STANDBY (เอเชีย 07-14)"
-        if "CAPTAIN_SMC_DUAL" in setups_data:
-            setups_data["CAPTAIN_SMC_DUAL"]["status"] = "🟢 ACTIVE (London/NY)"
-        if "TKT_SMC_GOLD_PRO_M15" in setups_data:
-            setups_data["TKT_SMC_GOLD_PRO_M15"]["status"] = "🟢 ACTIVE (M15 Confluence)"
-        if "EMA50_3CANDLES_H1" in setups_data:
-            setups_data["EMA50_3CANDLES_H1"]["status"] = "🟢 MONITORING (H1 Bar)"
+            setups_data["ASIAN_RANGE_SNIPER"]["status"] = "🟢 ACTIVE (ตลาดเอเชีย 07-14)" if is_asian else "⚪ STANDBY (เอเชีย 07-14)"
+        if "RTM_M4_CONSERVATIVE" in setups_data:
+            setups_data["RTM_M4_CONSERVATIVE"]["status"] = "🟢 ACTIVE (Confluence Grade A/A+)"
+        if "RTM_M5_ALL_WEATHER" in setups_data:
+            setups_data["RTM_M5_ALL_WEATHER"]["status"] = "🟢 ACTIVE (All-Weather Grade B/A/A+)"
+        if "RTM_M6_ELITE_GROWTH" in setups_data:
+            setups_data["RTM_M6_ELITE_GROWTH"]["status"] = "🟢 ACTIVE (Elite Growth 3.0R)"
+        if "RTM_M7_MAX_ALPHA" in setups_data:
+            setups_data["RTM_M7_MAX_ALPHA"]["status"] = "🟢 ACTIVE (Max Alpha 3.5R)"
+        if "SMC_X_STO_H1" in setups_data:
+            setups_data["SMC_X_STO_H1"]["status"] = "🟢 ACTIVE (Devil H1 OB+STO)"
+        if "NEWS_MOMENTUM_EXPANSION" in setups_data:
+            setups_data["NEWS_MOMENTUM_EXPANSION"]["status"] = "⚪ STANDBY (รอจังหวะข่าว USD)"
 
         total_trades = len(deals)
         overall_winrate = round((total_wins / total_trades * 100.0), 1) if total_trades > 0 else 0.0
