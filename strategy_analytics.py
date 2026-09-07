@@ -592,7 +592,7 @@ class RealTradeAnalyticsManager:
         for k, st in setups_data.items():
             if st["total_trades"] > 0:
                 st["winrate_pct"] = round((st["wins"] / st["total_trades"]) * 100.0, 1)
-                st["profit_factor"] = round((st["gross_profit"] / (st["gross_loss"] + 1e-9)), 2) if st["gross_loss"] > 0 else (round(st["gross_profit"], 2) if st["gross_profit"] > 0 else 0.0)
+                st["profit_factor"] = round((st["gross_profit"] / (st["gross_loss"] + 1e-9)), 2) if st["gross_loss"] > 0 else (99.99 if st["gross_profit"] > 0 else 0.0)
                 st["status"] = f"บอทเทรดแล้ว ({st['total_trades']} ไม้)"
 
                 # Calculate real Peak-to-Trough Drawdown
@@ -637,7 +637,7 @@ class RealTradeAnalyticsManager:
 
         total_trades = len(deals)
         overall_winrate = round((total_wins / total_trades * 100.0), 1) if total_trades > 0 else 0.0
-        bot_profit_factor = round((total_gross_profit / (total_gross_loss + 1e-9)), 2) if total_gross_loss > 0 else 0.0
+        bot_profit_factor = round((total_gross_profit / (total_gross_loss + 1e-9)), 2) if total_gross_loss > 0 else (99.99 if total_gross_profit > 0 else 0.0)
 
         # Calculate Overall Portfolio Max Drawdown from closed deals
         sorted_all_deals = sorted(deals, key=lambda x: x["time"])
