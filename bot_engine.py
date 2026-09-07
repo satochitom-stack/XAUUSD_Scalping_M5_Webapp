@@ -31,6 +31,7 @@ STRATEGY_MAGIC_MAP = {
     "FLASH_MICRO_SCALPER": {"base": 555800, "pos1": 555801, "pos2": 555802, "pos3": 555803},
     "M1_SNIPER_CONFIRMATION": {"base": 555870, "pos1": 555871, "pos2": 555872, "pos3": 555873},
     "NEWS_MOMENTUM_EXPANSION": {"base": 555890, "pos1": 555891, "pos2": 555892, "pos3": 555893},
+    "SMC_X_STO_H1": {"base": 555770, "pos1": 555771, "pos2": 555772, "pos3": 555773},
     "EMA_RIBBON": {"base": 555860, "pos1": 555861, "pos2": 555862, "pos3": 555863},
     "BB_SQUEEZE": {"base": 555830, "pos1": 555831, "pos2": 555832, "pos3": 555833},
     "SECRET_EMA_PULLBACK": {"base": 555840, "pos1": 555841, "pos2": 555842, "pos3": 555843}
@@ -352,6 +353,13 @@ class GoldScalpingBot:
                     b_sig, s_sig, reason = self._check_tkt_smc_gold_pro_m15(symbol)
                     if b_sig or s_sig:
                         self._process_single_setup_signal(df, symbol, spread, "TKT_SMC_GOLD_PRO_M15", "BUY" if b_sig else "SELL", reason)
+
+            # SETUP 7: SMCxSTO ระบบปีศาจ (H1 Trend & Single-Rule OB by SMC by Bossz)
+            if strat_mode in ["ALL", "SMC_X_STO_H1", "SMCXSTO"]:
+                if not self.has_open_positions_for_setup(symbol, "SMC_X_STO_H1"):
+                    b_sig, s_sig, reason = self._check_smc_x_sto_h1(symbol)
+                    if b_sig or s_sig:
+                        self._process_single_setup_signal(df, symbol, spread, "SMC_X_STO_H1", "BUY" if b_sig else "SELL", reason)
 
             # Secondary Support: EMA Ribbon + RSI Momentum Reset
             if strat_mode in ["ALL", "EMA_RIBBON"]:
@@ -736,6 +744,110 @@ class GoldScalpingBot:
 
         return False, False, ""
 
+    def _check_smc_x_sto_h1(self, symbol: str) -> Tuple[bool, bool, str]:
+        """
+        😈 SMCxSTO ระบบปีศาจ (H1 Devil System by SMC by Bossz):
+        1. Trend Filter: EMA 50 & EMA 200 on H1 (Uptrend: EMA 50 > EMA 200, Downtrend: EMA 50 < EMA 200).
+        2. Pullback Filter: Uses ATR 14 to verify deep pullback >= 1.0x ATR into Discount/Premium zone.
+        3. Single-Rule Order Block:
+           - Buy OB: Last bearish candle before the bullish expansion that led to recent swing high.
+           - Sell OB: Last bullish candle before the bearish expansion that led to recent swing low.
+        4. Entry Trigger: Stochastic (14, 3, 3) Oversold (<= 28) / Overbought (>= 72) reversal cross.
+        """
+        try:
+            df_h1 = self.connector.get_rates(symbol, "H1", 60)
+            if df_h1 is None or df_h1.empty or len(df_h1) < 35:
+                return False, False, ""
+
+            h1_bar_time = df_h1['time'].iloc[-2]
+            # 0. H1 Bar Lock: Max 1 trade per H1 bar to prevent over-trading
+            if getattr(self, 'last_smc_sto_h1_bar_time', None) == h1_bar_time:
+                return False, False, ""
+
+            # Indicators on H1
+            df_h1['ema50'] = df_h1['close'].ewm(span=50, adjust=False).mean()
+            df_h1['ema200'] = df_h1['close'].ewm(span=200, adjust=False).mean()
+
+            # ATR 14
+            high_low = df_h1['high'] - df_h1['low']
+            high_close = (df_h1['high'] - df_h1['close'].shift()).abs()
+            low_close = (df_h1['low'] - df_h1['close'].shift()).abs()
+            tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+            df_h1['atr14'] = tr.rolling(window=14).mean()
+
+            # Stochastic (14, 3, 3)
+            low14 = df_h1['low'].rolling(window=14).min()
+            high14 = df_h1['high'].rolling(window=14).max()
+            k_fast = 100 * ((df_h1['close'] - low14) / (high14 - low14 + 1e-9))
+            df_h1['stoch_k'] = k_fast.rolling(window=3).mean()
+            df_h1['stoch_d'] = df_h1['stoch_k'].rolling(window=3).mean()
+
+            b1 = df_h1.iloc[-2]  # Last closed H1 candle
+            b2 = df_h1.iloc[-3]  # Previous H1 candle
+            curr_atr = float(b1['atr14']) if not pd.isna(b1['atr14']) else 5.0
+
+            is_uptrend = (float(b1['ema50']) > float(b1['ema200']))
+            is_downtrend = (float(b1['ema50']) < float(b1['ema200']))
+
+            lookback = df_h1.iloc[-22:-2] # Lookback for swing and OB
+
+            # --- BULLISH (BUY) SETUP ---
+            if is_uptrend:
+                swing_high = float(lookback['high'].max())
+                pullback_dist = swing_high - float(b1['low'])
+                
+                # Check 1: Must pull back at least 1.0x ATR from swing high (Discount Zone)
+                if pullback_dist >= (1.0 * curr_atr):
+                    # Check 2: Single-Rule Bullish Order Block
+                    ob_candles = lookback[lookback['close'] < lookback['open']]
+                    if not ob_candles.empty:
+                        last_ob = ob_candles.iloc[-1]
+                        ob_low = float(last_ob['low'])
+                        ob_high = float(last_ob['high'])
+                        
+                        # Price tested the Order Block zone
+                        price_in_ob = (float(b1['low']) <= (ob_high + 0.3 * curr_atr)) and (float(b1['close']) >= (ob_low - 0.2 * curr_atr))
+                        
+                        if price_in_ob:
+                            # Check 3: Stochastic Trigger (Oversold <= 28 and %K cross above %D)
+                            was_oversold = (float(b2['stoch_k']) <= 28) or (float(b1['stoch_k']) <= 30)
+                            stoch_cross_up = (float(b1['stoch_k']) > float(b1['stoch_d'])) and (float(b2['stoch_k']) <= float(b2['stoch_d']))
+                            
+                            if was_oversold and stoch_cross_up and (float(b1['close']) > float(b1['open'])):
+                                self.last_smc_sto_h1_bar_time = h1_bar_time
+                                return True, False, "😈 SMCxSTO: H1 Discount OB + Stoch Oversold Rebound (BUY)"
+
+            # --- BEARISH (SELL) SETUP ---
+            if is_downtrend:
+                swing_low = float(lookback['low'].min())
+                pullback_dist = float(b1['high']) - swing_low
+                
+                # Check 1: Must rally at least 1.0x ATR from swing low (Premium Zone)
+                if pullback_dist >= (1.0 * curr_atr):
+                    # Check 2: Single-Rule Bearish Order Block
+                    ob_candles = lookback[lookback['close'] > lookback['open']]
+                    if not ob_candles.empty:
+                        last_ob = ob_candles.iloc[-1]
+                        ob_low = float(last_ob['low'])
+                        ob_high = float(last_ob['high'])
+                        
+                        # Price tested the Order Block zone
+                        price_in_ob = (float(b1['high']) >= (ob_low - 0.3 * curr_atr)) and (float(b1['close']) <= (ob_high + 0.2 * curr_atr))
+                        
+                        if price_in_ob:
+                            # Check 3: Stochastic Trigger (Overbought >= 72 and %K cross below %D)
+                            was_overbought = (float(b2['stoch_k']) >= 72) or (float(b1['stoch_k']) >= 70)
+                            stoch_cross_down = (float(b1['stoch_k']) < float(b1['stoch_d'])) and (float(b2['stoch_k']) >= float(b2['stoch_d']))
+                            
+                            if was_overbought and stoch_cross_down and (float(b1['close']) < float(b1['open'])):
+                                self.last_smc_sto_h1_bar_time = h1_bar_time
+                                return False, True, "😈 SMCxSTO: H1 Premium OB + Stoch Overbought Rebound (SELL)"
+
+        except Exception as e:
+            logger.error(f"Error evaluating SMCxSTO H1 strategy: {e}")
+
+        return False, False, ""
+
     def _check_m1_sniper_confirmation(self, symbol: str, df_m5: pd.DataFrame, strat_mode: str = "ALL") -> Tuple[bool, bool, str]:
         """
         ⚡ M1 Sniper Confirmation (Inspired by Golfpy Trade Multi-Timeframe Framework):
@@ -943,6 +1055,10 @@ class GoldScalpingBot:
         if strat_id == "EMA50_3CANDLES_H1":
             return True, "AI Trend Trail (H1 Macro Trend)"
 
+        # 3.1 SMCxSTO H1 Devil System -> High R:R Runner (Trailing Stop)
+        if strat_id == "SMC_X_STO_H1":
+            return True, "AI Trend Trail (SMCxSTO H1 Devil System)"
+
         # 4. M1 Sniper Confirmation -> High R:R Runner (Trailing Stop)
         if strat_id == "M1_SNIPER_CONFIRMATION":
             return True, "AI Trend Trail (M1 High R:R Runner)"
@@ -1028,6 +1144,20 @@ class GoldScalpingBot:
             # Safe zone for H1 Trend: minimum 4.50 USD (450 pts), maximum 8.00 USD (800 pts)
             if sl_dist < 4.50: sl = ask - 4.50; sl_dist = 4.50
             if sl_dist > 8.00: sl = ask - 8.00; sl_dist = 8.00
+            tp1 = ask + (sl_dist * 1.0)
+            tp2 = ask + (sl_dist * 2.0)
+        elif strat_id == "SMC_X_STO_H1" or "SMCxSTO" in reason or "STO" in reason:
+            df_h1 = self.connector.get_rates(symbol, "H1", 25)
+            if not df_h1.empty and len(df_h1) >= 15:
+                ob_low = float(df_h1['low'].iloc[-15:-1].min())
+            else:
+                ob_low = float(df['low'].iloc[-30:-1].min())
+            sl_buffer = 0.80 * sl_mult
+            sl = ob_low - sl_buffer
+            sl_dist = ask - sl
+            # Safe zone for H1 Gold: minimum 5.00 USD (500 pts), maximum 9.00 USD (900 pts)
+            if sl_dist < 5.00: sl = ask - 5.00; sl_dist = 5.00
+            if sl_dist > 9.00: sl = ask - 9.00; sl_dist = 9.00
             tp1 = ask + (sl_dist * 1.0)
             tp2 = ask + (sl_dist * 2.0)
         else:
@@ -1133,6 +1263,20 @@ class GoldScalpingBot:
             # Safe zone for H1 Trend: minimum 4.50 USD (450 pts), maximum 8.00 USD (800 pts)
             if sl_dist < 4.50: sl = bid + 4.50; sl_dist = 4.50
             if sl_dist > 8.00: sl = bid + 8.00; sl_dist = 8.00
+            tp1 = bid - (sl_dist * 1.0)
+            tp2 = bid - (sl_dist * 2.0)
+        elif strat_id == "SMC_X_STO_H1" or "SMCxSTO" in reason or "STO" in reason:
+            df_h1 = self.connector.get_rates(symbol, "H1", 25)
+            if not df_h1.empty and len(df_h1) >= 15:
+                ob_high = float(df_h1['high'].iloc[-15:-1].max())
+            else:
+                ob_high = float(df['high'].iloc[-30:-1].max())
+            sl_buffer = 0.80 * sl_mult
+            sl = ob_high + sl_buffer
+            sl_dist = sl - bid
+            # Safe zone for H1 Gold: minimum 5.00 USD (500 pts), maximum 9.00 USD (900 pts)
+            if sl_dist < 5.00: sl = bid + 5.00; sl_dist = 5.00
+            if sl_dist > 9.00: sl = bid + 9.00; sl_dist = 9.00
             tp1 = bid - (sl_dist * 1.0)
             tp2 = bid - (sl_dist * 2.0)
         else:

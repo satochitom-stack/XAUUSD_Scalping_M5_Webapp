@@ -93,6 +93,16 @@ class RealTradeAnalyticsManager:
             "best_session": "All Sessions 24/5 (Asia/London/NY)",
             "magic_numbers": [333888, 333889, 333890],
             "description": "สายซิ่งเทรดได้ทุกตลาด เกาะคลื่น EMA 9 & สวนสั้น RSI 4 Exhaustion เน้นปิดเก็บคำเล็ก 70-120 จุด"
+        },
+        "SMC_X_STO_H1": {
+            "id": "SMC_X_STO_H1",
+            "name": "SMCxSTO ระบบปีศาจ (H1 Devil System)",
+            "icon": "😈",
+            "category": "SMC_PRO",
+            "timeframe": "H1",
+            "best_session": "London & NY (14:00 - 04:00)",
+            "magic_numbers": [555770, 555771, 555772, 555773],
+            "description": "ระบบ SMCxSTO กฎข้อเดียว: เทรนด์ EMA 50/200 + โซน Discount/Premium (ATR) + Order Block + Stochastic Oversold/Overbought"
         }
     }
 
@@ -225,7 +235,7 @@ class RealTradeAnalyticsManager:
                 elif d.entry in [1, 2, 3]:
                     positions[pid]["out"].append(d)
 
-            bot_magics = [555888, 555889, 555890, 777888, 777889, 777890, 333888, 333889, 333890]
+            bot_magics = [555888, 555889, 555890, 777888, 777889, 777890, 333888, 333889, 333890, 555770, 555771, 555772, 555773]
             strategy_name_map = {
                 "CAPTAIN_SMC_DUAL": "Captain SMC Signal V1.2 (Dual Auto)",
                 "TKT_SMC_GOLD_PRO_M15": "TKT SMC Gold Pro v8.0 (M15)",
@@ -233,7 +243,8 @@ class RealTradeAnalyticsManager:
                 "EMA50_3CANDLES_H1": "EMA 50 + 3 Confirmation Candles (H1 Pro)",
                 "NEWS_MOMENTUM_EXPANSION": "News Momentum Expansion",
                 "M1_SNIPER_CONFIRMATION": "M1 Sniper Confirmation (Refine Zone)",
-                "FLASH_MICRO_SCALPER": "Flash Micro-Scalper (9 EMA Quick-Bite)"
+                "FLASH_MICRO_SCALPER": "Flash Micro-Scalper (9 EMA Quick-Bite)",
+                "SMC_X_STO_H1": "SMCxSTO ระบบปีศาจ (H1 Devil System)"
             }
 
             for pid, p in positions.items():
@@ -479,6 +490,10 @@ class RealTradeAnalyticsManager:
         # 5. Flash Micro-Scalper (Quick-Bite)
         if "flash" in comment or magic in [333888, 333889, 333890]:
             return "FLASH_MICRO_SCALPER"
+
+        # 6. SMCxSTO ระบบปีศาจ (H1 Devil System by SMC by Bossz)
+        if "sto" in comment or "devil" in comment or "smcxsto" in comment or (magic >= 555770 and magic <= 555773):
+            return "SMC_X_STO_H1"
 
         # Default classification based on deal time if opened by M5 EA
         if magic in [555888, 555889, 555890]:
