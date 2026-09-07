@@ -19,41 +19,93 @@ from hourly_heat_engine import HourlyHeatEngine
 logger = logging.getLogger("StrategyOptimizer")
 
 DEFAULT_STRATEGIES = [
-    "TKT_SMC_GOLD_PRO_M15",
-    "CAPTAIN_SMC_DUAL",
     "ASIAN_RANGE_SNIPER",
-    "EMA50_3CANDLES_H1",
-    "NEWS_MOMENTUM_EXPANSION",
-    "M1_SNIPER_CONFIRMATION",
-    "FLASH_MICRO_SCALPER"
+    "RTM_M4_CONSERVATIVE",
+    "RTM_M5_ALL_WEATHER",
+    "RTM_M6_ELITE_GROWTH",
+    "RTM_M7_MAX_ALPHA",
+    "SMC_X_STO_H1",
+    "NEWS_MOMENTUM_EXPANSION"
 ]
 
 SETUP_PROFILES = {
-    "TKT_SMC_GOLD_PRO_M15": {
-        "id": "TKT_SMC_GOLD_PRO_M15",
-        "name": "TKT SMC Gold Pro v8.0 (M15)",
-        "icon": "⚜️",
-        "win_prob": 81.0,
-        "base_rr": 1.50,
+    "ASIAN_RANGE_SNIPER": {
+        "id": "ASIAN_RANGE_SNIPER",
+        "name": "Asian Range Sniper Reversion",
+        "icon": "⛩️",
+        "win_prob": 80.0,
+        "base_rr": 1.40,
         "min_rr": 1.20,
-        "max_rr": 2.80,
+        "max_rr": 2.20,
+        "trailing_type": "TIGHT_LOCK",
+        "trail_points": 180.0,
+        "trail_step_points": 30.0,
+        "description": "Asian session mean-reversion at Bollinger bands with Fast RSI 7 bounce (07:00-14:00 Thai)"
+    },
+    "RTM_M4_CONSERVATIVE": {
+        "id": "RTM_M4_CONSERVATIVE",
+        "name": "RTM Quasimodo M4 (Conservative)",
+        "icon": "🛡️",
+        "win_prob": 82.0,
+        "base_rr": 3.00,
+        "min_rr": 2.00,
+        "max_rr": 4.00,
+        "trailing_type": "CONFLUENCE_STAGE",
+        "trail_points": 250.0,
+        "trail_step_points": 40.0,
+        "description": "RTM Quasimodo + ICT + Fib 61.8-78.6% (Grade A/A+ only | Fixed 1.0% Risk | 3.0R TP)"
+    },
+    "RTM_M5_ALL_WEATHER": {
+        "id": "RTM_M5_ALL_WEATHER",
+        "name": "RTM Quasimodo M5 (All-Weather)",
+        "icon": "🌊",
+        "win_prob": 78.0,
+        "base_rr": 3.00,
+        "min_rr": 2.00,
+        "max_rr": 4.00,
+        "trailing_type": "CONFLUENCE_STAGE",
+        "trail_points": 250.0,
+        "trail_step_points": 40.0,
+        "description": "RTM Quasimodo All-Weather (Grade B=0.5%, A=1.0%, A+=2.0% | 3.0R TP)"
+    },
+    "RTM_M6_ELITE_GROWTH": {
+        "id": "RTM_M6_ELITE_GROWTH",
+        "name": "RTM Quasimodo M6 (Elite Growth)",
+        "icon": "👑",
+        "win_prob": 80.0,
+        "base_rr": 3.00,
+        "min_rr": 2.00,
+        "max_rr": 4.50,
+        "trailing_type": "CONFLUENCE_STAGE",
+        "trail_points": 250.0,
+        "trail_step_points": 40.0,
+        "description": "RTM Elite Confluence (Grade A=1.0%, A+=2.0% | 3.0R TP | Return +180.9%)"
+    },
+    "RTM_M7_MAX_ALPHA": {
+        "id": "RTM_M7_MAX_ALPHA",
+        "name": "RTM Quasimodo M7 (Max Alpha)",
+        "icon": "🎯",
+        "win_prob": 79.0,
+        "base_rr": 3.50,
+        "min_rr": 2.50,
+        "max_rr": 5.00,
         "trailing_type": "CONFLUENCE_STAGE",
         "trail_points": 300.0,
         "trail_step_points": 50.0,
-        "description": "Institutional SMC Confluence (BOS/CHoCH + FVG Imbalance + Kill Zones + Score >= 60%) on M15"
+        "description": "RTM Elite Confluence Max Alpha (Grade A=1.0%, A+=2.0% | 3.5R TP | Return +229.0%)"
     },
-    "CAPTAIN_SMC_DUAL": {
-        "id": "CAPTAIN_SMC_DUAL",
-        "name": "Captain SMC Signal V1.2 (Dual Auto)",
-        "icon": "⭐",
-        "win_prob": 79.0,
-        "base_rr": 1.70,
-        "min_rr": 1.30,
-        "max_rr": 3.00,
-        "trailing_type": "TIGHT_LOCK",
-        "trail_points": 200.0,
-        "trail_step_points": 30.0,
-        "description": "Smart Money Concepts Dual-Model entering Fast (Wick 35%) & Confirmed (CHoCH) automatically"
+    "SMC_X_STO_H1": {
+        "id": "SMC_X_STO_H1",
+        "name": "SMCxSTO ระบบปีศาจ (H1 Devil System)",
+        "icon": "😈",
+        "win_prob": 78.0,
+        "base_rr": 2.00,
+        "min_rr": 1.50,
+        "max_rr": 3.50,
+        "trailing_type": "CONFLUENCE_STAGE",
+        "trail_points": 280.0,
+        "trail_step_points": 40.0,
+        "description": "Trend EMA 50/200 + Discount/Premium ATR + Single OB + Stoch 14,3,3"
     },
     "NEWS_MOMENTUM_EXPANSION": {
         "id": "NEWS_MOMENTUM_EXPANSION",
@@ -67,58 +119,6 @@ SETUP_PROFILES = {
         "trail_points": 400.0,
         "trail_step_points": 50.0,
         "description": "Explosive breakout during US High-Impact economic news with wide ATR SL buffer & 3R-4R targets"
-    },
-    "EMA50_3CANDLES_H1": {
-        "id": "EMA50_3CANDLES_H1",
-        "name": "EMA 50 + 3 Candles (H1 Pro)",
-        "icon": "📈",
-        "win_prob": 78.0,
-        "base_rr": 1.75,
-        "min_rr": 1.40,
-        "max_rr": 3.00,
-        "trailing_type": "EMA_TRAIL",
-        "trail_points": 280.0,
-        "trail_step_points": 40.0,
-        "description": "Trend-following with 3 confirmation candles above/below EMA 50 on H1/M5"
-    },
-    "ASIAN_RANGE_SNIPER": {
-        "id": "ASIAN_RANGE_SNIPER",
-        "name": "Asian Range Sniper Reversion",
-        "icon": "⛩️",
-        "win_prob": 80.0,
-        "base_rr": 1.40,
-        "min_rr": 1.20,
-        "max_rr": 2.20,
-        "trailing_type": "TIGHT_LOCK",
-        "trail_points": 180.0,
-        "trail_step_points": 30.0,
-        "description": "Asian session mean-reversion at Bollinger bands with Fast RSI 7 bounce"
-    },
-    "M1_SNIPER_CONFIRMATION": {
-        "id": "M1_SNIPER_CONFIRMATION",
-        "name": "M1 Sniper Confirmation (Golfpy Refined)",
-        "icon": "🎯",
-        "win_prob": 79.0,
-        "base_rr": 2.50,
-        "min_rr": 1.50,
-        "max_rr": 5.00,
-        "trailing_type": "TIGHT_LOCK",
-        "trail_points": 150.0,
-        "trail_step_points": 30.0,
-        "description": "Multi-Timeframe M15/M5 Zone + M1 Internal BOS Confirmation with Refined SL (1:3 - 1:5 RRR)"
-    },
-    "FLASH_MICRO_SCALPER": {
-        "id": "FLASH_MICRO_SCALPER",
-        "name": "Flash Micro-Scalper (9 EMA Quick-Bite)",
-        "icon": "⚡",
-        "win_prob": 82.0,
-        "base_rr": 1.10,
-        "min_rr": 0.85,
-        "max_rr": 1.50,
-        "trailing_type": "TIGHT_LOCK",
-        "trail_points": 80.0,
-        "trail_step_points": 20.0,
-        "description": "All-Session 9 EMA Micro Wave & RSI 4 Exhaustion Quick-Bite (70-120 pts TP)"
     },
     "ALL_CONFLUENCE": {
         "id": "ALL_CONFLUENCE",
@@ -493,7 +493,7 @@ class RealTimeStrategyOptimizer:
         """Recomputes all strategy scorecards strictly from unique trade history records."""
         self.strategy_stats = {}
         for k in DEFAULT_STRATEGIES:
-            prof = SETUP_PROFILES.get(k, SETUP_PROFILES["CAPTAIN_SMC_DUAL"])
+            prof = SETUP_PROFILES.get(k, SETUP_PROFILES["RTM_M5_ALL_WEATHER"])
             self.strategy_stats[k] = {
                 "id": k,
                 "name": prof["name"],
@@ -524,9 +524,9 @@ class RealTimeStrategyOptimizer:
 
         # Recalculate each strategy stats strictly from actual history
         for t in self.trade_history:
-            strat = t.get("strategy", "CAPTAIN_SMC_DUAL")
+            strat = t.get("strategy", "RTM_M5_ALL_WEATHER")
             if strat not in self.strategy_stats:
-                strat = "CAPTAIN_SMC_DUAL"
+                strat = "RTM_M5_ALL_WEATHER"
             stat = self.strategy_stats[strat]
             pnl = t.get("profit", 0.0)
             stat["trades"] = stat.get("trades", 0) + 1
@@ -549,7 +549,7 @@ class RealTimeStrategyOptimizer:
             else: stat["weight"] = 0.70
 
             # Dynamic R:R and Loss Mitigation Adjustment based on Streak
-            prof = SETUP_PROFILES.get(strat, SETUP_PROFILES["CAPTAIN_SMC_DUAL"])
+            prof = SETUP_PROFILES.get(strat, SETUP_PROFILES["RTM_M5_ALL_WEATHER"])
             if stat["streak"] >= 2:
                 stat["current_dynamic_rr"] = min(prof["max_rr"], round(prof["base_rr"] * 1.30, 2))
                 stat["atr_sl_multiplier"] = 1.0
@@ -575,7 +575,7 @@ class RealTimeStrategyOptimizer:
 
     def record_trade_outcome(self, strategy_key: str, profit: float, pips: float, entry_reason: str, ticket: Optional[int] = None):
         """Record trade result and update strategy scorecard & streaks in real-time."""
-        matched_strat = "SECRET_EMA_PULLBACK"
+        matched_strat = "RTM_M5_ALL_WEATHER"
         for key in DEFAULT_STRATEGIES:
             if key in strategy_key or key in entry_reason:
                 matched_strat = key
@@ -607,17 +607,18 @@ class RealTimeStrategyOptimizer:
         for deal in deals:
             if deal.get("entry") != 1: continue # Out / Close deals
             
-            comment = str(deal.get("comment", ""))
+            comment = str(deal.get("comment", "")).lower()
             profit = deal.get("profit", 0.0) + deal.get("swap", 0.0) + deal.get("commission", 0.0)
             
-            strat = "CAPTAIN_SMC_DUAL"
-            if "TKT" in comment or "v8" in comment: strat = "TKT_SMC_GOLD_PRO_M15"
-            elif "NEWS" in comment or "News" in comment or "Momentum" in comment: strat = "NEWS_MOMENTUM_EXPANSION"
-            elif "EMA50_3CANDLES" in comment or "3 Candles" in comment or "H1" in comment: strat = "EMA50_3CANDLES_H1"
-            elif "Asian" in comment or "ASIAN" in comment or "Asian Range" in comment: strat = "ASIAN_RANGE_SNIPER"
-            elif "M1" in comment or "Sniper" in comment or "Golfpy" in comment: strat = "M1_SNIPER_CONFIRMATION"
-            elif "Flash" in comment or "FLASH" in comment: strat = "FLASH_MICRO_SCALPER"
-            elif "SMC" in comment or "Captain" in comment: strat = "CAPTAIN_SMC_DUAL"
+            strat = "RTM_M5_ALL_WEATHER"
+            if "rtm_m4" in comment or "m4_cons" in comment: strat = "RTM_M4_CONSERVATIVE"
+            elif "rtm_m5" in comment or "m5_allw" in comment: strat = "RTM_M5_ALL_WEATHER"
+            elif "rtm_m6" in comment or "m6_elite" in comment: strat = "RTM_M6_ELITE_GROWTH"
+            elif "rtm_m7" in comment or "m7_alpha" in comment: strat = "RTM_M7_MAX_ALPHA"
+            elif "rtm" in comment or "quasimodo" in comment: strat = "RTM_M6_ELITE_GROWTH"
+            elif "sto" in comment or "devil" in comment or "smcxsto" in comment: strat = "SMC_X_STO_H1"
+            elif "news" in comment or "momentum" in comment: strat = "NEWS_MOMENTUM_EXPANSION"
+            elif "asian" in comment: strat = "ASIAN_RANGE_SNIPER"
 
             self.record_trade_outcome(strat, profit, 0.0, comment, ticket=deal.get("ticket"))
 

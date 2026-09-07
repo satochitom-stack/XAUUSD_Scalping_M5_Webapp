@@ -1,13 +1,10 @@
 """
 Advanced Trading Bot Strategy Engine for XAUUSD (Gold)
-Features 7 High-Winrate Scalping & Trend Strategies:
-1. ALL_CONFLUENCE - Maximum Confidence (Auto-switches with Market Sessions)
-2. EMA50_3CANDLES_H1 - EMA 50 + 3 Confirmation Candles Trend-Following (H1/M5) [Winrate 75-80%]
-3. ASIAN_RANGE_SNIPER - Asian Session Mean-Reversion Scalper (00:00-07:00 Server Time) [Winrate 75-85%]
-4. SMC_SWEEP - Liquidity Hunt & Rejection (Asian/Swing High-Low Sweeps) [Winrate 75-80%]
-5. EMA_RIBBON - Dynamic EMA 20/50/100/200 Ribbon + RSI Momentum Reset [Winrate 70%]
-6. BB_SQUEEZE - Bollinger Band Squeeze & Volatility Expansion [Winrate 70%]
-7. SECRET_EMA_PULLBACK - Classic EMA 50/150 Trend & Pullback/Breakout
+Streamlined to the "Elite 4 Pillars" across Market Sessions:
+1. ASIAN_RANGE_SNIPER - Asian Session Mean-Reversion Scalper (07:00 - 14:00 Thai / 66.7% Win Rate)
+2. RTM Quasimodo Multi-Model Engine (M4 - M7) - London & NY Institutional Confluence (M15 + H1)
+3. SMC_X_STO_H1 - SMCxSTO ระบบปีศาจ H1 Swing Devil System (EMA 50/200 + Discount/Premium ATR + Single OB + Stoch)
+4. NEWS_MOMENTUM_EXPANSION - High-Impact US Economic News Spike & Momentum Expansion (CPI, NFP, FOMC)
 """
 
 import time
@@ -24,21 +21,13 @@ from regime_liquidity_scorer import MarketRegimeScorer
 logger = logging.getLogger("BotEngine")
 
 STRATEGY_MAGIC_MAP = {
-    "CAPTAIN_SMC_DUAL": {"base": 555880, "pos1": 555881, "pos2": 555882, "pos3": 555883},
-    "TKT_SMC_GOLD_PRO_M15": {"base": 555810, "pos1": 555811, "pos2": 555812, "pos3": 555813},
     "ASIAN_RANGE_SNIPER": {"base": 555820, "pos1": 555821, "pos2": 555822, "pos3": 555823},
-    "EMA50_3CANDLES_H1": {"base": 555850, "pos1": 555851, "pos2": 555852, "pos3": 555853},
-    "FLASH_MICRO_SCALPER": {"base": 555800, "pos1": 555801, "pos2": 555802, "pos3": 555803},
-    "M1_SNIPER_CONFIRMATION": {"base": 555870, "pos1": 555871, "pos2": 555872, "pos3": 555873},
-    "NEWS_MOMENTUM_EXPANSION": {"base": 555890, "pos1": 555891, "pos2": 555892, "pos3": 555893},
     "SMC_X_STO_H1": {"base": 555770, "pos1": 555771, "pos2": 555772, "pos3": 555773},
     "RTM_M4_CONSERVATIVE": {"base": 777004, "pos1": 777014, "pos2": 777024, "pos3": 777034},
     "RTM_M5_ALL_WEATHER": {"base": 777005, "pos1": 777015, "pos2": 777025, "pos3": 777035},
     "RTM_M6_ELITE_GROWTH": {"base": 777006, "pos1": 777016, "pos2": 777026, "pos3": 777036},
     "RTM_M7_MAX_ALPHA": {"base": 777007, "pos1": 777017, "pos2": 777027, "pos3": 777037},
-    "EMA_RIBBON": {"base": 555860, "pos1": 555861, "pos2": 555862, "pos3": 555863},
-    "BB_SQUEEZE": {"base": 555830, "pos1": 555831, "pos2": 555832, "pos3": 555833},
-    "SECRET_EMA_PULLBACK": {"base": 555840, "pos1": 555841, "pos2": 555842, "pos3": 555843}
+    "NEWS_MOMENTUM_EXPANSION": {"base": 555890, "pos1": 555891, "pos2": 555892, "pos3": 555893}
 }
 
 class GoldScalpingBot:
@@ -307,83 +296,33 @@ class GoldScalpingBot:
         # 5. INDEPENDENT MULTI-SETUP EVALUATION & EXECUTION PIPELINE
         # -------------------------------------------------------------
         
-        # --- SETUP 0: High-Impact News Momentum Expansion ---
+        # --- PILLAR 1: High-Impact News Momentum Expansion (Event-Driven) ---
         if strat_mode in ["ALL", "NEWS_MOMENTUM_EXPANSION"] and news_status.get("is_news_active"):
             if not self.has_open_positions_for_setup(symbol, "NEWS_MOMENTUM_EXPANSION"):
                 b_sig, s_sig, reason = self._check_news_momentum_expansion(df, news_status)
                 if b_sig or s_sig:
                     self._process_single_setup_signal(df, symbol, spread, "NEWS_MOMENTUM_EXPANSION", "BUY" if b_sig else "SELL", reason)
 
-        # --- SETUP 1: EMA 50 + 3 Confirmation Candles (H1 Trend) ---
-        if strat_mode in ["ALL", "EMA50_3CANDLES_H1"]:
-            if not self.has_open_positions_for_setup(symbol, "EMA50_3CANDLES_H1"):
-                b_sig, s_sig, reason = self._check_ema50_3candles_h1(df)
-                if b_sig or s_sig:
-                    self._process_single_setup_signal(df, symbol, spread, "EMA50_3CANDLES_H1", "BUY" if b_sig else "SELL", reason)
-
-        # --- SETUP 2: Asian Range Mean-Reversion Sniper ---
+        # --- PILLAR 2: Asian Range Mean-Reversion Sniper (Morning Asian Session 07:00-14:00) ---
         if session == "ASIAN SESSION" or strat_mode == "ASIAN_RANGE_SNIPER":
             if not self.has_open_positions_for_setup(symbol, "ASIAN_RANGE_SNIPER"):
                 b_sig, s_sig, reason = self._check_asian_range_sniper(df)
                 if b_sig or s_sig:
                     self._process_single_setup_signal(df, symbol, spread, "ASIAN_RANGE_SNIPER", "BUY" if b_sig else "SELL", reason, is_asian_scalp=True)
 
-        # --- SETUP 3: M1 Sniper Confirmation (Refine Zone) ---
-        if strat_mode in ["ALL", "M1_SNIPER_CONFIRMATION"]:
-            if not self.has_open_positions_for_setup(symbol, "M1_SNIPER_CONFIRMATION"):
-                b_sig, s_sig, reason = self._check_m1_sniper_confirmation(symbol, df, strat_mode)
+        # --- PILLAR 3: SMCxSTO ระบบปีศาจ H1 Devil System (Macro Trend & Single-Rule OB) ---
+        if strat_mode in ["ALL", "SMC_X_STO_H1", "SMCXSTO"]:
+            if not self.has_open_positions_for_setup(symbol, "SMC_X_STO_H1"):
+                b_sig, s_sig, reason = self._check_smc_x_sto_h1(symbol)
                 if b_sig or s_sig:
-                    self._process_single_setup_signal(df, symbol, spread, "M1_SNIPER_CONFIRMATION", "BUY" if b_sig else "SELL", reason, is_m1_sniper=True)
+                    self._process_single_setup_signal(df, symbol, spread, "SMC_X_STO_H1", "BUY" if b_sig else "SELL", reason)
 
-        # --- SETUP 4: Flash Micro-Scalper (9 EMA Quick-Bite) ---
-        if strat_mode in ["ALL", "FLASH_MICRO_SCALPER"]:
-            if not self.has_open_positions_for_setup(symbol, "FLASH_MICRO_SCALPER"):
-                b_sig, s_sig, reason = self._check_flash_micro_scalper(df)
-                if b_sig or s_sig:
-                    self._process_single_setup_signal(df, symbol, spread, "FLASH_MICRO_SCALPER", "BUY" if b_sig else "SELL", reason, is_flash_scalper=True)
-
-        # --- LONDON & NEW YORK SESSION SETUPS ---
-        if session != "ASIAN SESSION":
-            # SETUP 5: Captain Trading LAB - SMC Signal V1.2 (Dual Auto)
-            if strat_mode in ["ALL", "CAPTAIN_SMC", "CAPTAIN_SMC_DUAL", "SMC_SWEEP"]:
-                if not self.has_open_positions_for_setup(symbol, "CAPTAIN_SMC_DUAL"):
-                    b_sig, s_sig, reason = self._check_captain_smc(df)
-                    if b_sig or s_sig:
-                        self._process_single_setup_signal(df, symbol, spread, "CAPTAIN_SMC_DUAL", "BUY" if b_sig else "SELL", reason)
-
-            # SETUP 6: TKT SMC Gold Pro v8.0 (M15 Institutional Confluence)
-            if strat_mode in ["ALL", "TKT_SMC_GOLD_PRO_M15"]:
-                if not self.has_open_positions_for_setup(symbol, "TKT_SMC_GOLD_PRO_M15"):
-                    b_sig, s_sig, reason = self._check_tkt_smc_gold_pro_m15(symbol)
-                    if b_sig or s_sig:
-                        self._process_single_setup_signal(df, symbol, spread, "TKT_SMC_GOLD_PRO_M15", "BUY" if b_sig else "SELL", reason)
-
-            # SETUP 7: SMCxSTO ระบบปีศาจ (H1 Trend & Single-Rule OB by SMC by Bossz)
-            if strat_mode in ["ALL", "SMC_X_STO_H1", "SMCXSTO"]:
-                if not self.has_open_positions_for_setup(symbol, "SMC_X_STO_H1"):
-                    b_sig, s_sig, reason = self._check_smc_x_sto_h1(symbol)
-                    if b_sig or s_sig:
-                        self._process_single_setup_signal(df, symbol, spread, "SMC_X_STO_H1", "BUY" if b_sig else "SELL", reason)
-
-            # SETUP 8: RTM Quasimodo Multi-Model Institutional Engine (M15 + H1)
+        # --- PILLAR 4: RTM Quasimodo Multi-Model Institutional Engine (M15 + H1 Filter) ---
+        if session != "ASIAN SESSION" or strat_mode in ["RTM", "RTM_M4_CONSERVATIVE", "RTM_M5_ALL_WEATHER", "RTM_M6_ELITE_GROWTH", "RTM_M7_MAX_ALPHA"]:
             rtm_mode = strat_cfg.get("rtm_mode", "ALL")
             rtm_variants = ["RTM_M4_CONSERVATIVE", "RTM_M5_ALL_WEATHER", "RTM_M6_ELITE_GROWTH", "RTM_M7_MAX_ALPHA"]
             if strat_mode in ["ALL", "RTM"] or any(strat_mode == v for v in rtm_variants):
                 self._process_rtm_confluence_engine(df, symbol, spread, rtm_mode)
-
-            # Secondary Support: EMA Ribbon + RSI Momentum Reset
-            if strat_mode in ["ALL", "EMA_RIBBON"]:
-                if not self.has_open_positions_for_setup(symbol, "EMA_RIBBON"):
-                    b_sig, s_sig, reason = self._check_ema_ribbon_rsi(df)
-                    if b_sig or s_sig:
-                        self._process_single_setup_signal(df, symbol, spread, "EMA_RIBBON", "BUY" if b_sig else "SELL", reason)
-
-            # Secondary Support: BB Squeeze Breakout
-            if strat_mode in ["ALL", "BB_SQUEEZE"]:
-                if not self.has_open_positions_for_setup(symbol, "BB_SQUEEZE"):
-                    b_sig, s_sig, reason = self._check_bb_squeeze(df)
-                    if b_sig or s_sig:
-                        self._process_single_setup_signal(df, symbol, spread, "BB_SQUEEZE", "BUY" if b_sig else "SELL", reason)
 
         # Update Trend Badge with News Radar
         if news_status.get("is_news_active"):
@@ -397,7 +336,7 @@ class GoldScalpingBot:
         else:
             self.latest_trend = "SIDEWAY"
 
-    def _process_single_setup_signal(self, df: pd.DataFrame, symbol: str, spread: float, strat_key: str, action_type: str, reason: str, is_asian_scalp: bool = False, is_m1_sniper: bool = False, is_flash_scalper: bool = False):
+    def _process_single_setup_signal(self, df: pd.DataFrame, symbol: str, spread: float, strat_key: str, action_type: str, reason: str, is_asian_scalp: bool = False, **kwargs):
         """Processes and executes a signal specifically isolated for a single strategy setup."""
         # 1. Evaluate Market Regime & Liquidity Filter Score (0 - 100)
         score_res = self.scorer.evaluate_market_confluence(df, spread, strat_key)
@@ -418,10 +357,10 @@ class GoldScalpingBot:
 
         if action_type == "BUY":
             self.last_signal = f"BUY ({reason} | Quality: {score_res['score']}/100 {score_res['grade']})"
-            self.execute_buy(df, symbol, reason, is_asian_scalp, opt_params, is_m1_sniper=is_m1_sniper, is_flash_scalper=is_flash_scalper, strat_id=strat_key)
+            self.execute_buy(df, symbol, reason, is_asian_scalp, opt_params, strat_id=strat_key)
         elif action_type == "SELL":
             self.last_signal = f"SELL ({reason} | Quality: {score_res['score']}/100 {score_res['grade']})"
-            self.execute_sell(df, symbol, reason, is_asian_scalp, opt_params, is_m1_sniper=is_m1_sniper, is_flash_scalper=is_flash_scalper, strat_id=strat_key)
+            self.execute_sell(df, symbol, reason, is_asian_scalp, opt_params, strat_id=strat_key)
 
     def _check_news_momentum_expansion(self, df: pd.DataFrame, news_status: dict) -> Tuple[bool, bool, str]:
         """
@@ -454,36 +393,6 @@ class GoldScalpingBot:
         if (is_news_spike or is_solid_expansion) and b1['close'] < pre_swing_low and b1['close'] < b1['open'] and body_pct >= 0.58 and rsi14 <= 48:
             tag = "⚡ High-Impact News Spike Breakdown (SELL)" if is_news_spike else "🚀 Momentum Expansion Breakdown (SELL)"
             return False, True, tag
-
-        return False, False, ""
-
-    def _check_ema50_3candles_h1(self, df: pd.DataFrame) -> Tuple[bool, bool, str]:
-        """EMA 50 + 3 Consecutive Confirmation Candles Trend-Following (H1/M5)."""
-        if len(df) < 10: return False, False, ""
-        b1, b2, b3 = df.iloc[-2], df.iloc[-3], df.iloc[-4]
-        b6 = df.iloc[-7]
-        
-        slope = (b1['ema50'] - b6['ema50']) / 0.01
-        
-        # BUY: 3 consecutive Bullish candles all above EMA 50 with upward slope
-        buy_cond = (
-            b1['close'] > b1['open'] and b1['close'] > b1['ema50'] and
-            b2['close'] > b2['open'] and b2['close'] > b2['ema50'] and
-            b3['close'] > b3['open'] and b3['close'] > b3['ema50'] and
-            slope >= 25.0
-        )
-        if buy_cond:
-            return True, False, "📈 EMA 50 + 3 Bullish Confirmation Candles (H1)"
-
-        # SELL: 3 consecutive Bearish candles all below EMA 50 with downward slope
-        sell_cond = (
-            b1['close'] < b1['open'] and b1['close'] < b1['ema50'] and
-            b2['close'] < b2['open'] and b2['close'] < b2['ema50'] and
-            b3['close'] < b3['open'] and b3['close'] < b3['ema50'] and
-            slope <= -25.0
-        )
-        if sell_cond:
-            return False, True, "📉 EMA 50 + 3 Bearish Confirmation Candles (H1)"
 
         return False, False, ""
 
@@ -585,172 +494,6 @@ class GoldScalpingBot:
         if touched_upper and closed_inside_upper and b1['close'] < b1['open'] and (upper_wick / candle_range) >= 0.35:
             if b1['rsi7'] >= 62 and b1['rsi7'] < b2['rsi7']:
                 return False, True, "⛩️ Asian Range Sniper: Pina Colada Coming Back Rebound (85% WR)"
-
-        return False, False, ""
-
-    def _check_captain_smc(self, df: pd.DataFrame) -> Tuple[bool, bool, str]:
-        """
-        Captain Trading LAB - SMC Signal V.1.2 Dual-Model Engine
-        Evaluates BOTH Fast (Wick Rejection at S/R Zone) and Confirmed (CHoCH / Market Structure Break).
-        """
-        if len(df) < 35: return False, False, ""
-        b1 = df.iloc[-2] # Last closed bar
-        lookback = df.iloc[-32:-2]
-        
-        # 1. Calculate Support & Resistance / Order Block Zones (Fine Tuner = 10)
-        swing_high = lookback['high'].rolling(window=10).max().iloc[-1]
-        swing_low = lookback['low'].rolling(window=10).min().iloc[-1]
-
-        candle_range = b1['high'] - b1['low']
-        if candle_range <= 0.25:
-            return False, False, ""
-
-        upper_wick = b1['high'] - max(b1['open'], b1['close'])
-        lower_wick = min(b1['open'], b1['close']) - b1['low']
-
-        # 2. Trend Confluence Filter (EMA 50 vs EMA 150)
-        is_uptrend = b1.get('ema50', 0) > b1.get('ema150', 0)
-        is_downtrend = b1.get('ema50', 0) < b1.get('ema150', 0)
-        rsi = b1.get('rsi14', 50)
-
-        m5_bar_time = b1.get('time')
-        if getattr(self, 'last_captain_bar_time', None) == m5_bar_time:
-            return False, False, ""
-
-        # Volume Filter: Confirm institutional presence (tick volume >= 1.0x 20-bar avg)
-        avg_vol = df['tick_volume'].iloc[-22:-2].mean() if 'tick_volume' in df.columns else 1.0
-        sig_vol = b1.get('tick_volume', avg_vol)
-        is_vol_confirmed = (sig_vol >= avg_vol * 0.95)
-
-        # --- MODEL 1: FAST ENTRY (Wick Rejection >= 35% in S/R Zone) ---
-        # Fast Buy: Tests Support Zone + Lower Wick >= 35% + Closes Bullish + NOT in steep downtrend
-        if b1['low'] <= (swing_low + 0.60) and (lower_wick / candle_range) >= 0.35 and b1['close'] > b1['open'] and is_vol_confirmed:
-            if not is_downtrend or rsi < 35: # Only buy if aligned with trend or extremely oversold
-                self.last_captain_bar_time = m5_bar_time
-                return True, False, "Captain_SMC_Fast (Wick Rejection 35%)"
-
-        # Fast Sell: Tests Resistance Zone + Upper Wick >= 35% + Closes Bearish + NOT in steep uptrend
-        if b1['high'] >= (swing_high - 0.60) and (upper_wick / candle_range) >= 0.35 and b1['close'] < b1['open'] and is_vol_confirmed:
-            if not is_uptrend or rsi > 65: # Only sell if aligned with trend or extremely overbought
-                self.last_captain_bar_time = m5_bar_time
-                return False, True, "Captain_SMC_Fast (Wick Rejection 35%)"
-
-        # --- MODEL 2: CONFIRMED ENTRY (CHoCH / Market Structure Break) ---
-        recent_15 = df.iloc[-17:-2]
-        recent_high = recent_15['high'].max()
-        recent_low = recent_15['low'].min()
-
-        # Confirmed Buy: Bullish candle closes above recent swing high
-        if b1['close'] > recent_high and b1['close'] > b1['open'] and (is_uptrend or rsi > 52) and is_vol_confirmed:
-            self.last_captain_bar_time = m5_bar_time
-            return True, False, "Captain_SMC_Confirmed (Structure CHoCH Break)"
-
-        # Confirmed Sell: Bearish candle closes below recent swing low
-        if b1['close'] < recent_low and b1['close'] < b1['open'] and (is_downtrend or rsi < 48) and is_vol_confirmed:
-            self.last_captain_bar_time = m5_bar_time
-            return False, True, "Captain_SMC_Confirmed (Structure CHoCH Break)"
-
-        return False, False, ""
-
-    def _check_tkt_smc_gold_pro_m15(self, symbol: str) -> Tuple[bool, bool, str]:
-        """
-        TKT SMC Gold Pro v8.0 - Institutional Confluence Scoring Engine (M15 Sweet Spot).
-        Evaluates Market Structure (BOS/CHoCH) + FVG Imbalance (min 50 pts) + Order Block + Kill Zone Session.
-        Fires signal when Confluence Score >= 60%.
-        """
-        try:
-            df_m15 = self.connector.get_rates(symbol, "M15", 60)
-            if df_m15.empty or len(df_m15) < 30:
-                return False, False, ""
-
-            m15_bar_time = df_m15['time'].iloc[-2]
-            # 0. STRICT BAR LOCK & COOLDOWN: Maximum 1 trade per M15 bar! Never re-enter on the same candle!
-            if getattr(self, 'last_tkt_m15_bar_time', None) == m15_bar_time:
-                return False, False, ""
-            if time.time() < getattr(self, 'tkt_cooldown_until', 0):
-                return False, False, ""
-
-            b1 = df_m15.iloc[-2] # Closed M15 candle
-            b2 = df_m15.iloc[-3]
-            b3 = df_m15.iloc[-4]
-
-            # 1. Structure Trend (BOS / CHoCH / Liquidity Sweep) - MANDATORY PREREQUISITE
-            lookback = df_m15.iloc[-25:-2]
-            swing_high = lookback['high'].max()
-            swing_low = lookback['low'].min()
-
-            has_bull_bos = (b1['close'] > swing_high)
-            has_bull_sweep = (b1['low'] <= swing_low and b1['close'] > b1['open'] and (b1['close'] - b1['low']) >= 0.80)
-            has_bull_structure = has_bull_bos or has_bull_sweep
-
-            has_bear_bos = (b1['close'] < swing_low)
-            has_bear_sweep = (b1['high'] >= swing_high and b1['close'] < b1['open'] and (b1['high'] - b1['close']) >= 0.80)
-            has_bear_structure = has_bear_bos or has_bear_sweep
-
-            # If no real structural event occurred, NO TRADE!
-            if not has_bull_structure and not has_bear_structure:
-                return False, False, ""
-
-            # Trend Filter: EMA 50 on M15 (Never buy in a free-falling downtrend)
-            ema50_m15 = df_m15['close'].ewm(span=50, adjust=False).mean().iloc[-2]
-            if has_bull_structure and b1['close'] < (ema50_m15 - 1.50):
-                return False, False, "" # Reject BUY counter-trend below M15 EMA 50
-            if has_bear_structure and b1['close'] > (ema50_m15 + 1.50):
-                return False, False, "" # Reject SELL counter-trend above M15 EMA 50
-
-            buy_score = 0
-            sell_score = 0
-
-            if has_bull_structure:
-                buy_score += 30
-            if has_bear_structure:
-                sell_score += 30
-
-            # 2. Fair Value Gap (FVG Imbalance) - 25%
-            min_fvg_pts = 0.50 # 50 points = 0.50 USD
-            bull_fvg_present = (b1['low'] > b3['high'] + min_fvg_pts)
-            bear_fvg_present = (b1['high'] < b3['low'] - min_fvg_pts)
-
-            if bull_fvg_present: buy_score += 25
-            if bear_fvg_present: sell_score += 25
-
-            # 3. Kill Zone Session Bonus - 20%
-            now_hour = (datetime.utcnow().hour + 7) % 24 # Thai UTC+7
-            in_kill_zone = (7 <= now_hour < 14) or (14 <= now_hour < 18) or (19 <= now_hour < 23)
-            if in_kill_zone:
-                buy_score += 20
-                sell_score += 20
-
-            # 4. Premium / Discount Equilibrium - 15%
-            pd_50 = df_m15.iloc[-50:-2] if len(df_m15) >= 50 else df_m15.iloc[:-2]
-            equilibrium = (pd_50['high'].max() + pd_50['low'].min()) / 2.0
-            if b1['close'] < equilibrium:
-                buy_score += 15 # Discount (Good for BUY)
-            else:
-                sell_score += 15 # Premium (Good for SELL)
-
-            # 5. Wick Rejection / Volume Confirmation - 10%
-            candle_range = b1['high'] - b1['low']
-            if candle_range > 0.30:
-                lower_wick = min(b1['open'], b1['close']) - b1['low']
-                upper_wick = b1['high'] - max(b1['open'], b1['close'])
-                if (lower_wick / candle_range) >= 0.30 and b1['close'] > b1['open']:
-                    buy_score += 10
-                if (upper_wick / candle_range) >= 0.30 and b1['close'] < b1['open']:
-                    sell_score += 10
-
-            # Stricter Confluence Threshold: >= 70% and structure must match
-            if buy_score >= 70 and buy_score > sell_score and has_bull_structure:
-                self.last_tkt_m15_bar_time = m15_bar_time
-                self.tkt_cooldown_until = time.time() + 900 # 15 min lock
-                return True, False, f"TKT SMC Gold Pro M15 (Score: {buy_score}% >= 70%)"
-            elif sell_score >= 70 and sell_score > buy_score and has_bear_structure:
-                self.last_tkt_m15_bar_time = m15_bar_time
-                self.tkt_cooldown_until = time.time() + 900 # 15 min lock
-                return False, True, f"TKT SMC Gold Pro M15 (Score: {sell_score}% >= 70%)"
-
-        except Exception as e:
-            logger.error(f"Error checking TKT SMC Gold Pro M15: {e}")
 
         return False, False, ""
 
@@ -1064,201 +807,12 @@ class GoldScalpingBot:
                 elif action == "SELL":
                     self.execute_sell(df, symbol, f"{reason} | {s_id}", opt_params=opt, strat_id=s_id)
 
-    def _check_m1_sniper_confirmation(self, symbol: str, df_m5: pd.DataFrame, strat_mode: str = "ALL") -> Tuple[bool, bool, str]:
-        """
-        ⚡ M1 Sniper Confirmation (Inspired by Golfpy Trade Multi-Timeframe Framework):
-        1. Context: M15/M5 Key S/R Zone, Order Block, or Bollinger Band extreme.
-        2. Timing Gate: Early Asia (07:00 - 10:00) & NY Session (19:00 - 23:00).
-           Avoids London mid-day chop / fakeouts when in ALL mode.
-        3. Trigger: M1 Internal BOS / CHoCH + Candle Confirmation with refined SL (100-200 pts) & High R:R (1:3 - 1:5).
-        """
-        try:
-            now_hour = (datetime.utcnow().hour + 7) % 24 # Thai time UTC+7
-            is_valid_timing = (7 <= now_hour < 10) or (19 <= now_hour < 23)
-            
-            # If in ALL mode, strictly enforce session gate to avoid fakeouts
-            if strat_mode != "M1_SNIPER_CONFIRMATION" and not is_valid_timing:
-                return False, False, ""
-
-            if len(df_m5) < 25:
-                return False, False, ""
-
-            b1_m5 = df_m5.iloc[-2]
-            lowest_m5 = float(df_m5['low'].iloc[-12:-2].min())
-            highest_m5 = float(df_m5['high'].iloc[-12:-2].max())
-            current_close = float(b1_m5['close'])
-
-            # Check Pina Colada Bands on M5
-            pina_m5 = self._calculate_pina_colada(df_m5)
-            if pina_m5.get("caution", False):
-                # Severe momentum dump/pump - skip M1 counter-trend entry
-                return False, False, ""
-
-            # Near HTF Demand or Supply zone (within $2.20, BB Bands, or Pina Colada Coming Back)
-            near_demand = (current_close - lowest_m5) <= 2.20 or (current_close <= float(b1_m5.get('bb_lower', 0))) or pina_m5.get("coming_back_bull", False)
-            near_supply = (highest_m5 - current_close) <= 2.20 or (current_close >= float(b1_m5.get('bb_upper', 99999))) or pina_m5.get("coming_back_bear", False)
-
-            if not near_demand and not near_supply:
-                return False, False, ""
-
-            # Fetch M1 Candlesticks from MT5
-            rates_m1 = self.connector.get_rates(symbol, "M1", 25)
-            if rates_m1 is None or rates_m1.empty or len(rates_m1) < 12:
-                return False, False, ""
-
-            m1_b1 = rates_m1.iloc[-2] # Last closed M1 bar
-            m1_recent = rates_m1.iloc[-8:-2]
-            m1_swing_high = float(m1_recent['high'].max())
-            m1_swing_low = float(m1_recent['low'].min())
-
-            # Check M1 Pina Colada Re-entry
-            pina_m1 = self._calculate_pina_colada(rates_m1)
-            m1_bull_trigger = pina_m1.get("coming_back_bull", False) or (float(m1_b1['close']) > m1_swing_high and float(m1_b1['close']) > float(m1_b1['open']))
-            m1_bear_trigger = pina_m1.get("coming_back_bear", False) or (float(m1_b1['close']) < m1_swing_low and float(m1_b1['close']) < float(m1_b1['open']))
-
-            # M1 Internal BOS Bullish Trigger
-            if near_demand and m1_bull_trigger:
-                return True, False, "M1 Sniper Confirmation: Pina Colada Refined BOS (BUY)"
-
-            # M1 Internal BOS Bearish Trigger
-            if near_supply and m1_bear_trigger:
-                return False, True, "M1 Sniper Confirmation: Pina Colada Refined BOS (SELL)"
-
-        except Exception as e:
-            logger.error(f"Error checking M1 sniper confirmation: {e}")
-
-        return False, False, ""
-
-    def _check_smc_liquidity_sweep(self, df: pd.DataFrame) -> Tuple[bool, bool, str]:
-        b1 = df.iloc[-2]
-        lookback = df.iloc[-22:-2]
-        swing_high = lookback['high'].max()
-        swing_low = lookback['low'].min()
-
-        candle_range = b1['high'] - b1['low']
-        if candle_range <= 0.30:
-            return False, False, ""
-
-        upper_wick = b1['high'] - max(b1['open'], b1['close'])
-        lower_wick = min(b1['open'], b1['close']) - b1['low']
-
-        if b1['low'] < swing_low and b1['close'] > swing_low and (lower_wick / candle_range) >= 0.45:
-            if b1['close'] > b1['open'] and b1['rsi14'] < 45:
-                return True, False, "SMC Liquidity Sweep Low (75% WR)"
-
-        if b1['high'] > swing_high and b1['close'] < swing_high and (upper_wick / candle_range) >= 0.45:
-            if b1['close'] < b1['open'] and b1['rsi14'] > 55:
-                return False, True, "SMC Liquidity Sweep High (75% WR)"
-
-        return False, False, ""
-
-    def _check_flash_micro_scalper(self, df: pd.DataFrame) -> Tuple[bool, bool, str]:
-        """
-        ⚡ Flash Micro-Scalper (9 EMA Wave & Quick-Bite):
-        - Operates in ALL sessions (Asia, London, New York).
-        - Dual Mode:
-          1. Micro Trend Pullback: Tap EMA 9 with rejection wick in direction of EMA 9/21.
-          2. Sideways Exhaustion: Reversion when stretched > 1.20 USD from EMA 9 with RSI 4 extreme.
-        - Targets: Ultra-fast 70 - 120 points ($0.70 - $1.20) in-and-out.
-        """
-        if len(df) < 25: return False, False, ""
-        b1 = df.iloc[-2]
-        b2 = df.iloc[-3]
-        
-        candle_range = b1['high'] - b1['low']
-        if candle_range <= 0.20: return False, False, ""
-
-        m5_bar_time = b1.get('time')
-        if getattr(self, 'last_flash_m5_bar_time', None) == m5_bar_time:
-            return False, False, ""
-
-        candle_body = abs(b1['close'] - b1['open'])
-        if (candle_body / candle_range) < 0.35:
-            return False, False, "" # Reject dojis and weak-body indecision candles
-
-        upper_wick = b1['high'] - max(b1['open'], b1['close'])
-        lower_wick = min(b1['open'], b1['close']) - b1['low']
-        rsi4 = b1.get('rsi4', 50.0)
-
-        # Pure Trend-Following Mode: Strict EMA 9 > EMA 21 > EMA 50 Alignment + Pullback Tap
-        ema50_val = b1.get('ema50', 0)
-        is_uptrend = (b1['ema9'] > b1['ema21']) and (b1['ema21'] > ema50_val)
-        is_downtrend = (b1['ema9'] < b1['ema21']) and (b1['ema21'] < (ema50_val if ema50_val > 0 else 99999))
-
-        if is_uptrend and b1['low'] <= (b1['ema9'] + 0.25) and b1['close'] > b1['ema9'] and b1['close'] > b1['open']:
-            if (lower_wick / candle_range) >= 0.30 and 40 <= rsi4 <= 75:
-                self.last_flash_m5_bar_time = m5_bar_time
-                return True, False, "⚡ Flash Scalper: Pure Trend 9 EMA Pullback (BUY)"
-
-        if is_downtrend and b1['high'] >= (b1['ema9'] - 0.25) and b1['close'] < b1['ema9'] and b1['close'] < b1['open']:
-            if (upper_wick / candle_range) >= 0.30 and 25 <= rsi4 <= 60:
-                self.last_flash_m5_bar_time = m5_bar_time
-                return False, True, "⚡ Flash Scalper: Pure Trend 9 EMA Pullback (SELL)"
-
-        return False, False, ""
-
-    def _check_ema_ribbon_rsi(self, df: pd.DataFrame) -> Tuple[bool, bool, str]:
-        b1 = df.iloc[-2]
-        b2 = df.iloc[-3]
-
-        bullish_ribbon = (b1['ema20'] > b1['ema50'] > b1['ema100'] > b1['ema200'])
-        if bullish_ribbon:
-            if b1['low'] <= b1['ema20'] and b1['close'] > b1['ema20'] and b1['close'] > b1['open']:
-                if 40 <= b1['rsi14'] <= 60 and b1['rsi14'] > b2['rsi14']:
-                    return True, False, "EMA Ribbon + RSI Momentum Reset"
-
-        bearish_ribbon = (b1['ema20'] < b1['ema50'] < b1['ema100'] < b1['ema200'])
-        if bearish_ribbon:
-            if b1['high'] >= b1['ema20'] and b1['close'] < b1['ema20'] and b1['close'] < b1['open']:
-                if 40 <= b1['rsi14'] <= 60 and b1['rsi14'] < b2['rsi14']:
-                    return False, True, "EMA Ribbon + RSI Momentum Reset"
-
-        return False, False, ""
-
-    def _check_bb_squeeze(self, df: pd.DataFrame) -> Tuple[bool, bool, str]:
-        """Bollinger Bands Squeeze & Volatility Expansion Setup (Winrate 70%)."""
-        if len(df) < 30: return False, False, ""
-        b1 = df.iloc[-2]
-        b2 = df.iloc[-3]
-        
-        # Check if previous bar was squeezed and current bar expands with momentum
-        if b2['bb_width'] < 1.20 and b1['bb_width'] >= 1.30:
-            if b1['close'] > b1['bb_upper'] and b1['close'] > b1['ema50']:
-                return True, False, "BB Squeeze Volatility Breakout (BUY)"
-            elif b1['close'] < b1['bb_lower'] and b1['close'] < b1['ema50']:
-                return False, True, "BB Squeeze Volatility Breakout (SELL)"
-
-        return False, False, ""
-
-    def _check_secret_ema_pullback(self, df: pd.DataFrame, strat_cfg: dict) -> Tuple[bool, bool, str]:
-        """Classic Secret EMA 50/150 Pullback."""
-        if len(df) < 10: return False, False, ""
-        b1 = df.iloc[-2]
-        b4 = df.iloc[-5]
-        slope = (b1['ema50'] - b4['ema50']) / 0.01
-
-        # Buy Pullback
-        if b1['ema50'] > b1['ema150'] and slope >= 25.0:
-            if b1['low'] <= (b1['ema50'] + 1.0) and b1['close'] > b1['ema50'] and b1['close'] > b1['open']:
-                return True, False, "EMA 50 Secret Pullback"
-
-        # Sell Pullback
-        if b1['ema50'] < b1['ema150'] and slope <= -25.0:
-            if b1['high'] >= (b1['ema50'] - 1.0) and b1['close'] < b1['ema50'] and b1['close'] < b1['open']:
-                return False, True, "EMA 50 Secret Pullback"
-
-        return False, False, ""
-
     def should_run_trend(self, strat_id: str, df: pd.DataFrame, session: str) -> Tuple[bool, str]:
         """
         AI Trend Intelligence Classifier:
-        Analyzes whether the current setup and market structure warrant an uncapped Trend Runner (Trailing Stop)
-        or should take Fixed Targets (TP1, TP2, TP3) without trailing.
+        Analyzes whether the current setup warrants an uncapped Trend Runner (Trailing Stop)
+        or should take Fixed Targets (TP1, TP2) without trailing.
         """
-        # 0. Flash Micro-Scalper -> Strict Quick-Bite Fixed TP (No Trailing)
-        if strat_id == "FLASH_MICRO_SCALPER":
-            return False, "Fixed TP (Flash Micro-Scalper Quick-Bite)"
-
         # 1. Asian Session / Mean Reversion -> Strict Fixed TP (No Trailing)
         if strat_id == "ASIAN_RANGE_SNIPER" or session == "ASIAN SESSION":
             return False, "Fixed TP (Asian Sideways - No Trailing)"
@@ -1267,101 +821,40 @@ class GoldScalpingBot:
         if strat_id == "NEWS_MOMENTUM_EXPANSION":
             return True, "AI Trend Trail (News Expansion)"
 
-        # 3. EMA 50 + 3 Confirmation Candles H1 -> Macro Trend Runner
-        if strat_id == "EMA50_3CANDLES_H1":
-            return True, "AI Trend Trail (H1 Macro Trend)"
-
-        # 3.1 SMCxSTO H1 Devil System -> High R:R Runner (Trailing Stop)
+        # 3. SMCxSTO H1 Devil System -> High R:R Runner (Trailing Stop)
         if strat_id == "SMC_X_STO_H1":
             return True, "AI Trend Trail (SMCxSTO H1 Devil System)"
 
-        # 4. M1 Sniper Confirmation -> High R:R Runner (Trailing Stop)
-        if strat_id == "M1_SNIPER_CONFIRMATION":
-            return True, "AI Trend Trail (M1 High R:R Runner)"
+        # 4. RTM Quasimodo Multi-Model Engine -> High R:R Runner (Trailing Stop)
+        if strat_id.startswith("RTM_"):
+            return True, "AI Trend Trail (RTM Quasimodo High R:R Runner)"
 
-        # 5. TKT SMC Gold Pro M15 or Captain SMC Confirmed Break: Check Market Dynamics
+        # 5. Fallback: Check Market Regime
         regime = self.optimizer.classify_market_regime(df)
         if "TREND" in regime.get("regime", "") or regime.get("volatility_ratio", 1.0) >= 1.25:
             return True, f"AI Trend Trail ({regime.get('label', 'Trending Expansion')})"
 
         return False, "Fixed TP (Normal S/R Targets)"
 
-    def execute_buy(self, df: pd.DataFrame, symbol: str, reason: str, is_asian_scalp: bool = False, opt_params: Optional[dict] = None, is_m1_sniper: bool = False, is_flash_scalper: bool = False, strat_id: str = "CAPTAIN_SMC_DUAL"):
+    def execute_buy(self, df: pd.DataFrame, symbol: str, reason: str, is_asian_scalp: bool = False, opt_params: Optional[dict] = None, strat_id: str = "RTM_M5_ALL_WEATHER", **kwargs):
         ask = self.connector.get_market_info(symbol).get("ask", 0.0)
         if ask <= 0: return
 
         opt = opt_params or {}
         sl_mult = opt.get("atr_sl_multiplier", 1.0)
-        dynamic_rr = opt.get("tp_ratio", 1.50 if not is_asian_scalp else 1.20)
         lot_mult = opt.get("lot_multiplier", 1.0)
-        session = self.get_current_session()
 
         m_info = self.get_magic_for_strategy(strat_id)
         magic_p1 = m_info["pos1"]
-        magic_p2 = m_info["pos2"]
-        magic_p3 = m_info["pos3"]
 
-        if is_flash_scalper or "Flash" in reason or "FLASH" in reason or strat_id == "FLASH_MICRO_SCALPER":
-            # Dynamic Swing Low SL (280 - 450 pts safe zone)
-            lowest_low = float(df['low'].iloc[-6:-1].min())
-            sl = lowest_low - (0.40 * sl_mult)
-            sl_dist = ask - sl
-            if sl_dist < 2.80: sl = ask - 2.80; sl_dist = 2.80
-            if sl_dist > 4.50: sl = ask - 4.50; sl_dist = 4.50
-            tp1 = ask + (sl_dist * 1.0)
-            tp2 = ask + (sl_dist * 1.5) # 1:1.5 RR (~420-670 pts)
-        elif is_m1_sniper or "M1" in reason or strat_id == "M1_SNIPER_CONFIRMATION":
-            lowest_low = float(df['low'].iloc[-5:-1].min())
-            sl = lowest_low - (0.30 * sl_mult)
-            sl_dist = ask - sl
-            if sl_dist < 2.50: sl = ask - 2.50; sl_dist = 2.50
-            if sl_dist > 4.50: sl = ask - 4.50; sl_dist = 4.50
-            tp1 = ask + (sl_dist * 1.5)
-            tp2 = ask + (sl_dist * 2.5)
-            tp3 = ask + (sl_dist * 4.0)
-        elif is_asian_scalp or strat_id == "ASIAN_RANGE_SNIPER":
+        if is_asian_scalp or strat_id == "ASIAN_RANGE_SNIPER":
             lowest_low = df['low'].iloc[-6:-1].min()
             sl_buffer = 0.40 * sl_mult
             sl = lowest_low - sl_buffer
             sl_dist = ask - sl
             if sl_dist < 2.80: sl = ask - 2.80; sl_dist = 2.80
             if sl_dist > 5.00: sl = ask - 5.00; sl_dist = 5.00
-            tp1 = ask + (sl_dist * 1.0)
             tp2 = ask + (sl_dist * 1.8)
-        elif strat_id == "TKT_SMC_GOLD_PRO_M15" or "TKT" in reason:
-            df_m15 = self.connector.get_rates(symbol, "M15", 35)
-            if not df_m15.empty and len(df_m15) >= 15:
-                ob_low = float(df_m15['low'].iloc[-15:-1].min())
-            else:
-                ob_low = float(df['low'].iloc[-30:-1].min())
-            sl_buffer = 0.80 * sl_mult # 80 pts safety buffer below M15 OB
-            sl = ob_low - sl_buffer
-            sl_dist = ask - sl
-            # Safe zone for M15 Gold: minimum 5.00 USD (500 pts), maximum 8.50 USD (850 pts)
-            if sl_dist < 5.00: sl = ask - 5.00; sl_dist = 5.00
-            if sl_dist > 8.50: sl = ask - 8.50; sl_dist = 8.50
-            tp1 = ask + (sl_dist * 1.0)
-            tp2 = ask + (sl_dist * 1.8)
-        elif strat_id == "CAPTAIN_SMC_DUAL" or "Captain" in reason or "CAPTAIN" in reason:
-            lowest_low = float(df['low'].iloc[-14:-1].min())
-            sl_buffer = 0.60 * sl_mult
-            sl = lowest_low - sl_buffer
-            sl_dist = ask - sl
-            # Safe zone for Captain M5: minimum 3.80 USD (380 pts), maximum 6.50 USD (650 pts)
-            if sl_dist < 3.80: sl = ask - 3.80; sl_dist = 3.80
-            if sl_dist > 6.50: sl = ask - 6.50; sl_dist = 6.50
-            tp1 = ask + (sl_dist * 1.0)
-            tp2 = ask + (sl_dist * 1.8)
-        elif strat_id == "EMA50_3CANDLES_H1" or "EMA50" in reason or "H1" in reason:
-            lowest_low = float(df['low'].iloc[-20:-1].min())
-            sl_buffer = 0.70 * sl_mult
-            sl = lowest_low - sl_buffer
-            sl_dist = ask - sl
-            # Safe zone for H1 Trend: minimum 4.50 USD (450 pts), maximum 8.00 USD (800 pts)
-            if sl_dist < 4.50: sl = ask - 4.50; sl_dist = 4.50
-            if sl_dist > 8.00: sl = ask - 8.00; sl_dist = 8.00
-            tp1 = ask + (sl_dist * 1.0)
-            tp2 = ask + (sl_dist * 2.0)
         elif strat_id == "SMC_X_STO_H1" or "SMCxSTO" in reason or "STO" in reason:
             df_h1 = self.connector.get_rates(symbol, "H1", 25)
             if not df_h1.empty and len(df_h1) >= 15:
@@ -1371,10 +864,8 @@ class GoldScalpingBot:
             sl_buffer = 0.80 * sl_mult
             sl = ob_low - sl_buffer
             sl_dist = ask - sl
-            # Safe zone for H1 Gold: minimum 5.00 USD (500 pts), maximum 9.00 USD (900 pts)
             if sl_dist < 5.00: sl = ask - 5.00; sl_dist = 5.00
             if sl_dist > 9.00: sl = ask - 9.00; sl_dist = 9.00
-            tp1 = ask + (sl_dist * 1.0)
             tp2 = ask + (sl_dist * 2.0)
         elif strat_id.startswith("RTM_") or "RTM" in reason:
             custom_sl = opt.get("custom_sl")
@@ -1394,16 +885,14 @@ class GoldScalpingBot:
                 tp2 = float(custom_tp)
             else:
                 tp2 = ask + (sl_dist * target_rr)
-            tp1 = ask + (sl_dist * 1.0)
         else:
-            # News Momentum / Breakout / Default
+            # News Momentum Expansion / Default
             lowest_low = df['low'].iloc[-10:-1].min()
             sl_buffer = 0.50 * sl_mult
             sl = lowest_low - sl_buffer
             sl_dist = ask - sl
             if sl_dist < 3.50: sl = ask - 3.50; sl_dist = 3.50
             if sl_dist > 7.00: sl = ask - 7.00; sl_dist = 7.00
-            tp1 = ask + (sl_dist * 1.0)
             tp2 = ask + (sl_dist * 1.8)
 
         total_lot = self.calculate_lot_size(sl_dist, lot_mult=lot_mult)
@@ -1416,90 +905,25 @@ class GoldScalpingBot:
         if self.notifier:
             self.notifier.notify_order_opened("BUY", symbol, total_lot, ask, sl, tp2, reason)
 
-    def execute_sell(self, df: pd.DataFrame, symbol: str, reason: str, is_asian_scalp: bool = False, opt_params: Optional[dict] = None, is_m1_sniper: bool = False, is_flash_scalper: bool = False, strat_id: str = "CAPTAIN_SMC_DUAL"):
+    def execute_sell(self, df: pd.DataFrame, symbol: str, reason: str, is_asian_scalp: bool = False, opt_params: Optional[dict] = None, strat_id: str = "RTM_M5_ALL_WEATHER", **kwargs):
         bid = self.connector.get_market_info(symbol).get("bid", 0.0)
         if bid <= 0: return
 
         opt = opt_params or {}
         sl_mult = opt.get("atr_sl_multiplier", 1.0)
-        dynamic_rr = opt.get("tp_ratio", 1.50 if not is_asian_scalp else 1.20)
         lot_mult = opt.get("lot_multiplier", 1.0)
-        session = self.get_current_session()
 
         m_info = self.get_magic_for_strategy(strat_id)
         magic_p1 = m_info["pos1"]
-        magic_p2 = m_info["pos2"]
 
-        if is_flash_scalper or "Flash" in reason or "FLASH" in reason or strat_id == "FLASH_MICRO_SCALPER":
-            # Dynamic Swing High SL (180 - 250 pts safe zone to absorb gold spread and pullbacks)
-            highest_high = float(df['high'].iloc[-5:-1].max())
-            sl = highest_high + (0.35 * sl_mult)
-            sl_dist = sl - bid
-            if sl_dist < 1.80: sl = bid + 1.80; sl_dist = 1.80
-            if sl_dist > 2.50: sl = bid + 2.50; sl_dist = 2.50
-            tp1 = bid - (sl_dist * 1.0)
-            tp2 = bid - (sl_dist * 1.45) # 1:1.45 RR (~260-360 pts)
-        if is_flash_scalper or "Flash" in reason or "FLASH" in reason or strat_id == "FLASH_MICRO_SCALPER":
-            # Dynamic Swing High SL (280 - 450 pts safe zone)
-            highest_high = float(df['high'].iloc[-6:-1].max())
-            sl = highest_high + (0.40 * sl_mult)
-            sl_dist = sl - bid
-            if sl_dist < 2.80: sl = bid + 2.80; sl_dist = 2.80
-            if sl_dist > 4.50: sl = bid + 4.50; sl_dist = 4.50
-            tp1 = bid - (sl_dist * 1.0)
-            tp2 = bid - (sl_dist * 1.5) # 1:1.5 RR (~420-670 pts)
-        elif is_m1_sniper or "M1" in reason or strat_id == "M1_SNIPER_CONFIRMATION":
-            highest_high = float(df['high'].iloc[-5:-1].max())
-            sl = highest_high + (0.30 * sl_mult)
-            sl_dist = sl - bid
-            if sl_dist < 2.50: sl = bid + 2.50; sl_dist = 2.50
-            if sl_dist > 4.50: sl = bid + 4.50; sl_dist = 4.50
-            tp1 = bid - (sl_dist * 1.5)
-            tp2 = bid - (sl_dist * 2.5)
-            tp3 = bid - (sl_dist * 4.0)
-        elif is_asian_scalp or strat_id == "ASIAN_RANGE_SNIPER":
+        if is_asian_scalp or strat_id == "ASIAN_RANGE_SNIPER":
             highest_high = df['high'].iloc[-6:-1].max()
             sl_buffer = 0.40 * sl_mult
             sl = highest_high + sl_buffer
             sl_dist = sl - bid
             if sl_dist < 2.80: sl = bid + 2.80; sl_dist = 2.80
             if sl_dist > 5.00: sl = bid + 5.00; sl_dist = 5.00
-            tp1 = bid - (sl_dist * 1.0)
             tp2 = bid - (sl_dist * 1.8)
-        elif strat_id == "TKT_SMC_GOLD_PRO_M15" or "TKT" in reason:
-            df_m15 = self.connector.get_rates(symbol, "M15", 35)
-            if not df_m15.empty and len(df_m15) >= 15:
-                ob_high = float(df_m15['high'].iloc[-15:-1].max())
-            else:
-                ob_high = float(df['high'].iloc[-30:-1].max())
-            sl_buffer = 0.80 * sl_mult # 80 pts safety buffer above M15 OB
-            sl = ob_high + sl_buffer
-            sl_dist = sl - bid
-            # Safe zone for M15 Gold: minimum 5.00 USD (500 pts), maximum 8.50 USD (850 pts)
-            if sl_dist < 5.00: sl = bid + 5.00; sl_dist = 5.00
-            if sl_dist > 8.50: sl = bid + 8.50; sl_dist = 8.50
-            tp1 = bid - (sl_dist * 1.0)
-            tp2 = bid - (sl_dist * 1.8)
-        elif strat_id == "CAPTAIN_SMC_DUAL" or "Captain" in reason or "CAPTAIN" in reason:
-            highest_high = float(df['high'].iloc[-14:-1].max())
-            sl_buffer = 0.60 * sl_mult
-            sl = highest_high + sl_buffer
-            sl_dist = sl - bid
-            # Safe zone for Captain M5: minimum 3.80 USD (380 pts), maximum 6.50 USD (650 pts)
-            if sl_dist < 3.80: sl = bid + 3.80; sl_dist = 3.80
-            if sl_dist > 6.50: sl = bid + 6.50; sl_dist = 6.50
-            tp1 = bid - (sl_dist * 1.0)
-            tp2 = bid - (sl_dist * 1.8)
-        elif strat_id == "EMA50_3CANDLES_H1" or "EMA50" in reason or "H1" in reason:
-            highest_high = float(df['high'].iloc[-20:-1].max())
-            sl_buffer = 0.70 * sl_mult
-            sl = highest_high + sl_buffer
-            sl_dist = sl - bid
-            # Safe zone for H1 Trend: minimum 4.50 USD (450 pts), maximum 8.00 USD (800 pts)
-            if sl_dist < 4.50: sl = bid + 4.50; sl_dist = 4.50
-            if sl_dist > 8.00: sl = bid + 8.00; sl_dist = 8.00
-            tp1 = bid - (sl_dist * 1.0)
-            tp2 = bid - (sl_dist * 2.0)
         elif strat_id == "SMC_X_STO_H1" or "SMCxSTO" in reason or "STO" in reason:
             df_h1 = self.connector.get_rates(symbol, "H1", 25)
             if not df_h1.empty and len(df_h1) >= 15:
@@ -1509,10 +933,8 @@ class GoldScalpingBot:
             sl_buffer = 0.80 * sl_mult
             sl = ob_high + sl_buffer
             sl_dist = sl - bid
-            # Safe zone for H1 Gold: minimum 5.00 USD (500 pts), maximum 9.00 USD (900 pts)
             if sl_dist < 5.00: sl = bid + 5.00; sl_dist = 5.00
             if sl_dist > 9.00: sl = bid + 9.00; sl_dist = 9.00
-            tp1 = bid - (sl_dist * 1.0)
             tp2 = bid - (sl_dist * 2.0)
         elif strat_id.startswith("RTM_") or "RTM" in reason:
             custom_sl = opt.get("custom_sl")
@@ -1532,17 +954,25 @@ class GoldScalpingBot:
                 tp2 = float(custom_tp)
             else:
                 tp2 = bid - (sl_dist * target_rr)
-            tp1 = bid - (sl_dist * 1.0)
         else:
-            # News Momentum / Breakout / Default
+            # News Momentum Expansion / Default
             highest_high = df['high'].iloc[-10:-1].max()
             sl_buffer = 0.50 * sl_mult
             sl = highest_high + sl_buffer
             sl_dist = sl - bid
             if sl_dist < 3.50: sl = bid + 3.50; sl_dist = 3.50
             if sl_dist > 7.00: sl = bid + 7.00; sl_dist = 7.00
-            tp1 = bid - (sl_dist * 1.0)
             tp2 = bid - (sl_dist * 1.8)
+
+        total_lot = self.calculate_lot_size(sl_dist, lot_mult=lot_mult)
+
+        # Single Position Plan across ALL Setups: 1.0% Risk for Clean Statistical Benchmarking
+        res1 = self.connector.open_order(symbol, "SELL", total_lot, sl, tp2, magic_p1, f"Gold_{strat_id[:8]}")
+        t1 = res1.get("ticket", 0) if isinstance(res1, dict) else 0
+        self.benchmark_tracker.register_trade(t1, 0, symbol, "SELL", bid, sl, total_lot, strat_id)
+        self.add_log(f"🔴 [SELL OPENED] [{strat_id}] {reason} | Single 1.0% Risk: TP {tp2:.2f} (+{abs(bid-tp2)*100:.0f} pts) / SL {sl:.2f} (-{sl_dist*100:.0f} pts) | Lot: {total_lot}", "SUCCESS")
+        if self.notifier:
+            self.notifier.notify_order_opened("SELL", symbol, total_lot, bid, sl, tp2, reason)
 
         total_lot = self.calculate_lot_size(sl_dist, lot_mult=lot_mult)
 

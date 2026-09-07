@@ -22,28 +22,8 @@ except ImportError:
 class RealTradeAnalyticsManager:
     """Parses live MT5 deal history and generates verified trade statistics for BOT trades only."""
     
-    # Strategy Catalog Definition (Bot Strategies Only)
+    # Strategy Catalog Definition (Bot Strategies Only - Elite 4 Pillars)
     STRATEGY_REGISTRY = {
-        "CAPTAIN_SMC_DUAL": {
-            "id": "CAPTAIN_SMC_DUAL",
-            "name": "Captain SMC Signal V1.2 (Dual Auto)",
-            "icon": "⭐",
-            "category": "SMC_PRO",
-            "timeframe": "M5",
-            "best_session": "London & NY (14:00 - 04:00)",
-            "magic_numbers": [888120, 888121, 888122, 888123, 888124, 888125, 555888, 555889, 555890],
-            "description": "ระบบ Smart Money Concept อัตโนมัติ เข้าทั้ง Fast (ไส้ปฏิเสธ S/R 35%) และ Confirmed (CHoCH Break) พร้อม Multi-TP"
-        },
-        "TKT_SMC_GOLD_PRO_M15": {
-            "id": "TKT_SMC_GOLD_PRO_M15",
-            "name": "TKT SMC Gold Pro v8.0 (M15)",
-            "icon": "⚜️",
-            "category": "SMC_M15",
-            "timeframe": "M15",
-            "best_session": "London & NY AM Kill Zones (14:00 - 23:00)",
-            "magic_numbers": [999150, 999151, 999152],
-            "description": "ระบบสถาบัน Confluence Score ≥ 60% กรอง FVG Imbalance + Order Block + Kill Zone บน M15"
-        },
         "ASIAN_RANGE_SNIPER": {
             "id": "ASIAN_RANGE_SNIPER",
             "name": "Asian Range Sniper: Mean Reversion",
@@ -51,58 +31,8 @@ class RealTradeAnalyticsManager:
             "category": "MEAN_REVERSION",
             "timeframe": "M5",
             "best_session": "Asian Session (07:00 - 14:00)",
-            "magic_numbers": [555888, 555889, 555890],
-            "description": "สไนเปอร์กรอบตลาดเอเชีย แตะขอบ Bollinger Band + Fast RSI 7 ดีดกลับเข้าหา SMA 20"
-        },
-        "EMA50_3CANDLES_H1": {
-            "id": "EMA50_3CANDLES_H1",
-            "name": "EMA 50 + 3 Confirmation Candles (H1 Pro)",
-            "icon": "📈",
-            "category": "TREND_FOLLOWING",
-            "timeframe": "H1",
-            "best_session": "London & NY (14:00 - 04:00)",
-            "magic_numbers": [777888, 777889, 777890],
-            "description": "เทรดตามเทรนด์ H1 เมื่อเกิดแท่งเทียนสีเดียวกัน 3 แท่งติดเหนือ/ใต้เส้น EMA 50 + ความชัน"
-        },
-        "NEWS_MOMENTUM_EXPANSION": {
-            "id": "NEWS_MOMENTUM_EXPANSION",
-            "name": "News Momentum Expansion",
-            "icon": "⚡",
-            "category": "NEWS_TRADING",
-            "timeframe": "M5",
-            "best_session": "High-Impact News Events (USD)",
-            "magic_numbers": [666888, 666889, 666890],
-            "description": "ดักจับแท่งเทียน Breakout ความผันผวนสูงช่วงข่าวใหญ่ (CPI, NFP, FOMC) พร้อม Trailing Stop กว้าง"
-        },
-        "M1_SNIPER_CONFIRMATION": {
-            "id": "M1_SNIPER_CONFIRMATION",
-            "name": "M1 Sniper Confirmation (Refine Zone)",
-            "icon": "🎯",
-            "category": "SCALPING",
-            "timeframe": "M1 (M15 Refined)",
-            "best_session": "Early Asia & NY Session (07-10 & 19-23)",
-            "magic_numbers": [444888, 444889, 444890],
-            "description": "ย่อยโซน M15/M5 รอคอนเฟิร์ม M1 Internal BOS เข้าจุดคมกริบ SL แคบ 100-150 จุด ดัน R:R สูง 1:3 - 1:5 (Golfpy Framework)"
-        },
-        "FLASH_MICRO_SCALPER": {
-            "id": "FLASH_MICRO_SCALPER",
-            "name": "Flash Micro-Scalper (9 EMA Quick-Bite)",
-            "icon": "⚡",
-            "category": "SCALPING",
-            "timeframe": "M5",
-            "best_session": "All Sessions 24/5 (Asia/London/NY)",
-            "magic_numbers": [333888, 333889, 333890],
-            "description": "สายซิ่งเทรดได้ทุกตลาด เกาะคลื่น EMA 9 & สวนสั้น RSI 4 Exhaustion เน้นปิดเก็บคำเล็ก 70-120 จุด"
-        },
-        "SMC_X_STO_H1": {
-            "id": "SMC_X_STO_H1",
-            "name": "SMCxSTO ระบบปีศาจ (H1 Devil System)",
-            "icon": "😈",
-            "category": "SMC_PRO",
-            "timeframe": "H1",
-            "best_session": "London & NY (14:00 - 04:00)",
-            "magic_numbers": [555770, 555771, 555772, 555773],
-            "description": "ระบบ SMCxSTO กฎข้อเดียว: เทรนด์ EMA 50/200 + โซน Discount/Premium (ATR) + Order Block + Stochastic Oversold/Overbought"
+            "magic_numbers": [555820, 555821, 555822, 555823, 555888, 555889, 555890],
+            "description": "สไนเปอร์กรอบตลาดเอเชีย แตะขอบ Bollinger Band + Fast RSI 7 ดีดกลับเข้าหา SMA 20 (Win Rate 66.7% / DD 2.9%)"
         },
         "RTM_M4_CONSERVATIVE": {
             "id": "RTM_M4_CONSERVATIVE",
@@ -132,7 +62,7 @@ class RealTradeAnalyticsManager:
             "timeframe": "M15 (H1 Filter)",
             "best_session": "London & NY (14:00 - 23:00)",
             "magic_numbers": [777006, 777016, 777026, 777036],
-            "description": "RTM Elite Confluence คัดเฉพาะไม้คุณภาพสูง (เกรด A=1.0%, A+=2.0% | TP 3.0R)"
+            "description": "RTM Elite Confluence คัดเฉพาะไม้คุณภาพสูง (เกรด A=1.0%, A+=2.0% | TP 3.0R | Return +180.9%)"
         },
         "RTM_M7_MAX_ALPHA": {
             "id": "RTM_M7_MAX_ALPHA",
@@ -142,7 +72,27 @@ class RealTradeAnalyticsManager:
             "timeframe": "M15 (H1 Filter)",
             "best_session": "London & NY (14:00 - 23:00)",
             "magic_numbers": [777007, 777017, 777027, 777037],
-            "description": "RTM Elite Confluence รันเทรนด์เป้าไกล (เกรด A=1.0%, A+=2.0% | TP 3.5R)"
+            "description": "RTM Elite Confluence รันเทรนด์เป้าไกล (เกรด A=1.0%, A+=2.0% | TP 3.5R | Return +229.0%)"
+        },
+        "SMC_X_STO_H1": {
+            "id": "SMC_X_STO_H1",
+            "name": "SMCxSTO ระบบปีศาจ (H1 Devil System)",
+            "icon": "😈",
+            "category": "SMC_PRO",
+            "timeframe": "H1",
+            "best_session": "London & NY (14:00 - 04:00)",
+            "magic_numbers": [555770, 555771, 555772, 555773],
+            "description": "ระบบ SMCxSTO กฎข้อเดียว: เทรนด์ EMA 50/200 + โซน Discount/Premium (ATR) + Order Block + Stochastic Oversold/Overbought"
+        },
+        "NEWS_MOMENTUM_EXPANSION": {
+            "id": "NEWS_MOMENTUM_EXPANSION",
+            "name": "News Momentum Expansion",
+            "icon": "⚡",
+            "category": "NEWS_TRADING",
+            "timeframe": "M5",
+            "best_session": "High-Impact News Events (USD)",
+            "magic_numbers": [555890, 555891, 555892, 555893, 666888, 666889, 666890],
+            "description": "ดักจับแท่งเทียน Breakout ความผันผวนสูงช่วงข่าวใหญ่ (CPI, NFP, FOMC) พร้อม Trailing Stop กว้าง"
         }
     }
 
@@ -499,43 +449,11 @@ class RealTradeAnalyticsManager:
             return []
 
     def _classify_deal_strategy(self, deal) -> str:
-        """Classify deal into respective strategy."""
+        """Classify deal into respective Elite 4 Pillars strategy."""
         magic = deal.magic
         comment = (deal.comment or "").lower()
 
-        # 0. TKT SMC Gold Pro v8.0 (Magic 999150..999155 or comment tkt / fvg / score)
-        if (magic >= 999150 and magic <= 999155) or "tkt" in comment or "fvg" in comment or "m15" in comment:
-            return "TKT_SMC_GOLD_PRO_M15"
-
-        # 0.1 Captain SMC Signal V1.2 (Magic 888120..888125 or comment Captain_SMC)
-        if (magic >= 888120 and magic <= 888125) or "captain" in comment:
-            return "CAPTAIN_SMC_DUAL"
-
-        # 1. H1 Strategy (Magic 777888, 777889, 777890 or comment containing H1 / EMA50)
-        if magic in [777888, 777889, 777890] or "h1" in comment or "ema50" in comment:
-            return "EMA50_3CANDLES_H1"
-
-        # 2. Asian Range Sniper (00:00 - 07:00 Server / 07:00 - 14:00 Thai)
-        if "asian" in comment or "⛩" in comment:
-            return "ASIAN_RANGE_SNIPER"
-
-        # 3. News Momentum Expansion (News Spike)
-        if "news" in comment or "momentum" in comment or magic in [666888, 666889, 666890]:
-            return "NEWS_MOMENTUM_EXPANSION"
-
-        # 4. M1 Sniper Confirmation (Golfpy Framework)
-        if "m1" in comment or "sniper" in comment or magic in [444888, 444889, 444890]:
-            return "M1_SNIPER_CONFIRMATION"
-
-        # 5. Flash Micro-Scalper (Quick-Bite)
-        if "flash" in comment or magic in [333888, 333889, 333890]:
-            return "FLASH_MICRO_SCALPER"
-
-        # 6. SMCxSTO ระบบปีศาจ (H1 Devil System by SMC by Bossz)
-        if "sto" in comment or "devil" in comment or "smcxsto" in comment or (magic >= 555770 and magic <= 555773):
-            return "SMC_X_STO_H1"
-
-        # 7. RTM Quasimodo Multi-Model Setups (M4, M5, M6, M7)
+        # 1. RTM Quasimodo Multi-Model Setups (M4, M5, M6, M7)
         if magic in [777004, 777014, 777024, 777034] or "rtm_m4" in comment or "m4_cons" in comment:
             return "RTM_M4_CONSERVATIVE"
         if magic in [777005, 777015, 777025, 777035] or "rtm_m5" in comment or "m5_allw" in comment:
@@ -544,18 +462,27 @@ class RealTradeAnalyticsManager:
             return "RTM_M6_ELITE_GROWTH"
         if magic in [777007, 777017, 777027, 777037] or "rtm_m7" in comment or "m7_alpha" in comment:
             return "RTM_M7_MAX_ALPHA"
-        if "rtm" in comment:
+        if "rtm" in comment or "quasimodo" in comment:
             return "RTM_M6_ELITE_GROWTH"
 
-        # Default classification based on deal time if opened by M5 EA
-        if magic in [555888, 555889, 555890]:
-            deal_hour = datetime.fromtimestamp(deal.time).hour
-            if 0 <= deal_hour < 7:
-                return "ASIAN_RANGE_SNIPER"
-            else:
-                return "CAPTAIN_SMC_DUAL"
+        # 2. SMCxSTO ระบบปีศาจ (H1 Devil System by SMC by Bossz)
+        if "sto" in comment or "devil" in comment or "smcxsto" in comment or (magic >= 555770 and magic <= 555773):
+            return "SMC_X_STO_H1"
 
-        return "CAPTAIN_SMC_DUAL"
+        # 3. High-Impact News Momentum Expansion (News Spike)
+        if "news" in comment or "momentum" in comment or (magic >= 555890 and magic <= 555893) or magic in [666888, 666889, 666890]:
+            return "NEWS_MOMENTUM_EXPANSION"
+
+        # 4. Asian Range Sniper (00:00 - 07:00 Server / 07:00 - 14:00 Thai)
+        if "asian" in comment or "⛩" in comment or (magic >= 555820 and magic <= 555823):
+            return "ASIAN_RANGE_SNIPER"
+
+        # Default classification based on deal time if opened during Asian session
+        deal_hour = datetime.fromtimestamp(deal.time).hour
+        if 0 <= deal_hour < 7:
+            return "ASIAN_RANGE_SNIPER"
+
+        return "RTM_M5_ALL_WEATHER"
 
     def get_real_stats_summary(self) -> dict:
         """Calculate 100% verified real trading statistics for BOTS ONLY from MT5 deal history."""

@@ -471,15 +471,14 @@ async def get_system_version():
     return {
         "status": True,
         "latest_commit": commit_str,
-        "strategies_count": 8,
+        "strategies_count": 7,
         "strategies": [
-            "SMC_X_STO_H1",
-            "CAPTAIN_SMC_DUAL",
-            "TKT_SMC_GOLD_PRO_M15",
             "ASIAN_RANGE_SNIPER",
-            "EMA50_3CANDLES_H1",
-            "FLASH_MICRO_SCALPER",
-            "M1_SNIPER_CONFIRMATION",
+            "RTM_M4_CONSERVATIVE",
+            "RTM_M5_ALL_WEATHER",
+            "RTM_M6_ELITE_GROWTH",
+            "RTM_M7_MAX_ALPHA",
+            "SMC_X_STO_H1",
             "NEWS_MOMENTUM_EXPANSION"
         ]
     }

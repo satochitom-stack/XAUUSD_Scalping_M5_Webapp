@@ -1,0 +1,764 @@
+{
+  "symbol": "XAUUSDc",
+  "period_start": "2026-05-27 11:30:00",
+  "period_end": "2026-09-07 07:05:00",
+  "total_bars_tested": 20000,
+  "initial_balance": 3000.0,
+  "final_balance": 1187.63,
+  "net_profit_usd": -1812.37,
+  "net_profit_pct": -60.41,
+  "profit_factor": 0.91,
+  "total_trades": 2118,
+  "win_trades": 1017,
+  "loss_trades": 1101,
+  "break_even_trades": 0,
+  "winrate_pct": 48.0,
+  "max_drawdown_usd": 2085.48,
+  "max_drawdown_pct": 67.04,
+  "strategy_breakdown": {
+    "FLASH_MICRO_SCALPER": {
+      "total_trades": 227,
+      "wins": 99,
+      "losses": 128,
+      "winrate_pct": 43.6,
+      "net_profit_usd": 274.02,
+      "gross_profit_usd": 2618.4,
+      "gross_loss_usd": 2344.38,
+      "profit_factor": 1.12
+    },
+    "CAPTAIN_SMC_DUAL": {
+      "total_trades": 587,
+      "wins": 280,
+      "losses": 307,
+      "winrate_pct": 47.7,
+      "net_profit_usd": -934.67,
+      "gross_profit_usd": 4696.07,
+      "gross_loss_usd": 5630.74,
+      "profit_factor": 0.83
+    },
+    "ASIAN_RANGE_SNIPER": {
+      "total_trades": 152,
+      "wins": 67,
+      "losses": 85,
+      "winrate_pct": 44.1,
+      "net_profit_usd": -662.52,
+      "gross_profit_usd": 1050.47,
+      "gross_loss_usd": 1712.99,
+      "profit_factor": 0.61
+    },
+    "EMA50_3CANDLES_H1": {
+      "total_trades": 428,
+      "wins": 215,
+      "losses": 213,
+      "winrate_pct": 50.2,
+      "net_profit_usd": -6.7,
+      "gross_profit_usd": 4056.58,
+      "gross_loss_usd": 4063.28,
+      "profit_factor": 1.0
+    },
+    "NEWS_MOMENTUM_EXPANSION": {
+      "total_trades": 724,
+      "wins": 356,
+      "losses": 368,
+      "winrate_pct": 49.2,
+      "net_profit_usd": -482.5,
+      "gross_profit_usd": 6327.57,
+      "gross_loss_usd": 6810.07,
+      "profit_factor": 0.93
+    }
+  },
+  "equity_curve": [
+    {
+      "datetime": "2026-09-03 03:30:00",
+      "balance": 1446.56,
+      "drawdown_pct": 53.5
+    },
+    {
+      "datetime": "2026-09-03 04:30:00",
+      "balance": 1459.16,
+      "drawdown_pct": 53.09
+    },
+    {
+      "datetime": "2026-09-03 05:30:00",
+      "balance": 1429.57,
+      "drawdown_pct": 54.05
+    },
+    {
+      "datetime": "2026-09-03 06:30:00",
+      "balance": 1429.57,
+      "drawdown_pct": 54.05
+    },
+    {
+      "datetime": "2026-09-03 07:30:00",
+      "balance": 1415.57,
+      "drawdown_pct": 54.5
+    },
+    {
+      "datetime": "2026-09-03 08:30:00",
+      "balance": 1415.57,
+      "drawdown_pct": 54.5
+    },
+    {
+      "datetime": "2026-09-03 09:30:00",
+      "balance": 1387.07,
+      "drawdown_pct": 55.41
+    },
+    {
+      "datetime": "2026-09-03 10:30:00",
+      "balance": 1359.57,
+      "drawdown_pct": 56.3
+    },
+    {
+      "datetime": "2026-09-03 11:30:00",
+      "balance": 1328.67,
+      "drawdown_pct": 57.29
+    },
+    {
+      "datetime": "2026-09-03 12:30:00",
+      "balance": 1335.27,
+      "drawdown_pct": 57.08
+    },
+    {
+      "datetime": "2026-09-03 13:30:00",
+      "balance": 1369.97,
+      "drawdown_pct": 55.96
+    },
+    {
+      "datetime": "2026-09-03 14:30:00",
+      "balance": 1376.22,
+      "drawdown_pct": 55.76
+    },
+    {
+      "datetime": "2026-09-03 15:30:00",
+      "balance": 1438.02,
+      "drawdown_pct": 53.77
+    },
+    {
+      "datetime": "2026-09-03 16:30:00",
+      "balance": 1438.02,
+      "drawdown_pct": 53.77
+    },
+    {
+      "datetime": "2026-09-03 17:30:00",
+      "balance": 1438.02,
+      "drawdown_pct": 53.77
+    },
+    {
+      "datetime": "2026-09-03 18:30:00",
+      "balance": 1438.02,
+      "drawdown_pct": 53.77
+    },
+    {
+      "datetime": "2026-09-03 19:30:00",
+      "balance": 1451.52,
+      "drawdown_pct": 53.34
+    },
+    {
+      "datetime": "2026-09-03 20:30:00",
+      "balance": 1460.12,
+      "drawdown_pct": 53.06
+    },
+    {
+      "datetime": "2026-09-03 22:30:00",
+      "balance": 1447.42,
+      "drawdown_pct": 53.47
+    },
+    {
+      "datetime": "2026-09-03 23:30:00",
+      "balance": 1447.42,
+      "drawdown_pct": 53.47
+    },
+    {
+      "datetime": "2026-09-04 00:30:00",
+      "balance": 1442.27,
+      "drawdown_pct": 53.64
+    },
+    {
+      "datetime": "2026-09-04 01:30:00",
+      "balance": 1442.27,
+      "drawdown_pct": 53.64
+    },
+    {
+      "datetime": "2026-09-04 02:30:00",
+      "balance": 1442.27,
+      "drawdown_pct": 53.64
+    },
+    {
+      "datetime": "2026-09-04 03:30:00",
+      "balance": 1442.27,
+      "drawdown_pct": 53.64
+    },
+    {
+      "datetime": "2026-09-04 04:30:00",
+      "balance": 1434.04,
+      "drawdown_pct": 53.9
+    },
+    {
+      "datetime": "2026-09-04 05:30:00",
+      "balance": 1434.04,
+      "drawdown_pct": 53.9
+    },
+    {
+      "datetime": "2026-09-04 06:30:00",
+      "balance": 1434.04,
+      "drawdown_pct": 53.9
+    },
+    {
+      "datetime": "2026-09-04 07:30:00",
+      "balance": 1391.64,
+      "drawdown_pct": 55.27
+    },
+    {
+      "datetime": "2026-09-04 08:30:00",
+      "balance": 1421.24,
+      "drawdown_pct": 54.31
+    },
+    {
+      "datetime": "2026-09-04 09:30:00",
+      "balance": 1414.24,
+      "drawdown_pct": 54.54
+    },
+    {
+      "datetime": "2026-09-04 10:30:00",
+      "balance": 1387.74,
+      "drawdown_pct": 55.39
+    },
+    {
+      "datetime": "2026-09-04 11:30:00",
+      "balance": 1387.74,
+      "drawdown_pct": 55.39
+    },
+    {
+      "datetime": "2026-09-04 12:30:00",
+      "balance": 1366.04,
+      "drawdown_pct": 56.09
+    },
+    {
+      "datetime": "2026-09-04 13:30:00",
+      "balance": 1360.34,
+      "drawdown_pct": 56.27
+    },
+    {
+      "datetime": "2026-09-04 14:30:00",
+      "balance": 1346.84,
+      "drawdown_pct": 56.71
+    },
+    {
+      "datetime": "2026-09-04 15:30:00",
+      "balance": 1316.84,
+      "drawdown_pct": 57.67
+    },
+    {
+      "datetime": "2026-09-04 16:30:00",
+      "balance": 1316.84,
+      "drawdown_pct": 57.67
+    },
+    {
+      "datetime": "2026-09-04 17:30:00",
+      "balance": 1289.84,
+      "drawdown_pct": 58.54
+    },
+    {
+      "datetime": "2026-09-04 18:30:00",
+      "balance": 1271.14,
+      "drawdown_pct": 59.14
+    },
+    {
+      "datetime": "2026-09-04 19:30:00",
+      "balance": 1278.14,
+      "drawdown_pct": 58.91
+    },
+    {
+      "datetime": "2026-09-04 20:30:00",
+      "balance": 1249.44,
+      "drawdown_pct": 59.84
+    },
+    {
+      "datetime": "2026-09-06 22:30:00",
+      "balance": 1256.74,
+      "drawdown_pct": 59.6
+    },
+    {
+      "datetime": "2026-09-06 23:30:00",
+      "balance": 1216.56,
+      "drawdown_pct": 60.89
+    },
+    {
+      "datetime": "2026-09-07 00:30:00",
+      "balance": 1216.56,
+      "drawdown_pct": 60.89
+    },
+    {
+      "datetime": "2026-09-07 01:30:00",
+      "balance": 1216.56,
+      "drawdown_pct": 60.89
+    },
+    {
+      "datetime": "2026-09-07 02:30:00",
+      "balance": 1216.56,
+      "drawdown_pct": 60.89
+    },
+    {
+      "datetime": "2026-09-07 03:30:00",
+      "balance": 1202.56,
+      "drawdown_pct": 61.34
+    },
+    {
+      "datetime": "2026-09-07 04:30:00",
+      "balance": 1189.06,
+      "drawdown_pct": 61.78
+    },
+    {
+      "datetime": "2026-09-07 05:30:00",
+      "balance": 1196.36,
+      "drawdown_pct": 61.54
+    },
+    {
+      "datetime": "2026-09-07 06:30:00",
+      "balance": 1187.63,
+      "drawdown_pct": 61.82
+    }
+  ],
+  "recent_trades": [
+    {
+      "setup_id": "FLASH_MICRO_SCALPER",
+      "type": "SELL",
+      "entry_price": 4413.314,
+      "sl": 4417.814,
+      "tp1": 4406.564,
+      "tp2": 4406.564,
+      "sl_dist": 4.5,
+      "lot1": 0.03,
+      "lot2": 0.0,
+      "total_lot": 0.03,
+      "pos1_closed": true,
+      "pos2_closed": true,
+      "pos1_pnl": -13.5,
+      "pos2_pnl": -0.0,
+      "entry_time": "2026-09-04 14:00:00",
+      "is_be": false,
+      "exit_time": "2026-09-04 14:05:00",
+      "exit_reason": "SL",
+      "total_pnl": -13.5,
+      "status": "LOSS"
+    },
+    {
+      "setup_id": "EMA50_3CANDLES_H1",
+      "type": "SELL",
+      "entry_price": 4429.134,
+      "sl": 4437.134,
+      "tp1": 4421.134,
+      "tp2": 4413.134,
+      "sl_dist": 8.0,
+      "lot1": 0.01,
+      "lot2": 0.01,
+      "total_lot": 0.02,
+      "pos1_closed": true,
+      "pos2_closed": true,
+      "pos1_pnl": -8.0,
+      "pos2_pnl": -8.0,
+      "entry_time": "2026-09-04 14:30:00",
+      "is_be": false,
+      "exit_time": "2026-09-04 14:35:00",
+      "exit_reason": "SL",
+      "total_pnl": -16.0,
+      "status": "LOSS"
+    },
+    {
+      "setup_id": "NEWS_MOMENTUM_EXPANSION",
+      "type": "BUY",
+      "entry_price": 4439.686,
+      "sl": 4432.686,
+      "tp1": 4446.686,
+      "tp2": 4452.286,
+      "sl_dist": 7.0,
+      "lot1": 0.01,
+      "lot2": 0.01,
+      "total_lot": 0.02,
+      "pos1_closed": true,
+      "pos2_closed": true,
+      "pos1_pnl": -7.0,
+      "pos2_pnl": -7.0,
+      "entry_time": "2026-09-04 14:35:00",
+      "is_be": false,
+      "exit_time": "2026-09-04 14:40:00",
+      "exit_reason": "SL",
+      "total_pnl": -14.0,
+      "status": "LOSS"
+    },
+    {
+      "setup_id": "CAPTAIN_SMC_DUAL",
+      "type": "SELL",
+      "entry_price": 4431.428,
+      "sl": 4437.928,
+      "tp1": 4424.928,
+      "tp2": 4419.728,
+      "sl_dist": 6.5,
+      "lot1": 0.01,
+      "lot2": 0.01,
+      "total_lot": 0.02,
+      "pos1_closed": true,
+      "pos2_closed": true,
+      "pos1_pnl": -6.5,
+      "pos2_pnl": -6.5,
+      "entry_time": "2026-09-04 17:05:00",
+      "is_be": false,
+      "exit_time": "2026-09-04 17:15:00",
+      "exit_reason": "SL",
+      "total_pnl": -13.0,
+      "status": "LOSS"
+    },
+    {
+      "setup_id": "NEWS_MOMENTUM_EXPANSION",
+      "type": "SELL",
+      "entry_price": 4431.428,
+      "sl": 4438.428,
+      "tp1": 4424.428,
+      "tp2": 4418.828,
+      "sl_dist": 7.0,
+      "lot1": 0.01,
+      "lot2": 0.01,
+      "total_lot": 0.02,
+      "pos1_closed": true,
+      "pos2_closed": true,
+      "pos1_pnl": -7.0,
+      "pos2_pnl": -7.0,
+      "entry_time": "2026-09-04 17:05:00",
+      "is_be": false,
+      "exit_time": "2026-09-04 17:15:00",
+      "exit_reason": "SL",
+      "total_pnl": -14.0,
+      "status": "LOSS"
+    },
+    {
+      "setup_id": "CAPTAIN_SMC_DUAL",
+      "type": "SELL",
+      "entry_price": 4412.64,
+      "sl": 4419.14,
+      "tp1": 4406.14,
+      "tp2": 4400.94,
+      "sl_dist": 6.5,
+      "lot1": 0.01,
+      "lot2": 0.01,
+      "total_lot": 0.02,
+      "pos1_closed": true,
+      "pos2_closed": true,
+      "pos1_pnl": -6.5,
+      "pos2_pnl": -6.5,
+      "entry_time": "2026-09-04 18:05:00",
+      "is_be": false,
+      "exit_time": "2026-09-04 18:10:00",
+      "exit_reason": "SL",
+      "total_pnl": -13.0,
+      "status": "LOSS"
+    },
+    {
+      "setup_id": "NEWS_MOMENTUM_EXPANSION",
+      "type": "SELL",
+      "entry_price": 4412.64,
+      "sl": 4419.64,
+      "tp1": 4405.64,
+      "tp2": 4400.04,
+      "sl_dist": 7.0,
+      "lot1": 0.01,
+      "lot2": 0.01,
+      "total_lot": 0.02,
+      "pos1_closed": true,
+      "pos2_closed": true,
+      "pos1_pnl": -7.0,
+      "pos2_pnl": -7.0,
+      "entry_time": "2026-09-04 18:05:00",
+      "is_be": false,
+      "exit_time": "2026-09-04 18:10:00",
+      "exit_reason": "SL",
+      "total_pnl": -14.0,
+      "status": "LOSS"
+    },
+    {
+      "setup_id": "EMA50_3CANDLES_H1",
+      "type": "SELL",
+      "entry_price": 4424.164,
+      "sl": 4423.864,
+      "tp1": 4416.164,
+      "tp2": 4408.164,
+      "sl_dist": 8.0,
+      "lot1": 0.01,
+      "lot2": 0.01,
+      "total_lot": 0.02,
+      "pos1_closed": true,
+      "pos2_closed": true,
+      "pos1_pnl": 8.0,
+      "pos2_pnl": 0.3,
+      "entry_time": "2026-09-04 17:35:00",
+      "is_be": true,
+      "exit_time": "2026-09-04 18:20:00",
+      "exit_reason": "BREAK_EVEN",
+      "total_pnl": 8.3,
+      "status": "WIN"
+    },
+    {
+      "setup_id": "NEWS_MOMENTUM_EXPANSION",
+      "type": "BUY",
+      "entry_price": 4429.575,
+      "sl": 4429.875,
+      "tp1": 4436.575,
+      "tp2": 4442.175,
+      "sl_dist": 7.0,
+      "lot1": 0.01,
+      "lot2": 0.01,
+      "total_lot": 0.02,
+      "pos1_closed": true,
+      "pos2_closed": true,
+      "pos1_pnl": 7.0,
+      "pos2_pnl": 0.3,
+      "entry_time": "2026-09-04 19:15:00",
+      "is_be": true,
+      "exit_time": "2026-09-04 20:25:00",
+      "exit_reason": "BREAK_EVEN",
+      "total_pnl": 7.3,
+      "status": "WIN"
+    },
+    {
+      "setup_id": "EMA50_3CANDLES_H1",
+      "type": "BUY",
+      "entry_price": 4437.591,
+      "sl": 4429.591,
+      "tp1": 4445.591,
+      "tp2": 4453.591,
+      "sl_dist": 8.0,
+      "lot1": 0.01,
+      "lot2": 0.01,
+      "total_lot": 0.02,
+      "pos1_closed": true,
+      "pos2_closed": true,
+      "pos1_pnl": -8.0,
+      "pos2_pnl": -8.0,
+      "entry_time": "2026-09-04 19:35:00",
+      "is_be": false,
+      "exit_time": "2026-09-04 20:25:00",
+      "exit_reason": "SL",
+      "total_pnl": -16.0,
+      "status": "LOSS"
+    },
+    {
+      "setup_id": "CAPTAIN_SMC_DUAL",
+      "type": "BUY",
+      "entry_price": 4435.726,
+      "sl": 4429.226,
+      "tp1": 4442.226,
+      "tp2": 4447.426,
+      "sl_dist": 6.5,
+      "lot1": 0.01,
+      "lot2": 0.01,
+      "total_lot": 0.02,
+      "pos1_closed": true,
+      "pos2_closed": true,
+      "pos1_pnl": -6.5,
+      "pos2_pnl": -6.5,
+      "entry_time": "2026-09-04 19:30:00",
+      "is_be": false,
+      "exit_time": "2026-09-04 20:30:00",
+      "exit_reason": "SL",
+      "total_pnl": -13.0,
+      "status": "LOSS"
+    },
+    {
+      "setup_id": "NEWS_MOMENTUM_EXPANSION",
+      "type": "SELL",
+      "entry_price": 4428.699,
+      "sl": 4428.398999999999,
+      "tp1": 4421.699,
+      "tp2": 4416.099,
+      "sl_dist": 7.0,
+      "lot1": 0.01,
+      "lot2": 0.01,
+      "total_lot": 0.02,
+      "pos1_closed": true,
+      "pos2_closed": true,
+      "pos1_pnl": 7.0,
+      "pos2_pnl": 0.3,
+      "entry_time": "2026-09-04 20:50:00",
+      "is_be": true,
+      "exit_time": "2026-09-06 22:10:00",
+      "exit_reason": "BREAK_EVEN",
+      "total_pnl": 7.3,
+      "status": "WIN"
+    },
+    {
+      "setup_id": "FLASH_MICRO_SCALPER",
+      "type": "SELL",
+      "entry_price": 4427.753,
+      "sl": 4432.146,
+      "tp1": 4421.164,
+      "tp2": 4421.164,
+      "sl_dist": 4.393,
+      "lot1": 0.03,
+      "lot2": 0.0,
+      "total_lot": 0.03,
+      "pos1_closed": true,
+      "pos2_closed": true,
+      "pos1_pnl": -13.18,
+      "pos2_pnl": -0.0,
+      "entry_time": "2026-09-06 22:20:00",
+      "is_be": false,
+      "exit_time": "2026-09-06 22:45:00",
+      "exit_reason": "SL",
+      "total_pnl": -13.18,
+      "status": "LOSS"
+    },
+    {
+      "setup_id": "CAPTAIN_SMC_DUAL",
+      "type": "BUY",
+      "entry_price": 4434.056,
+      "sl": 4427.556,
+      "tp1": 4440.556,
+      "tp2": 4445.756,
+      "sl_dist": 6.5,
+      "lot1": 0.01,
+      "lot2": 0.01,
+      "total_lot": 0.02,
+      "pos1_closed": true,
+      "pos2_closed": true,
+      "pos1_pnl": -6.5,
+      "pos2_pnl": -6.5,
+      "entry_time": "2026-09-06 22:50:00",
+      "is_be": false,
+      "exit_time": "2026-09-06 23:20:00",
+      "exit_reason": "SL",
+      "total_pnl": -13.0,
+      "status": "LOSS"
+    },
+    {
+      "setup_id": "NEWS_MOMENTUM_EXPANSION",
+      "type": "BUY",
+      "entry_price": 4434.056,
+      "sl": 4427.056,
+      "tp1": 4441.056,
+      "tp2": 4446.656,
+      "sl_dist": 7.0,
+      "lot1": 0.01,
+      "lot2": 0.01,
+      "total_lot": 0.02,
+      "pos1_closed": true,
+      "pos2_closed": true,
+      "pos1_pnl": -7.0,
+      "pos2_pnl": -7.0,
+      "entry_time": "2026-09-06 22:50:00",
+      "is_be": false,
+      "exit_time": "2026-09-06 23:20:00",
+      "exit_reason": "SL",
+      "total_pnl": -14.0,
+      "status": "LOSS"
+    },
+    {
+      "setup_id": "NEWS_MOMENTUM_EXPANSION",
+      "type": "BUY",
+      "entry_price": 4418.138,
+      "sl": 4411.138,
+      "tp1": 4425.138,
+      "tp2": 4430.738,
+      "sl_dist": 7.0,
+      "lot1": 0.01,
+      "lot2": 0.01,
+      "total_lot": 0.02,
+      "pos1_closed": true,
+      "pos2_closed": true,
+      "pos1_pnl": -7.0,
+      "pos2_pnl": -7.0,
+      "entry_time": "2026-09-07 02:40:00",
+      "is_be": false,
+      "exit_time": "2026-09-07 02:55:00",
+      "exit_reason": "SL",
+      "total_pnl": -14.0,
+      "status": "LOSS"
+    },
+    {
+      "setup_id": "FLASH_MICRO_SCALPER",
+      "type": "SELL",
+      "entry_price": 4401.62,
+      "sl": 4406.12,
+      "tp1": 4394.87,
+      "tp2": 4394.87,
+      "sl_dist": 4.5,
+      "lot1": 0.03,
+      "lot2": 0.0,
+      "total_lot": 0.03,
+      "pos1_closed": true,
+      "pos2_closed": true,
+      "pos1_pnl": -13.5,
+      "pos2_pnl": -0.0,
+      "entry_time": "2026-09-07 04:05:00",
+      "is_be": false,
+      "exit_time": "2026-09-07 04:10:00",
+      "exit_reason": "SL",
+      "total_pnl": -13.5,
+      "status": "LOSS"
+    },
+    {
+      "setup_id": "NEWS_MOMENTUM_EXPANSION",
+      "type": "SELL",
+      "entry_price": 4401.542,
+      "sl": 4401.242,
+      "tp1": 4394.542,
+      "tp2": 4388.942,
+      "sl_dist": 7.0,
+      "lot1": 0.01,
+      "lot2": 0.01,
+      "total_lot": 0.02,
+      "pos1_closed": true,
+      "pos2_closed": true,
+      "pos1_pnl": 7.0,
+      "pos2_pnl": 0.3,
+      "entry_time": "2026-09-07 03:45:00",
+      "is_be": true,
+      "exit_time": "2026-09-07 05:00:00",
+      "exit_reason": "BREAK_EVEN",
+      "total_pnl": 7.3,
+      "status": "WIN"
+    },
+    {
+      "setup_id": "NEWS_MOMENTUM_EXPANSION",
+      "type": "BUY",
+      "entry_price": 4411.139,
+      "sl": 4404.139,
+      "tp1": 4418.139,
+      "tp2": 4423.739,
+      "sl_dist": 7.0,
+      "lot1": 0.01,
+      "lot2": 0.01,
+      "total_lot": 0.02,
+      "pos1_closed": true,
+      "pos2_closed": true,
+      "pos1_pnl": -7.0,
+      "pos2_pnl": -7.0,
+      "entry_time": "2026-09-07 05:30:00",
+      "is_be": false,
+      "exit_time": "2026-09-07 05:40:00",
+      "exit_reason": "SL",
+      "total_pnl": -14.0,
+      "status": "LOSS"
+    },
+    {
+      "setup_id": "ASIAN_RANGE_SNIPER",
+      "type": "BUY",
+      "entry_price": 4389.802,
+      "sl": 4390.102,
+      "tp1": 4394.774,
+      "tp2": 4398.752,
+      "sl_dist": 4.972,
+      "lot1": 0.01,
+      "lot2": 0.01,
+      "total_lot": 0.02,
+      "pos1_closed": true,
+      "pos2_closed": true,
+      "pos1_pnl": 4.97,
+      "pos2_pnl": 0.3,
+      "entry_time": "2026-09-07 06:10:00",
+      "is_be": true,
+      "exit_time": "2026-09-07 06:20:00",
+      "exit_reason": "BREAK_EVEN",
+      "total_pnl": 5.27,
+      "status": "WIN"
+    }
+  ]
+}

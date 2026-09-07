@@ -165,26 +165,19 @@ class MarketRegimeScorer:
                 else:
                     trend_score = 15
                     trend_desc = f"Elevated Asian Range (ATR: {atr_14:.2f})"
-            elif setup_id == "FLASH_MICRO_SCALPER":
-                if atr_14 >= 1.0:
+            elif setup_id.startswith("RTM_") or setup_id == "SMC_X_STO_H1":
+                # RTM & SMCxSTO prefer healthy expansion to hit 2R-3.5R
+                if atr_14 >= 1.80:
                     trend_score = 25
-                    trend_desc = f"Optimal Micro-Volatility for Flash Scalp (ATR: {atr_14:.2f})"
+                    trend_desc = f"Optimal Institutional Expansion (ATR: {atr_14:.2f})"
+                elif atr_14 >= 1.20:
+                    trend_score = 20
+                    trend_desc = f"Moderate Volatility Flow (ATR: {atr_14:.2f})"
                 else:
-                    trend_score = 16
-                    trend_desc = f"Subdued Micro-Volatility (ATR: {atr_14:.2f})"
-            elif setup_id == "M1_SNIPER_CONFIRMATION":
-                if 1.0 <= atr_14 <= 4.5:
-                    trend_score = 25
-                    trend_desc = f"Ideal Zone Volatility for M1 Refinement (ATR: {atr_14:.2f})"
-                else:
-                    trend_score = 18
-                    trend_desc = f"M1 Volatility Adequate (ATR: {atr_14:.2f})"
-            elif setup_id == "BB_SQUEEZE":
-                # BB Squeeze prefers compression transitioning into expansion
-                trend_score = 23
-                trend_desc = f"Volatility Squeeze Compression (ATR: {atr_14:.2f})"
+                    trend_score = 12
+                    trend_desc = f"Low Volatility Compression (ATR: {atr_14:.2f})"
             else:
-                # Trend following setups (EMA50, SMC, Ribbon, News)
+                # News Momentum Expansion / Trend Breakout
                 if atr_14 >= 2.50:
                     trend_score = 25
                     trend_desc = f"Strong Dynamic Trend Flow (ATR: {atr_14:.2f})"
