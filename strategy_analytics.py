@@ -32,6 +32,7 @@ class RealTradeAnalyticsManager:
             "timeframe": "M5",
             "best_session": "Asian Session (07:00 - 14:00)",
             "magic_numbers": [555820, 555821, 555822, 555823, 555888, 555889, 555890],
+            "avg_rr": "1:1.8",
             "description": "สไนเปอร์กรอบตลาดเอเชีย แตะขอบ Bollinger Band + Fast RSI 7 ดีดกลับเข้าหา SMA 20 (Win Rate 66.7% / DD 2.9%)"
         },
         "RTM_M4_CONSERVATIVE": {
@@ -42,7 +43,8 @@ class RealTradeAnalyticsManager:
             "timeframe": "M15 (H1 Filter)",
             "best_session": "London & NY (14:00 - 23:00)",
             "magic_numbers": [777004, 777014, 777024, 777034],
-            "description": "RTM Quasimodo + ICT + Fib 61.8-78.6% (เกรด A/A+ เท่านั้น | ความเสี่ยงคงที่ 1.0% | TP 3.0R)"
+            "avg_rr": "1:2.0",
+            "description": "RTM Quasimodo + ICT + Fib 61.8-78.6% (เกรด A/A+ เท่านั้น | ความเสี่ยงคงที่ 1.0% | TP 2.0R)"
         },
         "RTM_M5_ALL_WEATHER": {
             "id": "RTM_M5_ALL_WEATHER",
@@ -52,7 +54,8 @@ class RealTradeAnalyticsManager:
             "timeframe": "M15 (H1 Filter)",
             "best_session": "London & NY (14:00 - 23:00)",
             "magic_numbers": [777005, 777015, 777025, 777035],
-            "description": "RTM Quasimodo รองรับทุกสภาพตลาด (เกรด B=0.5%, A=1.0%, A+=2.0% | TP 3.0R)"
+            "avg_rr": "1:2.0",
+            "description": "RTM Quasimodo รองรับทุกสภาพตลาด (ความเสี่ยงสูงสุด 1.0%, เกรด B=0.5%, A/A+=1.0% | TP 2.0R)"
         },
         "RTM_M6_ELITE_GROWTH": {
             "id": "RTM_M6_ELITE_GROWTH",
@@ -62,7 +65,8 @@ class RealTradeAnalyticsManager:
             "timeframe": "M15 (H1 Filter)",
             "best_session": "London & NY (14:00 - 23:00)",
             "magic_numbers": [777006, 777016, 777026, 777036],
-            "description": "RTM Elite Confluence คัดเฉพาะไม้คุณภาพสูง (เกรด A=1.0%, A+=2.0% | TP 3.0R | Return +180.9%)"
+            "avg_rr": "1:2.0",
+            "description": "RTM Elite Confluence คัดเฉพาะไม้คุณภาพสูง (เกรด A=1.0%, A+=2.0% | TP 2.0R | Quick Harvest)"
         },
         "RTM_M7_MAX_ALPHA": {
             "id": "RTM_M7_MAX_ALPHA",
@@ -72,7 +76,8 @@ class RealTradeAnalyticsManager:
             "timeframe": "M15 (H1 Filter)",
             "best_session": "London & NY (14:00 - 23:00)",
             "magic_numbers": [777007, 777017, 777027, 777037],
-            "description": "RTM Elite Confluence รันเทรนด์เป้าไกล (เกรด A=1.0%, A+=2.0% | TP 3.5R | Return +229.0%)"
+            "avg_rr": "1:3.5",
+            "description": "RTM Elite Confluence รันเทรนด์เป้าไกล (เกรด A=1.0%, A+=2.0% | TP 3.5R | Trend Runner)"
         },
         "SMC_X_STO_H1": {
             "id": "SMC_X_STO_H1",
@@ -82,6 +87,7 @@ class RealTradeAnalyticsManager:
             "timeframe": "H1",
             "best_session": "London & NY (14:00 - 04:00)",
             "magic_numbers": [555770, 555771, 555772, 555773],
+            "avg_rr": "1:2.0",
             "description": "ระบบ SMCxSTO กฎข้อเดียว: เทรนด์ EMA 50/200 + โซน Discount/Premium (ATR) + Order Block + Stochastic Oversold/Overbought"
         },
         "NEWS_MOMENTUM_EXPANSION": {
@@ -92,6 +98,7 @@ class RealTradeAnalyticsManager:
             "timeframe": "M5",
             "best_session": "High-Impact News Events (USD)",
             "magic_numbers": [555890, 555891, 555892, 555893, 666888, 666889, 666890],
+            "avg_rr": "1:1.8",
             "description": "ดักจับแท่งเทียน Breakout ความผันผวนสูงช่วงข่าวใหญ่ (CPI, NFP, FOMC) พร้อม Trailing Stop กว้าง"
         }
     }
@@ -518,7 +525,7 @@ class RealTradeAnalyticsManager:
                 "gross_profit": 0.0,
                 "gross_loss": 0.0,
                 "profit_factor": 0.0,
-                "avg_rr": "1:2.0",
+                "avg_rr": v.get("avg_rr", "1:2.0"),
                 "status": "🟢 บอทรันพร้อมเทรด (0 ไม้)",
                 "recent_deals": []
             }
@@ -596,8 +603,8 @@ class RealTradeAnalyticsManager:
                 st["status"] = f"บอทเทรดแล้ว ({st['total_trades']} ไม้)"
 
                 # Realized RR and Exit Stages Breakdown
-                target_rr = 3.5 if k == "RTM_M7_MAX_ALPHA" else (2.0 if k == "SMC_X_STO_H1" else (1.8 if k == "NEWS_MOMENTUM_EXPANSION" else 3.0))
-                risk_per_lot = 850.0 if "RTM_" in k else (900.0 if k == "SMC_X_STO_H1" else 700.0)
+                target_rr = 3.5 if k == "RTM_M7_MAX_ALPHA" else (2.0 if ("RTM_" in k or k == "SMC_X_STO_H1") else (1.8 if k in ["NEWS_MOMENTUM_EXPANSION", "ASIAN_RANGE_SNIPER"] else 2.0))
+                risk_per_lot = 850.0 if "RTM_" in k else (900.0 if k == "SMC_X_STO_H1" else (500.0 if k == "ASIAN_RANGE_SNIPER" else 700.0))
                 
                 stages = {"full_tp": 0, "trailing_lock": 0, "mid_profit": 0, "break_even": 0, "full_sl": 0, "early_cut": 0}
                 total_realized_r = 0.0
@@ -611,11 +618,11 @@ class RealTradeAnalyticsManager:
                     
                     if r_val >= (target_rr - 0.2):
                         stages["full_tp"] += 1
-                    elif r_val >= 1.6:
+                    elif r_val >= (1.6 if target_rr >= 3.0 else 0.75):
                         stages["trailing_lock"] += 1
-                    elif r_val >= 0.85:
+                    elif r_val >= 0.4:
                         stages["mid_profit"] += 1
-                    elif r_val >= 0.0:
+                    elif r_val >= -0.15:
                         stages["break_even"] += 1
                     elif r_val <= -0.85:
                         stages["full_sl"] += 1

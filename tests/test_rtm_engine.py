@@ -135,5 +135,32 @@ class TestRTMEngine(unittest.TestCase):
         self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "RTM_M5_ALL_WEATHER"))
         self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "NEWS_MOMENTUM_EXPANSION"))
 
+    def test_rtm_trailing_stop_dual_style(self):
+        """Test dual-style trailing stop: M4/M5/M6 locks +0.8R at 1.5R; M7 locks +1.0R at 2.0R, +1.8R at 2.6R, +2.4R at 3.0R."""
+        # Setup market info: BUY opened at 2700.0, SL at 2690.0 (initial_r = 10.0)
+        # Price reaches 2715.5 (+1.55R)
+        self.mock_connector.get_market_info.return_value = {"bid": 2715.5, "ask": 2715.7}
+        
+        # Test M4 (Quick Harvest 2.0R) at 1.55R -> Expect SL locked to 2700 + 0.8 * 10 = 2708.0
+        m4_magic = STRATEGY_MAGIC_MAP["RTM_M4_CONSERVATIVE"]["pos1"]
+        self.mock_connector.get_open_positions.return_value = [
+            {"ticket": 401, "magic": m4_magic, "symbol": "XAUUSDc", "type": "BUY", "price_open": 2700.0, "sl": 2700.3, "tp": 2720.0}
+        ]
+        self.bot.initial_risk_map[401] = 10.0
+        self.bot.manage_open_positions("XAUUSDc")
+        
+        # modify_position should be called with target_sl = 2708.0
+        self.mock_connector.modify_position.assert_called_with(401, 2708.0, 2720.0)
+
+        # Test M7 (Trend Runner 3.5R) at 2.65R (bid = 2726.5) -> Expect SL locked to 2700 + 1.8 * 10 = 2718.0
+        self.mock_connector.get_market_info.return_value = {"bid": 2726.5, "ask": 2726.7}
+        m7_magic = STRATEGY_MAGIC_MAP["RTM_M7_MAX_ALPHA"]["pos1"]
+        self.mock_connector.get_open_positions.return_value = [
+            {"ticket": 701, "magic": m7_magic, "symbol": "XAUUSDc", "type": "BUY", "price_open": 2700.0, "sl": 2710.0, "tp": 2735.0}
+        ]
+        self.bot.initial_risk_map[701] = 10.0
+        self.bot.manage_open_positions("XAUUSDc")
+        self.mock_connector.modify_position.assert_called_with(701, 2718.0, 2735.0)
+
 if __name__ == "__main__":
     unittest.main()

@@ -777,16 +777,17 @@ class GoldScalpingBot:
                 eligible_models.append({
                     "strat_id": "RTM_M4_CONSERVATIVE",
                     "lot_mult": 1.0,
-                    "tp_ratio": 3.0
+                    "tp_ratio": 2.0
                 })
 
         if rtm_mode in ["ALL", "MODEL_5"]:
             if grade in ["A+", "A", "B"]:
-                lot_m = 2.0 if grade == "A+" else (1.0 if grade == "A" else 0.5)
+                # Cap risk at 1.0% (Grade B=0.5%, Grade A/A+=1.0%)
+                lot_m = 1.0 if grade in ["A+", "A"] else 0.5
                 eligible_models.append({
                     "strat_id": "RTM_M5_ALL_WEATHER",
                     "lot_mult": lot_m,
-                    "tp_ratio": 3.0
+                    "tp_ratio": 2.0
                 })
 
         if rtm_mode in ["ALL", "MODEL_6"]:
@@ -795,7 +796,7 @@ class GoldScalpingBot:
                 eligible_models.append({
                     "strat_id": "RTM_M6_ELITE_GROWTH",
                     "lot_mult": lot_m,
-                    "tp_ratio": 3.0
+                    "tp_ratio": 2.0
                 })
 
         if rtm_mode in ["ALL", "MODEL_7"]:
@@ -893,7 +894,7 @@ class GoldScalpingBot:
                 sl_dist = ask - sl
             if sl_dist < 3.50: sl = ask - 3.50; sl_dist = 3.50
             if sl_dist > 8.50: sl = ask - 8.50; sl_dist = 8.50
-            target_rr = opt.get("tp_ratio", 3.0)
+            target_rr = opt.get("tp_ratio", 2.0)
             if custom_tp and custom_tp > ask:
                 tp2 = float(custom_tp)
             else:
@@ -962,7 +963,7 @@ class GoldScalpingBot:
                 sl_dist = sl - bid
             if sl_dist < 3.50: sl = bid + 3.50; sl_dist = 3.50
             if sl_dist > 8.50: sl = bid + 8.50; sl_dist = 8.50
-            target_rr = opt.get("tp_ratio", 3.0)
+            target_rr = opt.get("tp_ratio", 2.0)
             if custom_tp and custom_tp < bid:
                 tp2 = float(custom_tp)
             else:
@@ -1021,9 +1022,14 @@ class GoldScalpingBot:
             pos3_list = [p for p in positions if p.get('magic') == pos3_magic]
 
             # Multi-Stage R-Step Trailing Lock:
-            # 1. At >= 1.0R -> Lock Break-Even (+0.30 USD)
-            # 2. At >= 2.0R -> Lock +1.0R Profit
-            # 3. At >= 2.6R -> Lock +1.8R Profit
+            # - For M4, M5, M6 (Quick Harvest 2.0R):
+            #   >= 1.0R -> Break-Even (+0.30 USD)
+            #   >= 1.5R -> Lock +0.8R Profit
+            # - For M7 (Trend Runner 3.5R):
+            #   >= 1.0R -> Break-Even (+0.30 USD)
+            #   >= 2.0R -> Lock +1.0R Profit
+            #   >= 2.6R -> Lock +1.8R Profit
+            #   >= 3.0R -> Lock +2.4R Profit
             for p1 in pos1_list:
                 t_id = p1.get('ticket')
                 open_p = p1.get('price_open', 0.0)
@@ -1042,8 +1048,15 @@ class GoldScalpingBot:
                         initial_r = abs(open_p - sl)
                         self.initial_risk_map[t_id] = initial_r
                     elif tp > 0:
-                        target_rr = 3.5 if strat_id == "RTM_M7_MAX_ALPHA" else (3.0 if strat_id.startswith("RTM_") else (2.0 if strat_id == "SMC_X_STO_H1" else 1.8))
-                        initial_r = abs(open_p - tp) / target_rr
+                        if strat_id == "RTM_M7_MAX_ALPHA":
+                            initial_r = abs(open_p - tp) / 3.5
+                        elif strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M5_ALL_WEATHER", "RTM_M6_ELITE_GROWTH"]:
+                            raw_dist = abs(open_p - tp)
+                            initial_r = raw_dist / 3.0 if raw_dist > 20.0 else raw_dist / 2.0
+                        elif strat_id == "SMC_X_STO_H1":
+                            initial_r = abs(open_p - tp) / 2.0
+                        else:
+                            initial_r = abs(open_p - tp) / 1.8
                         self.initial_risk_map[t_id] = initial_r
                     else:
                         initial_r = 5.0
@@ -1051,51 +1064,152 @@ class GoldScalpingBot:
                 if initial_r <= 0.50:
                     continue
 
+                is_quick_harvest = strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M5_ALL_WEATHER", "RTM_M6_ELITE_GROWTH"]
+                is_m7_runner = strat_id == "RTM_M7_MAX_ALPHA"
+
                 if ptype == "BUY":
                     profit_dist = bid - open_p
                     r_profit = profit_dist / initial_r
 
-                    # Step 3: At >= 2.6R -> Lock +1.8R Profit
-                    if r_profit >= 2.6:
-                        target_sl = round(open_p + (initial_r * 1.8), 2)
-                        if sl < target_sl - 0.10:
-                            self.connector.modify_position(t_id, target_sl, tp)
-                            self.add_log(f"🎯 [PROFIT LOCKED +1.8R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.8R ({target_sl:.2f})", "SUCCESS")
-                    # Step 2: At >= 2.0R -> Lock +1.0R Profit
-                    elif r_profit >= 2.0:
-                        target_sl = round(open_p + (initial_r * 1.0), 2)
-                        if sl < target_sl - 0.10:
-                            self.connector.modify_position(t_id, target_sl, tp)
-                            self.add_log(f"💰 [PROFIT LOCKED +1.0R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.0R ({target_sl:.2f})", "SUCCESS")
-                    # Step 1: At >= 1.0R -> Lock Break-Even (+0.30 USD)
-                    elif r_profit >= 1.0:
-                        target_sl = round(open_p + 0.30, 2)
-                        if sl < target_sl - 0.10:
-                            self.connector.modify_position(t_id, target_sl, tp)
-                            self.add_log(f"🛡️ [BREAK-EVEN LOCKED] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
+                    # Sync TP to 2.0R for Quick Harvest models if needed
+                    if is_quick_harvest and tp > 0:
+                        desired_tp = round(open_p + (initial_r * 2.0), 2)
+                        if abs(tp - desired_tp) > 0.50:
+                            tp = desired_tp
+                            self.connector.modify_position(t_id, sl, tp)
+                            self.add_log(f"🎯 [TP RECALIBRATED 2.0R] [{strat_id}] Ticket #{t_id} TP adjusted to {tp:.2f}", "INFO")
+
+                    if is_quick_harvest:
+                        # Quick Harvest Trailing (Target 2.0R)
+                        # Step 2: At >= 1.5R -> Lock +0.8R Profit
+                        if r_profit >= 1.5:
+                            target_sl = round(open_p + (initial_r * 0.8), 2)
+                            if sl < target_sl - 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🎯 [PROFIT LOCKED +0.8R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +0.8R ({target_sl:.2f})", "SUCCESS")
+                        # Step 1: At >= 1.0R -> Lock Break-Even (+0.30 USD)
+                        elif r_profit >= 1.0:
+                            target_sl = round(open_p + 0.30, 2)
+                            if sl < target_sl - 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🛡️ [BREAK-EVEN LOCKED] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
+
+                    elif is_m7_runner:
+                        # Trend Runner Trailing (Target 3.5R)
+                        # Step 4: At >= 3.0R -> Lock +2.4R Profit
+                        if r_profit >= 3.0:
+                            target_sl = round(open_p + (initial_r * 2.4), 2)
+                            if sl < target_sl - 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🚀 [PROFIT LOCKED +2.4R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +2.4R ({target_sl:.2f})", "SUCCESS")
+                        # Step 3: At >= 2.6R -> Lock +1.8R Profit
+                        elif r_profit >= 2.6:
+                            target_sl = round(open_p + (initial_r * 1.8), 2)
+                            if sl < target_sl - 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🎯 [PROFIT LOCKED +1.8R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.8R ({target_sl:.2f})", "SUCCESS")
+                        # Step 2: At >= 2.0R -> Lock +1.0R Profit
+                        elif r_profit >= 2.0:
+                            target_sl = round(open_p + (initial_r * 1.0), 2)
+                            if sl < target_sl - 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"💰 [PROFIT LOCKED +1.0R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.0R ({target_sl:.2f})", "SUCCESS")
+                        # Step 1: At >= 1.0R -> Lock Break-Even (+0.30 USD)
+                        elif r_profit >= 1.0:
+                            target_sl = round(open_p + 0.30, 2)
+                            if sl < target_sl - 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🛡️ [BREAK-EVEN LOCKED] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
+
+                    else:
+                        # Other Setups (SMC_X_STO_H1, NEWS_MOMENTUM_EXPANSION)
+                        if r_profit >= 2.6:
+                            target_sl = round(open_p + (initial_r * 1.8), 2)
+                            if sl < target_sl - 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🎯 [PROFIT LOCKED +1.8R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.8R ({target_sl:.2f})", "SUCCESS")
+                        elif r_profit >= 2.0:
+                            target_sl = round(open_p + (initial_r * 1.0), 2)
+                            if sl < target_sl - 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"💰 [PROFIT LOCKED +1.0R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.0R ({target_sl:.2f})", "SUCCESS")
+                        elif r_profit >= 1.0:
+                            target_sl = round(open_p + 0.30, 2)
+                            if sl < target_sl - 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🛡️ [BREAK-EVEN LOCKED] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
 
                 elif ptype == "SELL":
                     profit_dist = open_p - ask
                     r_profit = profit_dist / initial_r
 
-                    # Step 3: At >= 2.6R -> Lock +1.8R Profit
-                    if r_profit >= 2.6:
-                        target_sl = round(open_p - (initial_r * 1.8), 2)
-                        if sl == 0 or sl > target_sl + 0.10:
-                            self.connector.modify_position(t_id, target_sl, tp)
-                            self.add_log(f"🎯 [PROFIT LOCKED +1.8R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.8R ({target_sl:.2f})", "SUCCESS")
-                    # Step 2: At >= 2.0R -> Lock +1.0R Profit
-                    elif r_profit >= 2.0:
-                        target_sl = round(open_p - (initial_r * 1.0), 2)
-                        if sl == 0 or sl > target_sl + 0.10:
-                            self.connector.modify_position(t_id, target_sl, tp)
-                            self.add_log(f"💰 [PROFIT LOCKED +1.0R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.0R ({target_sl:.2f})", "SUCCESS")
-                    # Step 1: At >= 1.0R -> Lock Break-Even (+0.30 USD)
-                    elif r_profit >= 1.0:
-                        target_sl = round(open_p - 0.30, 2)
-                        if sl == 0 or sl > target_sl + 0.10:
-                            self.connector.modify_position(t_id, target_sl, tp)
-                            self.add_log(f"🛡️ [BREAK-EVEN LOCKED] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
+                    # Sync TP to 2.0R for Quick Harvest models if needed
+                    if is_quick_harvest and tp > 0:
+                        desired_tp = round(open_p - (initial_r * 2.0), 2)
+                        if abs(tp - desired_tp) > 0.50:
+                            tp = desired_tp
+                            self.connector.modify_position(t_id, sl, tp)
+                            self.add_log(f"🎯 [TP RECALIBRATED 2.0R] [{strat_id}] Ticket #{t_id} TP adjusted to {tp:.2f}", "INFO")
+
+                    if is_quick_harvest:
+                        # Quick Harvest Trailing (Target 2.0R)
+                        # Step 2: At >= 1.5R -> Lock +0.8R Profit
+                        if r_profit >= 1.5:
+                            target_sl = round(open_p - (initial_r * 0.8), 2)
+                            if sl == 0 or sl > target_sl + 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🎯 [PROFIT LOCKED +0.8R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +0.8R ({target_sl:.2f})", "SUCCESS")
+                        # Step 1: At >= 1.0R -> Lock Break-Even (+0.30 USD)
+                        elif r_profit >= 1.0:
+                            target_sl = round(open_p - 0.30, 2)
+                            if sl == 0 or sl > target_sl + 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🛡️ [BREAK-EVEN LOCKED] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
+
+                    elif is_m7_runner:
+                        # Trend Runner Trailing (Target 3.5R)
+                        # Step 4: At >= 3.0R -> Lock +2.4R Profit
+                        if r_profit >= 3.0:
+                            target_sl = round(open_p - (initial_r * 2.4), 2)
+                            if sl == 0 or sl > target_sl + 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🚀 [PROFIT LOCKED +2.4R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +2.4R ({target_sl:.2f})", "SUCCESS")
+                        # Step 3: At >= 2.6R -> Lock +1.8R Profit
+                        elif r_profit >= 2.6:
+                            target_sl = round(open_p - (initial_r * 1.8), 2)
+                            if sl == 0 or sl > target_sl + 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🎯 [PROFIT LOCKED +1.8R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.8R ({target_sl:.2f})", "SUCCESS")
+                        # Step 2: At >= 2.0R -> Lock +1.0R Profit
+                        elif r_profit >= 2.0:
+                            target_sl = round(open_p - (initial_r * 1.0), 2)
+                            if sl == 0 or sl > target_sl + 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"💰 [PROFIT LOCKED +1.0R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.0R ({target_sl:.2f})", "SUCCESS")
+                        # Step 1: At >= 1.0R -> Lock Break-Even (+0.30 USD)
+                        elif r_profit >= 1.0:
+                            target_sl = round(open_p - 0.30, 2)
+                            if sl == 0 or sl > target_sl + 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🛡️ [BREAK-EVEN LOCKED] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
+
+                    else:
+                        # Other Setups
+                        if r_profit >= 2.6:
+                            target_sl = round(open_p - (initial_r * 1.8), 2)
+                            if sl == 0 or sl > target_sl + 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🎯 [PROFIT LOCKED +1.8R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.8R ({target_sl:.2f})", "SUCCESS")
+                        elif r_profit >= 2.0:
+                            target_sl = round(open_p - (initial_r * 1.0), 2)
+                            if sl == 0 or sl > target_sl + 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"💰 [PROFIT LOCKED +1.0R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.0R ({target_sl:.2f})", "SUCCESS")
+                        elif r_profit >= 1.0:
+                            target_sl = round(open_p - 0.30, 2)
+                            if sl == 0 or sl > target_sl + 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🛡️ [BREAK-EVEN LOCKED] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
 
             # Stage 1: Legacy multi-order support (When Pos 1 closes, move Pos 2 & 3 to BE)
             if len(pos1_list) == 0 and (len(pos2_list) > 0 or len(pos3_list) > 0):

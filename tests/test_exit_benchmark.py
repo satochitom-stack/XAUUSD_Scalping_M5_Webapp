@@ -14,10 +14,11 @@ class TestExitBenchmarkTracker(unittest.TestCase):
             os.remove(self.test_file)
 
     def test_multi_tp_profiles_count(self):
-        self.assertEqual(len(MULTI_TP_PROFILES), 8)
+        self.assertEqual(len(MULTI_TP_PROFILES), 12)
         self.assertIn("NEWS_MOMENTUM_EXPANSION", MULTI_TP_PROFILES)
         self.assertIn("ASIAN_RANGE_SNIPER", MULTI_TP_PROFILES)
-        self.assertIn("SMC_SWEEP", MULTI_TP_PROFILES)
+        self.assertIn("RTM_M4_CONSERVATIVE", MULTI_TP_PROFILES)
+        self.assertIn("RTM_M7_MAX_ALPHA", MULTI_TP_PROFILES)
 
     def test_buy_trade_progression_tp3(self):
         self.tracker.register_trade(

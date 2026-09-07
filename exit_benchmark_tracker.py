@@ -63,6 +63,34 @@ MULTI_TP_PROFILES = {
         "be_trigger": "TP1",
         "lock_trigger": "TP2"
     },
+    "RTM_M4_CONSERVATIVE": {
+        "tp1_rr": 1.0, "tp1_pct": 0.50,
+        "tp2_rr": 1.5, "tp2_pct": 0.30,
+        "tp3_rr": 2.0, "tp3_pct": 0.20,
+        "be_trigger": "TP1",
+        "lock_trigger": "TP2"
+    },
+    "RTM_M5_ALL_WEATHER": {
+        "tp1_rr": 1.0, "tp1_pct": 0.50,
+        "tp2_rr": 1.5, "tp2_pct": 0.30,
+        "tp3_rr": 2.0, "tp3_pct": 0.20,
+        "be_trigger": "TP1",
+        "lock_trigger": "TP2"
+    },
+    "RTM_M6_ELITE_GROWTH": {
+        "tp1_rr": 1.0, "tp1_pct": 0.50,
+        "tp2_rr": 1.5, "tp2_pct": 0.30,
+        "tp3_rr": 2.0, "tp3_pct": 0.20,
+        "be_trigger": "TP1",
+        "lock_trigger": "TP2"
+    },
+    "RTM_M7_MAX_ALPHA": {
+        "tp1_rr": 1.5, "tp1_pct": 0.35,
+        "tp2_rr": 2.5, "tp2_pct": 0.35,
+        "tp3_rr": 3.5, "tp3_pct": 0.30,
+        "be_trigger": "TP1",
+        "lock_trigger": "TP2"
+    },
     "ALL_CONFLUENCE": {
         "tp1_rr": 1.8, "tp1_pct": 0.35,
         "tp2_rr": 2.8, "tp2_pct": 0.35,

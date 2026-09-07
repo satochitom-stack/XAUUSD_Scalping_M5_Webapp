@@ -44,6 +44,7 @@ def index():
     return {"service": "FXLOG PRO MT5 Bridge", "status": "online"}
 
 @app.get("/api/journal/closed_trades")
+@app.get("/api/journal/export_trades")
 async def get_closed_trades(
     days: int = Query(3, description="Days of history"),
     mode: str = Query("manual", description="Mode"),
