@@ -595,6 +595,37 @@ class RealTradeAnalyticsManager:
                 st["profit_factor"] = round((st["gross_profit"] / (st["gross_loss"] + 1e-9)), 2) if st["gross_loss"] > 0 else (99.99 if st["gross_profit"] > 0 else 0.0)
                 st["status"] = f"บอทเทรดแล้ว ({st['total_trades']} ไม้)"
 
+                # Realized RR and Exit Stages Breakdown
+                target_rr = 3.5 if k == "RTM_M7_MAX_ALPHA" else (2.0 if k == "SMC_X_STO_H1" else (1.8 if k == "NEWS_MOMENTUM_EXPANSION" else 3.0))
+                risk_per_lot = 850.0 if "RTM_" in k else (900.0 if k == "SMC_X_STO_H1" else 700.0)
+                
+                stages = {"full_tp": 0, "trailing_lock": 0, "mid_profit": 0, "break_even": 0, "full_sl": 0, "early_cut": 0}
+                total_realized_r = 0.0
+                
+                for deal_item in strat_deals[k]:
+                    d_profit = deal_item["net_profit"]
+                    d_lot = deal_item.get("volume", 0.01) or 0.01
+                    d_risk = max(d_lot * risk_per_lot, 1.0)
+                    r_val = round(d_profit / d_risk, 2)
+                    total_realized_r += r_val
+                    
+                    if r_val >= (target_rr - 0.2):
+                        stages["full_tp"] += 1
+                    elif r_val >= 1.6:
+                        stages["trailing_lock"] += 1
+                    elif r_val >= 0.85:
+                        stages["mid_profit"] += 1
+                    elif r_val >= 0.0:
+                        stages["break_even"] += 1
+                    elif r_val <= -0.85:
+                        stages["full_sl"] += 1
+                    else:
+                        stages["early_cut"] += 1
+
+                st["avg_realized_rr"] = round(total_realized_r / st["total_trades"], 1)
+                st["target_rr"] = target_rr
+                st["exit_stages"] = stages
+
                 # Calculate real Peak-to-Trough Drawdown
                 s_deals = sorted(strat_deals[k], key=lambda x: x["time"])
                 s_cum = 0.0
@@ -613,6 +644,9 @@ class RealTradeAnalyticsManager:
             else:
                 st["winrate_pct"] = 0.0
                 st["profit_factor"] = 0.0
+                st["avg_realized_rr"] = 0.0
+                st["target_rr"] = 3.5 if k == "RTM_M7_MAX_ALPHA" else (2.0 if k == "SMC_X_STO_H1" else (1.8 if k == "NEWS_MOMENTUM_EXPANSION" else 3.0))
+                st["exit_stages"] = {"full_tp": 0, "trailing_lock": 0, "mid_profit": 0, "break_even": 0, "full_sl": 0, "early_cut": 0}
                 st["max_drawdown_usd"] = 0.0
                 st["max_drawdown_pct"] = 0.0
                 st["status"] = "🟢 บอทรันพร้อมเทรด (0 ไม้)"
