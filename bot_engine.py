@@ -68,6 +68,17 @@ class GoldScalpingBot:
         self.magic_pos2 = self.magic_number + 2
         self.magic_pos3 = self.magic_number + 3
 
+        # Auto-sync MultiAccountManager analytics instance upon bot hot-reload
+        try:
+            import sys
+            import strategy_analytics
+            for m_name in ["__main__", "main"]:
+                mod = sys.modules.get(m_name)
+                if mod and hasattr(mod, "account_manager"):
+                    mod.account_manager.analytics = strategy_analytics.RealTradeAnalyticsManager()
+        except Exception:
+            pass
+
     def get_magic_for_strategy(self, strat_id: str) -> dict:
         """Returns isolated magic numbers for a specific setup."""
         return STRATEGY_MAGIC_MAP.get(strat_id, {
