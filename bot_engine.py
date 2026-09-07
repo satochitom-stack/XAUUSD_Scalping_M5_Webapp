@@ -60,6 +60,7 @@ class GoldScalpingBot:
         self.fast_slope = 0.0
         self.slow_slope = 0.0
         self.logs: List[dict] = []
+        self.initial_risk_map: Dict[int, float] = {}
         
         mt5_cfg = self.config.get("mt5", {})
         self.magic_number = mt5_cfg.get("magic_number", 555888)
@@ -1014,21 +1015,82 @@ class GoldScalpingBot:
             pos2_list = [p for p in positions if p.get('magic') == pos2_magic]
             pos3_list = [p for p in positions if p.get('magic') == pos3_magic]
 
-            # Break-Even Lock for Single Position: When price reaches 1.0R in profit, move SL to Break-Even (+0.30 USD)
+            # Multi-Stage R-Step Trailing Lock:
+            # 1. At >= 1.0R -> Lock Break-Even (+0.30 USD)
+            # 2. At >= 2.0R -> Lock +1.0R Profit
+            # 3. At >= 2.6R -> Lock +1.8R Profit
             for p1 in pos1_list:
+                t_id = p1.get('ticket')
                 open_p = p1.get('price_open', 0.0)
                 sl = p1.get('sl', 0.0)
+                tp = p1.get('tp', 0.0)
                 ptype = p1.get('type')
-                if sl > 0:
-                    initial_sl_dist = abs(open_p - sl)
-                    if ptype == "BUY" and sl < open_p and bid >= (open_p + initial_sl_dist):
-                        new_sl = open_p + 0.30
-                        self.connector.modify_position(p1.get('ticket'), new_sl, p1.get('tp'))
-                        self.add_log(f"🛡️ [BREAK-EVEN LOCKED] [{strat_id}] Ticket #{p1.get('ticket')} reached 1.0R | SL locked to {new_sl:.2f}", "SUCCESS")
-                    elif ptype == "SELL" and sl > open_p and ask <= (open_p - initial_sl_dist):
-                        new_sl = open_p - 0.30
-                        self.connector.modify_position(p1.get('ticket'), new_sl, p1.get('tp'))
-                        self.add_log(f"🛡️ [BREAK-EVEN LOCKED] [{strat_id}] Ticket #{p1.get('ticket')} reached 1.0R | SL locked to {new_sl:.2f}", "SUCCESS")
+
+                # Resolve initial 1.0R risk distance
+                if t_id in self.initial_risk_map:
+                    initial_r = self.initial_risk_map[t_id]
+                else:
+                    if ptype == "BUY" and sl > 0 and sl < open_p:
+                        initial_r = abs(open_p - sl)
+                        self.initial_risk_map[t_id] = initial_r
+                    elif ptype == "SELL" and sl > 0 and sl > open_p:
+                        initial_r = abs(open_p - sl)
+                        self.initial_risk_map[t_id] = initial_r
+                    elif tp > 0:
+                        target_rr = 3.5 if strat_id == "RTM_M7_MAX_ALPHA" else (3.0 if strat_id.startswith("RTM_") else (2.0 if strat_id == "SMC_X_STO_H1" else 1.8))
+                        initial_r = abs(open_p - tp) / target_rr
+                        self.initial_risk_map[t_id] = initial_r
+                    else:
+                        initial_r = 5.0
+
+                if initial_r <= 0.50:
+                    continue
+
+                if ptype == "BUY":
+                    profit_dist = bid - open_p
+                    r_profit = profit_dist / initial_r
+
+                    # Step 3: At >= 2.6R -> Lock +1.8R Profit
+                    if r_profit >= 2.6:
+                        target_sl = round(open_p + (initial_r * 1.8), 2)
+                        if sl < target_sl - 0.10:
+                            self.connector.modify_position(t_id, target_sl, tp)
+                            self.add_log(f"🎯 [PROFIT LOCKED +1.8R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.8R ({target_sl:.2f})", "SUCCESS")
+                    # Step 2: At >= 2.0R -> Lock +1.0R Profit
+                    elif r_profit >= 2.0:
+                        target_sl = round(open_p + (initial_r * 1.0), 2)
+                        if sl < target_sl - 0.10:
+                            self.connector.modify_position(t_id, target_sl, tp)
+                            self.add_log(f"💰 [PROFIT LOCKED +1.0R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.0R ({target_sl:.2f})", "SUCCESS")
+                    # Step 1: At >= 1.0R -> Lock Break-Even (+0.30 USD)
+                    elif r_profit >= 1.0:
+                        target_sl = round(open_p + 0.30, 2)
+                        if sl < target_sl - 0.10:
+                            self.connector.modify_position(t_id, target_sl, tp)
+                            self.add_log(f"🛡️ [BREAK-EVEN LOCKED] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
+
+                elif ptype == "SELL":
+                    profit_dist = open_p - ask
+                    r_profit = profit_dist / initial_r
+
+                    # Step 3: At >= 2.6R -> Lock +1.8R Profit
+                    if r_profit >= 2.6:
+                        target_sl = round(open_p - (initial_r * 1.8), 2)
+                        if sl == 0 or sl > target_sl + 0.10:
+                            self.connector.modify_position(t_id, target_sl, tp)
+                            self.add_log(f"🎯 [PROFIT LOCKED +1.8R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.8R ({target_sl:.2f})", "SUCCESS")
+                    # Step 2: At >= 2.0R -> Lock +1.0R Profit
+                    elif r_profit >= 2.0:
+                        target_sl = round(open_p - (initial_r * 1.0), 2)
+                        if sl == 0 or sl > target_sl + 0.10:
+                            self.connector.modify_position(t_id, target_sl, tp)
+                            self.add_log(f"💰 [PROFIT LOCKED +1.0R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.0R ({target_sl:.2f})", "SUCCESS")
+                    # Step 1: At >= 1.0R -> Lock Break-Even (+0.30 USD)
+                    elif r_profit >= 1.0:
+                        target_sl = round(open_p - 0.30, 2)
+                        if sl == 0 or sl > target_sl + 0.10:
+                            self.connector.modify_position(t_id, target_sl, tp)
+                            self.add_log(f"🛡️ [BREAK-EVEN LOCKED] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
 
             # Stage 1: Legacy multi-order support (When Pos 1 closes, move Pos 2 & 3 to BE)
             if len(pos1_list) == 0 and (len(pos2_list) > 0 or len(pos3_list) > 0):
