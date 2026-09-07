@@ -346,6 +346,7 @@ class RealTradeAnalyticsManager:
                 journal_trades.append({
                     "id": trade_id,
                     "ticket": pid,
+                    "magic": int(in_deal.magic or 0),
                     "pair": clean_pair,
                     "type": trade_type,
                     "entryPrice": entry_price,

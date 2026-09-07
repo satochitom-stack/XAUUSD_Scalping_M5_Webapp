@@ -452,6 +452,8 @@ async def get_closed_trades_for_journal(
     """
     Fetch closed trades from MT5 to record in TradeLogView in FXLOG PRO.
     """
+    return await export_trades_for_journal(days=days, mode=mode, user=user)
+
 @app.get("/api/system/version")
 async def get_system_version():
     """Returns latest git commit and strategy catalog info."""
