@@ -408,14 +408,29 @@ class GoldScalpingBot:
         # Expansion validation: Solid body >= 58% and meaningful range >= 0.80 USD
         is_solid_expansion = (body_pct >= 0.58) and (candle_range >= 0.80)
 
+        # Institutional Volume Confirmation:
+        # If not during high-impact news, require tick_volume >= 1.3x 20-bar volume MA
+        # to filter out low-liquidity fakeouts/traps during dead hours.
+        vol_series = df.get('tick_volume')
+        if vol_series is not None and len(vol_series) >= 22:
+            vol_ma20 = float(vol_series.iloc[-22:-2].mean())
+            curr_vol = float(b1.get('tick_volume', 0))
+            is_volume_spike = (curr_vol >= vol_ma20 * 1.3)
+        else:
+            is_volume_spike = True
+
+        volume_confirmed = is_news_spike or is_volume_spike
+        if not volume_confirmed:
+            return False, False, ""
+
         # BUY: Bullish Breakout above Swing High with solid body & RSI momentum
         if (is_news_spike or is_solid_expansion) and b1['close'] > pre_swing_high and b1['close'] > b1['open'] and body_pct >= 0.58 and rsi14 >= 52:
-            tag = "⚡ High-Impact News Spike Breakout (BUY)" if is_news_spike else "🚀 Momentum Expansion Breakout (BUY)"
+            tag = "⚡ High-Impact News Spike Breakout (BUY)" if is_news_spike else "🚀 Institutional Momentum Expansion Breakout (BUY)"
             return True, False, tag
 
         # SELL: Bearish Breakdown below Swing Low with solid body & RSI momentum
         if (is_news_spike or is_solid_expansion) and b1['close'] < pre_swing_low and b1['close'] < b1['open'] and body_pct >= 0.58 and rsi14 <= 48:
-            tag = "⚡ High-Impact News Spike Breakdown (SELL)" if is_news_spike else "🚀 Momentum Expansion Breakdown (SELL)"
+            tag = "⚡ High-Impact News Spike Breakdown (SELL)" if is_news_spike else "🚀 Institutional Momentum Expansion Breakdown (SELL)"
             return False, True, tag
 
         return False, False, ""
@@ -586,13 +601,20 @@ class GoldScalpingBot:
                         price_in_ob = (float(b1['low']) <= (ob_high + 0.3 * curr_atr)) and (float(b1['close']) >= (ob_low - 0.2 * curr_atr))
                         
                         if price_in_ob:
+                            # Liquidity Sweep / Lower Wick Rejection Confirmation:
+                            # Ensure sell-side liquidity was swept (price dipped below previous candle low or pierced OB)
+                            # AND showed rejection with lower wick >= 25% of candle range
+                            candle_range = max(float(b1['high']) - float(b1['low']), 0.1)
+                            lower_wick = min(float(b1['open']), float(b1['close'])) - float(b1['low'])
+                            has_rejection = (lower_wick / candle_range) >= 0.25 or (float(b1['low']) < float(b2['low']))
+
                             # Check 3: Stochastic Trigger (Oversold <= 28 and %K cross above %D)
                             was_oversold = (float(b2['stoch_k']) <= 28) or (float(b1['stoch_k']) <= 30)
                             stoch_cross_up = (float(b1['stoch_k']) > float(b1['stoch_d'])) and (float(b2['stoch_k']) <= float(b2['stoch_d']))
                             
-                            if was_oversold and stoch_cross_up and (float(b1['close']) > float(b1['open'])):
+                            if was_oversold and stoch_cross_up and (float(b1['close']) > float(b1['open'])) and has_rejection:
                                 self.last_smc_sto_h1_bar_time = h1_bar_time
-                                return True, False, "😈 SMCxSTO: H1 Discount OB + Stoch Oversold Rebound (BUY)"
+                                return True, False, "😈 SMCxSTO: H1 Discount OB + Sweep Rebound (BUY)"
 
             # --- BEARISH (SELL) SETUP ---
             if is_downtrend:
@@ -612,13 +634,18 @@ class GoldScalpingBot:
                         price_in_ob = (float(b1['high']) >= (ob_low - 0.3 * curr_atr)) and (float(b1['close']) <= (ob_high + 0.2 * curr_atr))
                         
                         if price_in_ob:
+                            # Liquidity Sweep / Upper Wick Rejection Confirmation:
+                            candle_range = max(float(b1['high']) - float(b1['low']), 0.1)
+                            upper_wick = float(b1['high']) - max(float(b1['open']), float(b1['close']))
+                            has_rejection = (upper_wick / candle_range) >= 0.25 or (float(b1['high']) > float(b2['high']))
+
                             # Check 3: Stochastic Trigger (Overbought >= 72 and %K cross below %D)
                             was_overbought = (float(b2['stoch_k']) >= 72) or (float(b1['stoch_k']) >= 70)
                             stoch_cross_down = (float(b1['stoch_k']) < float(b1['stoch_d'])) and (float(b2['stoch_k']) >= float(b2['stoch_d']))
                             
-                            if was_overbought and stoch_cross_down and (float(b1['close']) < float(b1['open'])):
+                            if was_overbought and stoch_cross_down and (float(b1['close']) < float(b1['open'])) and has_rejection:
                                 self.last_smc_sto_h1_bar_time = h1_bar_time
-                                return False, True, "😈 SMCxSTO: H1 Premium OB + Stoch Overbought Rebound (SELL)"
+                                return False, True, "😈 SMCxSTO: H1 Premium OB + Sweep Rebound (SELL)"
 
         except Exception as e:
             logger.error(f"Error evaluating SMCxSTO H1 strategy: {e}")
@@ -891,7 +918,7 @@ class GoldScalpingBot:
             sl_dist = ask - sl
             if sl_dist < 5.00: sl = ask - 5.00; sl_dist = 5.00
             if sl_dist > 9.00: sl = ask - 9.00; sl_dist = 9.00
-            tp2 = ask + (sl_dist * 2.0)
+            tp2 = ask + (sl_dist * 2.2)
         elif strat_id.startswith("RTM_") or "RTM" in reason:
             custom_sl = opt.get("custom_sl")
             custom_tp = opt.get("custom_tp")
@@ -960,7 +987,7 @@ class GoldScalpingBot:
             sl_dist = sl - bid
             if sl_dist < 5.00: sl = bid + 5.00; sl_dist = 5.00
             if sl_dist > 9.00: sl = bid + 9.00; sl_dist = 9.00
-            tp2 = bid - (sl_dist * 2.0)
+            tp2 = bid - (sl_dist * 2.2)
         elif strat_id.startswith("RTM_") or "RTM" in reason:
             custom_sl = opt.get("custom_sl")
             custom_tp = opt.get("custom_tp")
@@ -1065,7 +1092,7 @@ class GoldScalpingBot:
                             raw_dist = abs(open_p - tp)
                             initial_r = raw_dist / 3.0 if raw_dist > 20.0 else raw_dist / 2.0
                         elif strat_id == "SMC_X_STO_H1":
-                            initial_r = abs(open_p - tp) / 2.0
+                            initial_r = abs(open_p - tp) / 2.2
                         else:
                             initial_r = abs(open_p - tp) / 1.8
                         self.initial_risk_map[t_id] = initial_r
@@ -1077,6 +1104,8 @@ class GoldScalpingBot:
 
                 is_quick_harvest = strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M5_ALL_WEATHER", "RTM_M6_ELITE_GROWTH"]
                 is_m7_runner = strat_id == "RTM_M7_MAX_ALPHA"
+                is_fast_scalp = strat_id in ["ASIAN_RANGE_SNIPER", "NEWS_MOMENTUM_EXPANSION"]
+                is_smc_devil = strat_id == "SMC_X_STO_H1"
 
                 if ptype == "BUY":
                     profit_dist = bid - open_p
@@ -1132,19 +1161,44 @@ class GoldScalpingBot:
                                 self.connector.modify_position(t_id, target_sl, tp)
                                 self.add_log(f"🛡️ [BREAK-EVEN LOCKED] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
 
-                    else:
-                        # Other Setups (SMC_X_STO_H1, NEWS_MOMENTUM_EXPANSION)
-                        if r_profit >= 2.6:
-                            target_sl = round(open_p + (initial_r * 1.8), 2)
+                    elif is_fast_scalp:
+                        # Fast Scalp / Momentum (Target 1.8R - Asian Sniper, News Momentum)
+                        # Step 2: At >= 1.4R -> Lock +0.8R Profit (Prevents retracement to BE)
+                        if r_profit >= 1.4:
+                            target_sl = round(open_p + (initial_r * 0.8), 2)
                             if sl < target_sl - 0.10:
                                 self.connector.modify_position(t_id, target_sl, tp)
-                                self.add_log(f"🎯 [PROFIT LOCKED +1.8R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.8R ({target_sl:.2f})", "SUCCESS")
-                        elif r_profit >= 2.0:
-                            target_sl = round(open_p + (initial_r * 1.0), 2)
-                            if sl < target_sl - 0.10:
-                                self.connector.modify_position(t_id, target_sl, tp)
-                                self.add_log(f"💰 [PROFIT LOCKED +1.0R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.0R ({target_sl:.2f})", "SUCCESS")
+                                self.add_log(f"🎯 [PROFIT LOCKED +0.8R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +0.8R ({target_sl:.2f})", "SUCCESS")
+                        # Step 1: At >= 1.0R -> Lock Break-Even (+0.30 USD)
                         elif r_profit >= 1.0:
+                            target_sl = round(open_p + 0.30, 2)
+                            if sl < target_sl - 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🛡️ [BREAK-EVEN LOCKED] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
+
+                    elif is_smc_devil:
+                        # SMC H1 Devil System (Target 2.2R)
+                        # Step 3: At >= 1.8R -> Lock +1.2R Profit
+                        if r_profit >= 1.8:
+                            target_sl = round(open_p + (initial_r * 1.2), 2)
+                            if sl < target_sl - 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"💰 [PROFIT LOCKED +1.2R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.2R ({target_sl:.2f})", "SUCCESS")
+                        # Step 2: At >= 1.4R -> Lock +0.8R Profit
+                        elif r_profit >= 1.4:
+                            target_sl = round(open_p + (initial_r * 0.8), 2)
+                            if sl < target_sl - 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🎯 [PROFIT LOCKED +0.8R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +0.8R ({target_sl:.2f})", "SUCCESS")
+                        # Step 1: At >= 1.0R -> Lock Break-Even (+0.30 USD)
+                        elif r_profit >= 1.0:
+                            target_sl = round(open_p + 0.30, 2)
+                            if sl < target_sl - 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🛡️ [BREAK-EVEN LOCKED] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
+
+                    else:
+                        if r_profit >= 1.0:
                             target_sl = round(open_p + 0.30, 2)
                             if sl < target_sl - 0.10:
                                 self.connector.modify_position(t_id, target_sl, tp)
@@ -1204,19 +1258,44 @@ class GoldScalpingBot:
                                 self.connector.modify_position(t_id, target_sl, tp)
                                 self.add_log(f"🛡️ [BREAK-EVEN LOCKED] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
 
-                    else:
-                        # Other Setups
-                        if r_profit >= 2.6:
-                            target_sl = round(open_p - (initial_r * 1.8), 2)
+                    elif is_fast_scalp:
+                        # Fast Scalp / Momentum (Target 1.8R - Asian Sniper, News Momentum)
+                        # Step 2: At >= 1.4R -> Lock +0.8R Profit (Prevents retracement to BE)
+                        if r_profit >= 1.4:
+                            target_sl = round(open_p - (initial_r * 0.8), 2)
                             if sl == 0 or sl > target_sl + 0.10:
                                 self.connector.modify_position(t_id, target_sl, tp)
-                                self.add_log(f"🎯 [PROFIT LOCKED +1.8R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.8R ({target_sl:.2f})", "SUCCESS")
-                        elif r_profit >= 2.0:
-                            target_sl = round(open_p - (initial_r * 1.0), 2)
-                            if sl == 0 or sl > target_sl + 0.10:
-                                self.connector.modify_position(t_id, target_sl, tp)
-                                self.add_log(f"💰 [PROFIT LOCKED +1.0R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.0R ({target_sl:.2f})", "SUCCESS")
+                                self.add_log(f"🎯 [PROFIT LOCKED +0.8R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +0.8R ({target_sl:.2f})", "SUCCESS")
+                        # Step 1: At >= 1.0R -> Lock Break-Even (+0.30 USD)
                         elif r_profit >= 1.0:
+                            target_sl = round(open_p - 0.30, 2)
+                            if sl == 0 or sl > target_sl + 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🛡️ [BREAK-EVEN LOCKED] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
+
+                    elif is_smc_devil:
+                        # SMC H1 Devil System (Target 2.2R)
+                        # Step 3: At >= 1.8R -> Lock +1.2R Profit
+                        if r_profit >= 1.8:
+                            target_sl = round(open_p - (initial_r * 1.2), 2)
+                            if sl == 0 or sl > target_sl + 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"💰 [PROFIT LOCKED +1.2R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.2R ({target_sl:.2f})", "SUCCESS")
+                        # Step 2: At >= 1.4R -> Lock +0.8R Profit
+                        elif r_profit >= 1.4:
+                            target_sl = round(open_p - (initial_r * 0.8), 2)
+                            if sl == 0 or sl > target_sl + 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🎯 [PROFIT LOCKED +0.8R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +0.8R ({target_sl:.2f})", "SUCCESS")
+                        # Step 1: At >= 1.0R -> Lock Break-Even (+0.30 USD)
+                        elif r_profit >= 1.0:
+                            target_sl = round(open_p - 0.30, 2)
+                            if sl == 0 or sl > target_sl + 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🛡️ [BREAK-EVEN LOCKED] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
+
+                    else:
+                        if r_profit >= 1.0:
                             target_sl = round(open_p - 0.30, 2)
                             if sl == 0 or sl > target_sl + 0.10:
                                 self.connector.modify_position(t_id, target_sl, tp)

@@ -162,5 +162,56 @@ class TestRTMEngine(unittest.TestCase):
         self.bot.manage_open_positions("XAUUSDc")
         self.mock_connector.modify_position.assert_called_with(701, 2718.0, 2735.0)
 
+    def test_asian_and_news_trailing_lock_1_4r(self):
+        """Test Asian Range Sniper and News Momentum lock +0.8R profit when reaching >= 1.4R."""
+        # Price at +1.45R (open: 2700.0, initial_r: 10.0, bid: 2714.5)
+        self.mock_connector.get_market_info.return_value = {"bid": 2714.5, "ask": 2714.7}
+        asian_magic = STRATEGY_MAGIC_MAP["ASIAN_RANGE_SNIPER"]["pos1"]
+        self.mock_connector.get_open_positions.return_value = [
+            {"ticket": 801, "magic": asian_magic, "symbol": "XAUUSDc", "type": "BUY", "price_open": 2700.0, "sl": 2700.3, "tp": 2718.0}
+        ]
+        self.bot.initial_risk_map[801] = 10.0
+        self.bot.manage_open_positions("XAUUSDc")
+        # Target SL should be open + 0.8 * 10 = 2708.0
+        self.mock_connector.modify_position.assert_called_with(801, 2708.0, 2718.0)
+
+    def test_smc_devil_trailing_lock(self):
+        """Test SMC x STO Devil locks +0.8R at 1.4R and +1.2R at 1.8R."""
+        smc_magic = STRATEGY_MAGIC_MAP["SMC_X_STO_H1"]["pos1"]
+        
+        # Test 1: At 1.45R -> Lock +0.8R
+        self.mock_connector.get_market_info.return_value = {"bid": 2714.5, "ask": 2714.7}
+        self.mock_connector.get_open_positions.return_value = [
+            {"ticket": 901, "magic": smc_magic, "symbol": "XAUUSDc", "type": "BUY", "price_open": 2700.0, "sl": 2700.3, "tp": 2722.0}
+        ]
+        self.bot.initial_risk_map[901] = 10.0
+        self.bot.manage_open_positions("XAUUSDc")
+        self.mock_connector.modify_position.assert_called_with(901, 2708.0, 2722.0)
+
+        # Test 2: At 1.85R -> Lock +1.2R
+        self.mock_connector.get_market_info.return_value = {"bid": 2718.5, "ask": 2718.7}
+        self.bot.manage_open_positions("XAUUSDc")
+        self.mock_connector.modify_position.assert_called_with(901, 2712.0, 2722.0)
+
+    def test_news_momentum_volume_filter(self):
+        """Test News Momentum Expansion requires volume spike when not in high-impact news."""
+        # Create dummy df where last candle breaks out above swing high
+        closes = [2700.0]*20 + [2705.0, 2700.0]
+        highs = [2702.0]*20 + [2706.0, 2701.0]
+        lows = [2698.0]*20 + [2699.5, 2699.0]
+        opens = [2699.0]*20 + [2700.0, 2700.0]
+        
+        # Case A: Low volume (100 vs MA 500) -> Should NOT trigger
+        vols_low = [500]*20 + [100, 100]
+        df_low = pd.DataFrame({'close': closes, 'high': highs, 'low': lows, 'open': opens, 'tick_volume': vols_low, 'rsi14': [60.0]*22})
+        b_sig, s_sig, _ = self.bot._check_news_momentum_expansion(df_low, {"is_news_active": False})
+        self.assertFalse(b_sig)
+
+        # Case B: High volume (800 vs MA 500 = 1.6x) -> Should trigger
+        vols_high = [500]*20 + [800, 100]
+        df_high = pd.DataFrame({'close': closes, 'high': highs, 'low': lows, 'open': opens, 'tick_volume': vols_high, 'rsi14': [60.0]*22})
+        b_sig, s_sig, _ = self.bot._check_news_momentum_expansion(df_high, {"is_news_active": False})
+        self.assertTrue(b_sig)
+
 if __name__ == "__main__":
     unittest.main()
