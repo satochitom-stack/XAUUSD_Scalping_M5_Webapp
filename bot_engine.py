@@ -18,6 +18,13 @@ from strategy_optimizer import RealTimeStrategyOptimizer
 from exit_benchmark_tracker import ExitBenchmarkTracker
 from regime_liquidity_scorer import MarketRegimeScorer
 
+try:
+    import MetaTrader5 as mt5
+    MT5_AVAILABLE = True
+except ImportError:
+    mt5 = None
+    MT5_AVAILABLE = False
+
 logger = logging.getLogger("BotEngine")
 
 STRATEGY_MAGIC_MAP = {
@@ -61,6 +68,11 @@ class GoldScalpingBot:
         self.slow_slope = 0.0
         self.logs: List[dict] = []
         self.initial_risk_map: Dict[int, float] = {}
+        
+        # RTM Staggered Deep-Pullback & Anti-Clustering State
+        self.active_rtm_setup: Optional[dict] = None
+        self.last_rtm_sl_time: Dict[str, float] = {"BUY": 0.0, "SELL": 0.0}
+        self.last_rtm_m5_confirmed_bar = None
         
         mt5_cfg = self.config.get("mt5", {})
         self.magic_number = mt5_cfg.get("magic_number", 555888)
@@ -198,6 +210,9 @@ class GoldScalpingBot:
 
         # 1. Manage Active Positions
         self.manage_open_positions(symbol)
+
+        # 1.5. Monitor and execute pending RTM pullback setups (ticks/micro-pullbacks)
+        self._check_and_execute_pending_rtm_pullbacks(symbol)
 
         # 2. Check Bar Close
         rates = self.connector.get_rates(symbol, "M5", 100)
@@ -757,7 +772,12 @@ class GoldScalpingBot:
                             "grade": grade,
                             "sl": stop_loss,
                             "m15_time": m15_bar_time,
-                            "reason": f"RTM Quasimodo Bearish QML [{grade}] ({score:.0f} pts)"
+                            "reason": f"RTM Quasimodo Bearish QML [{grade}] ({score:.0f} pts)",
+                            "qml_price": qml_high,
+                            "head_extreme": head_hh,
+                            "break_level": break_ll,
+                            "signal_close": c,
+                            "curr_atr": curr_atr
                         }
 
             # 6. Check Bullish Quasimodo (BUY)
@@ -790,7 +810,12 @@ class GoldScalpingBot:
                             "grade": grade,
                             "sl": stop_loss,
                             "m15_time": m15_bar_time,
-                            "reason": f"RTM Quasimodo Bullish QML [{grade}] ({score:.0f} pts)"
+                            "reason": f"RTM Quasimodo Bullish QML [{grade}] ({score:.0f} pts)",
+                            "qml_price": qml_low,
+                            "head_extreme": head_ll,
+                            "break_level": break_hh,
+                            "signal_close": c,
+                            "curr_atr": curr_atr
                         }
 
         except Exception as e:
@@ -798,8 +823,49 @@ class GoldScalpingBot:
 
         return {}
 
+    def _update_rtm_sl_cooldown(self):
+        """Scans recent MT5 deals within the last 30 minutes to check if any RTM model took an SL."""
+        if not MT5_AVAILABLE:
+            return
+        try:
+            from_dt = datetime.now() - timedelta(minutes=30)
+            deals = mt5.history_deals_get(from_dt, datetime.now() + timedelta(minutes=1))
+            if deals:
+                rtm_magics = {777004, 777014, 777005, 777015, 777006, 777016, 777007, 777017}
+                for d in deals:
+                    if d.magic in rtm_magics and d.entry in [1, 2, 3]:
+                        if float(d.profit) < 0:
+                            pos_direction = "BUY" if d.type == 1 else "SELL"
+                            deal_time = float(d.time)
+                            if deal_time > self.last_rtm_sl_time.get(pos_direction, 0.0):
+                                self.last_rtm_sl_time[pos_direction] = deal_time
+        except Exception:
+            pass
+
+    def _check_rtm_clustering(self, symbol: str, proposed_price: float, min_gap: float = 1.50) -> bool:
+        """
+        Anti-Clustering Guard:
+        Prevents multiple RTM models from piling onto the exact same price level.
+        Returns True if SAFE to open (no existing RTM position within min_gap USD).
+        Returns False if CLUSTERED (too close to an existing RTM position).
+        """
+        positions = self.connector.get_open_positions(symbol)
+        rtm_magics = {777004, 777014, 777005, 777015, 777006, 777016, 777007, 777017}
+        open_rtm = [p for p in positions if p.get('magic') in rtm_magics]
+        for p in open_rtm:
+            open_p = p.get('price_open', 0.0)
+            if open_p > 0 and abs(proposed_price - open_p) < min_gap:
+                return False
+        return True
+
     def _process_rtm_confluence_engine(self, df: pd.DataFrame, symbol: str, spread: float, rtm_mode: str = "ALL"):
-        """Dispatches RTM signals to the selected active mode or ALL modes concurrently."""
+        """
+        Dispatches RTM signals with Staggered Deep-Pullback & Anti-Clustering Architecture:
+        - M5 (All-Weather): Immediate Vanguard Scout with rapid Break-Even lock
+        - M4 (Conservative): Waits for genuine QML Retest (>= 1.5 USD better price)
+        - M6 (Elite Growth): Waits for deep OTE Golden Zone (Fib 61.8% - 78.6%)
+        - M7 (Max Alpha): Waits for M5 Micro-Structure Confirmation
+        """
         sig = self._check_rtm_confluence_m15(symbol)
         if not sig:
             return
@@ -810,56 +876,228 @@ class GoldScalpingBot:
         sl = sig["sl"]
         reason = sig["reason"]
 
-        # Eligible models configuration
-        eligible_models = []
-        if rtm_mode in ["ALL", "MODEL_4"]:
-            if grade in ["A+", "A"]:
-                eligible_models.append({
-                    "strat_id": "RTM_M4_CONSERVATIVE",
-                    "lot_mult": 1.0,
-                    "tp_ratio": 2.0
-                })
+        # 1. Check Post-SL Directional Cooldown (15-min pause for same direction)
+        self._update_rtm_sl_cooldown()
+        last_sl_t = self.last_rtm_sl_time.get(action, 0.0)
+        cooldown_rem = (last_sl_t + 900) - time.time()
+        if cooldown_rem > 0:
+            self.add_log(f"🛡️ [RTM COOLDOWN ACTIVE] {action} paused ({cooldown_rem:.0f}s left) after recent Stop Loss to prevent stop hunt sweep", "WARNING")
+            return
 
-        if rtm_mode in ["ALL", "MODEL_5"]:
-            if grade in ["A+", "A", "B"]:
-                # Cap risk at 1.0% (Grade B=0.5%, Grade A/A+=1.0%)
+        # 2. Register active RTM setup for staggered entries
+        self.active_rtm_setup = {
+            "action": action,
+            "grade": grade,
+            "score": score,
+            "sl": sl,
+            "reason": reason,
+            "qml_price": sig.get("qml_price", 0.0),
+            "head_extreme": sig.get("head_extreme", 0.0),
+            "break_level": sig.get("break_level", 0.0),
+            "signal_close": sig.get("signal_close", 0.0),
+            "curr_atr": sig.get("curr_atr", 3.5),
+            "created_time": time.time(),
+            "expiry_time": time.time() + (45 * 60), # 45 minutes
+            "rtm_mode": rtm_mode,
+            "m4_filled": False,
+            "m5_filled": False,
+            "m6_filled": False,
+            "m7_filled": False
+        }
+
+        # 3. M5 (All-Weather): Immediate Vanguard Scout
+        # M5 enters immediately upon confirmation with its proven rapid BE lock (+0.30 USD)
+        if rtm_mode in ["ALL", "MODEL_5"] and grade in ["A+", "A", "B"]:
+            if not self.has_open_positions_for_setup(symbol, "RTM_M5_ALL_WEATHER"):
                 lot_m = 1.0 if grade in ["A+", "A"] else 0.5
-                eligible_models.append({
-                    "strat_id": "RTM_M5_ALL_WEATHER",
-                    "lot_mult": lot_m,
-                    "tp_ratio": 2.0
-                })
-
-        if rtm_mode in ["ALL", "MODEL_6"]:
-            if grade in ["A+", "A"]:
-                lot_m = 2.0 if grade == "A+" else 1.0
-                eligible_models.append({
-                    "strat_id": "RTM_M6_ELITE_GROWTH",
-                    "lot_mult": lot_m,
-                    "tp_ratio": 2.0
-                })
-
-        if rtm_mode in ["ALL", "MODEL_7"]:
-            if grade in ["A+", "A"]:
-                lot_m = 2.0 if grade == "A+" else 1.0
-                eligible_models.append({
-                    "strat_id": "RTM_M7_MAX_ALPHA",
-                    "lot_mult": lot_m,
-                    "tp_ratio": 3.5
-                })
-
-        for m in eligible_models:
-            s_id = m["strat_id"]
-            if not self.has_open_positions_for_setup(symbol, s_id):
                 opt = {
                     "custom_sl": sl,
-                    "tp_ratio": m["tp_ratio"],
-                    "lot_multiplier": m["lot_mult"]
+                    "tp_ratio": 2.0,
+                    "lot_multiplier": lot_m
                 }
                 if action == "BUY":
-                    self.execute_buy(df, symbol, f"{reason} | {s_id}", opt_params=opt, strat_id=s_id)
+                    self.execute_buy(df, symbol, f"{reason} | RTM_M5_ALL_WEATHER (Vanguard Scout)", opt_params=opt, strat_id="RTM_M5_ALL_WEATHER")
                 elif action == "SELL":
-                    self.execute_sell(df, symbol, f"{reason} | {s_id}", opt_params=opt, strat_id=s_id)
+                    self.execute_sell(df, symbol, f"{reason} | RTM_M5_ALL_WEATHER (Vanguard Scout)", opt_params=opt, strat_id="RTM_M5_ALL_WEATHER")
+                self.active_rtm_setup["m5_filled"] = True
+                self.add_log(f"🌊 [RTM VANGUARD LAUNCHED] M5 All-Weather scout deployed on {action} | SL: {sl:.2f}", "SUCCESS")
+
+        if rtm_mode in ["ALL", "MODEL_4", "MODEL_6", "MODEL_7"]:
+            self.add_log(f"⏳ [RTM STAGGERED QUEUE] Staggered monitoring active for M4 (QML Retest), M6 (OTE Zone), M7 (M5 Break) | Target QML: {sig.get('qml_price', 0.0):.2f}", "INFO")
+
+    def _check_and_execute_pending_rtm_pullbacks(self, symbol: str, rates: Optional[pd.DataFrame] = None):
+        """
+        Staggered Deep-Pullback & Anti-Clustering Execution Engine:
+        Continuously evaluates pending RTM setups across ticks/bars to fill:
+        - M4 (Conservative): Genuine Pullback / Retest of QML level (at least 1.5 USD better than breakout)
+        - M6 (Elite Growth): Deep OTE Retest (Fib 61.8% - 78.6%)
+        - M7 (Max Alpha): M5 Micro-Structure Confirmation
+        """
+        if not self.active_rtm_setup:
+            return
+
+        setup = self.active_rtm_setup
+        now = time.time()
+
+        # 1. Check Expiry (45 minutes)
+        if now > setup.get("expiry_time", 0):
+            self.add_log(f"⌛ [RTM SETUP EXPIRED] Pullback setup for {setup['action']} timed out after 45m", "INFO")
+            self.active_rtm_setup = None
+            return
+
+        action = setup["action"]
+        sl = setup["sl"]
+        qml_price = setup["qml_price"]
+        head_extreme = setup["head_extreme"]
+        signal_close = setup["signal_close"]
+        curr_atr = setup["curr_atr"]
+        rtm_mode = setup.get("rtm_mode", "ALL")
+        grade = setup["grade"]
+
+        m_info = self.connector.get_market_info(symbol)
+        bid = m_info.get("bid", 0.0)
+        ask = m_info.get("ask", 0.0)
+        if bid <= 0 or ask <= 0:
+            return
+
+        curr_price = ask if action == "BUY" else bid
+
+        # 2. Check Invalidation: Did price breach the Stop Loss before pullback filled?
+        if action == "BUY" and bid <= sl:
+            self.add_log(f"🚫 [RTM SETUP INVALIDATED] Price hit SL level ({sl:.2f}) before pullback filled. Pending entries cancelled.", "WARNING")
+            self.active_rtm_setup = None
+            return
+        elif action == "SELL" and ask >= sl:
+            self.add_log(f"🚫 [RTM SETUP INVALIDATED] Price hit SL level ({sl:.2f}) before pullback filled. Pending entries cancelled.", "WARNING")
+            self.active_rtm_setup = None
+            return
+
+        # 3. Check Target Reached: Did price run away and hit 1.5R target without pulling back?
+        target_dist = abs(signal_close - sl) * 1.5
+        if action == "BUY" and bid >= signal_close + target_dist:
+            self.add_log(f"🎯 [RTM PULLBACK CANCELLED] Price ran +1.5R away without retracing. Cancelling chase.", "INFO")
+            self.active_rtm_setup = None
+            return
+        elif action == "SELL" and ask <= signal_close - target_dist:
+            self.add_log(f"🎯 [RTM PULLBACK CANCELLED] Price ran +1.5R away without retracing. Cancelling chase.", "INFO")
+            self.active_rtm_setup = None
+            return
+
+        rates_m5 = rates if rates is not None and not rates.empty else self.connector.get_rates(symbol, "M5", 25)
+        if rates_m5 is None or rates_m5.empty or len(rates_m5) < 5:
+            return
+
+        # --- MODEL 4 (Conservative): Genuine Pullback / QML Retest ---
+        if rtm_mode in ["ALL", "MODEL_4"] and grade in ["A+", "A"] and not setup["m4_filled"]:
+            if not self.has_open_positions_for_setup(symbol, "RTM_M4_CONSERVATIVE"):
+                is_m4_pullback = False
+                dist_saved = 0.0
+                if action == "BUY":
+                    dist_saved = signal_close - bid
+                    near_qml = abs(bid - qml_price) <= (0.5 * curr_atr) or bid <= qml_price + 0.50
+                    if dist_saved >= 1.50 and (near_qml or bid <= signal_close - (0.382 * curr_atr)):
+                        b1 = rates_m5.iloc[-1]
+                        candle_low = float(b1['low'])
+                        is_m4_pullback = (bid > candle_low + 0.20)
+                elif action == "SELL":
+                    dist_saved = ask - signal_close
+                    near_qml = abs(ask - qml_price) <= (0.5 * curr_atr) or ask >= qml_price - 0.50
+                    if dist_saved >= 1.50 and (near_qml or ask >= signal_close + (0.382 * curr_atr)):
+                        b1 = rates_m5.iloc[-1]
+                        candle_high = float(b1['high'])
+                        is_m4_pullback = (ask < candle_high - 0.20)
+
+                if is_m4_pullback and self._check_rtm_clustering(symbol, curr_price, min_gap=1.50):
+                    opt = {
+                        "custom_sl": sl,
+                        "tp_ratio": 2.0,
+                        "lot_multiplier": 1.0
+                    }
+                    if action == "BUY":
+                        self.execute_buy(rates_m5, symbol, f"🛡️ RTM M4 (Conservative Pullback Retest @ {curr_price:.2f})", opt_params=opt, strat_id="RTM_M4_CONSERVATIVE")
+                    else:
+                        self.execute_sell(rates_m5, symbol, f"🛡️ RTM M4 (Conservative Pullback Retest @ {curr_price:.2f})", opt_params=opt, strat_id="RTM_M4_CONSERVATIVE")
+                    setup["m4_filled"] = True
+                    self.add_log(f"🛡️ [RTM M4 FILLED] Conservative QML Pullback executed @ {curr_price:.2f} (Saved {dist_saved:.2f} USD vs breakout)", "SUCCESS")
+
+        # --- MODEL 6 (Elite Growth): Deep Retest OTE Zone (Fib 61.8% - 78.6%) ---
+        if rtm_mode in ["ALL", "MODEL_6"] and grade in ["A+", "A"] and not setup["m6_filled"]:
+            if not self.has_open_positions_for_setup(symbol, "RTM_M6_ELITE_GROWTH"):
+                is_m6_ote = False
+                impulse_range = abs(signal_close - head_extreme)
+                if impulse_range >= (1.0 * curr_atr):
+                    if action == "BUY":
+                        ote_high = signal_close - (0.618 * impulse_range)
+                        ote_low = signal_close - (0.786 * impulse_range)
+                        if ote_low <= bid <= ote_high and bid >= sl + 1.0:
+                            is_m6_ote = True
+                    elif action == "SELL":
+                        ote_low = signal_close + (0.618 * impulse_range)
+                        ote_high = signal_close + (0.786 * impulse_range)
+                        if ote_low <= ask <= ote_high and ask <= sl - 1.0:
+                            is_m6_ote = True
+
+                if is_m6_ote and self._check_rtm_clustering(symbol, curr_price, min_gap=1.50):
+                    lot_m = 2.0 if grade == "A+" else 1.0
+                    opt = {
+                        "custom_sl": sl,
+                        "tp_ratio": 2.0,
+                        "lot_multiplier": lot_m
+                    }
+                    if action == "BUY":
+                        self.execute_buy(rates_m5, symbol, f"👑 RTM M6 (Deep OTE Retest Fib 61.8-78.6% @ {curr_price:.2f})", opt_params=opt, strat_id="RTM_M6_ELITE_GROWTH")
+                    else:
+                        self.execute_sell(rates_m5, symbol, f"👑 RTM M6 (Deep OTE Retest Fib 61.8-78.6% @ {curr_price:.2f})", opt_params=opt, strat_id="RTM_M6_ELITE_GROWTH")
+                    setup["m6_filled"] = True
+                    self.add_log(f"👑 [RTM M6 FILLED] Elite Growth OTE Golden Zone executed @ {curr_price:.2f}", "SUCCESS")
+
+        # --- MODEL 7 (Max Alpha): M5 Micro-Structure Confirmation ---
+        if rtm_mode in ["ALL", "MODEL_7"] and grade in ["A+", "A"] and not setup["m7_filled"]:
+            if not self.has_open_positions_for_setup(symbol, "RTM_M7_MAX_ALPHA"):
+                closed_m5 = rates_m5.iloc[-2]
+                m5_bar_time = closed_m5['time']
+                is_m7_confirmed = False
+
+                if getattr(self, 'last_rtm_m5_confirmed_bar', None) != m5_bar_time:
+                    if action == "BUY":
+                        m5_range = max(float(closed_m5['high']) - float(closed_m5['low']), 0.1)
+                        upper_wick = float(closed_m5['high']) - float(closed_m5['close'])
+                        if float(closed_m5['close']) > float(closed_m5['open']) and (upper_wick / m5_range) <= 0.40:
+                            is_m7_confirmed = True
+                    elif action == "SELL":
+                        m5_range = max(float(closed_m5['high']) - float(closed_m5['low']), 0.1)
+                        lower_wick = float(closed_m5['close']) - float(closed_m5['low'])
+                        if float(closed_m5['close']) < float(closed_m5['open']) and (lower_wick / m5_range) <= 0.40:
+                            is_m7_confirmed = True
+
+                if is_m7_confirmed and self._check_rtm_clustering(symbol, curr_price, min_gap=1.50):
+                    self.last_rtm_m5_confirmed_bar = m5_bar_time
+                    lot_m = 2.0 if grade == "A+" else 1.0
+                    opt = {
+                        "custom_sl": sl,
+                        "tp_ratio": 3.5,
+                        "lot_multiplier": lot_m
+                    }
+                    if action == "BUY":
+                        self.execute_buy(rates_m5, symbol, f"🎯 RTM M7 (M5 Structure Break & Close Confirmed @ {curr_price:.2f})", opt_params=opt, strat_id="RTM_M7_MAX_ALPHA")
+                    else:
+                        self.execute_sell(rates_m5, symbol, f"🎯 RTM M7 (M5 Structure Break & Close Confirmed @ {curr_price:.2f})", opt_params=opt, strat_id="RTM_M7_MAX_ALPHA")
+                    setup["m7_filled"] = True
+                    self.add_log(f"🎯 [RTM M7 FILLED] Max Alpha M5 Micro-Structure Confirmation executed @ {curr_price:.2f}", "SUCCESS")
+
+        # If all eligible models are filled, clear active setup
+        all_done = True
+        if rtm_mode in ["ALL", "MODEL_4"] and grade in ["A+", "A"] and not setup["m4_filled"]:
+            all_done = False
+        if rtm_mode in ["ALL", "MODEL_5"] and grade in ["A+", "A", "B"] and not setup["m5_filled"]:
+            all_done = False
+        if rtm_mode in ["ALL", "MODEL_6"] and grade in ["A+", "A"] and not setup["m6_filled"]:
+            all_done = False
+        if rtm_mode in ["ALL", "MODEL_7"] and grade in ["A+", "A"] and not setup["m7_filled"]:
+            all_done = False
+
+        if all_done:
+            self.active_rtm_setup = None
 
     def should_run_trend(self, strat_id: str, df: pd.DataFrame, session: str) -> Tuple[bool, str]:
         """

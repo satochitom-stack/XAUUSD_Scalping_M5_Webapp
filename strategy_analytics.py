@@ -44,7 +44,7 @@ class RealTradeAnalyticsManager:
             "best_session": "London & NY (14:00 - 23:00)",
             "magic_numbers": [777004, 777014, 777024, 777034],
             "avg_rr": "1:2.0",
-            "description": "RTM Quasimodo + ICT + Fib 61.8-78.6% (เกรด A/A+ เท่านั้น | ความเสี่ยงคงที่ 1.0% | TP 2.0R)"
+            "description": "RTM Conservative QML Retest (รอราคาย่อตัวลึกทดสอบแนว QML ไม่เข้าที่ยอด | เกรด A/A+ | ความเสี่ยง 1.0% | TP 2.0R)"
         },
         "RTM_M5_ALL_WEATHER": {
             "id": "RTM_M5_ALL_WEATHER",
@@ -55,7 +55,7 @@ class RealTradeAnalyticsManager:
             "best_session": "London & NY (14:00 - 23:00)",
             "magic_numbers": [777005, 777015, 777025, 777035],
             "avg_rr": "1:2.0",
-            "description": "RTM Quasimodo รองรับทุกสภาพตลาด (ความเสี่ยงสูงสุด 1.0%, เกรด B=0.5%, A/A+=1.0% | TP 2.0R)"
+            "description": "RTM Vanguard Scout นำร่องทันทีพร้อมระบบกันทุน Break-Even ไว (เกรด B=0.5%, A/A+=1.0% | TP 2.0R)"
         },
         "RTM_M6_ELITE_GROWTH": {
             "id": "RTM_M6_ELITE_GROWTH",
@@ -66,7 +66,7 @@ class RealTradeAnalyticsManager:
             "best_session": "London & NY (14:00 - 23:00)",
             "magic_numbers": [777006, 777016, 777026, 777036],
             "avg_rr": "1:2.0",
-            "description": "RTM Elite Confluence คัดเฉพาะไม้คุณภาพสูง (เกรด A=1.0%, A+=2.0% | TP 2.0R | Quick Harvest)"
+            "description": "RTM Elite Growth OTE Retest (รอราคาย่อลึกในโซน Fib 61.8-78.6% ลดระยะ SL | เกรด A=1.0%, A+=2.0% | TP 2.0R)"
         },
         "RTM_M7_MAX_ALPHA": {
             "id": "RTM_M7_MAX_ALPHA",
@@ -77,7 +77,7 @@ class RealTradeAnalyticsManager:
             "best_session": "London & NY (14:00 - 23:00)",
             "magic_numbers": [777007, 777017, 777027, 777037],
             "avg_rr": "1:3.5",
-            "description": "RTM Elite Confluence รันเทรนด์เป้าไกล (เกรด A=1.0%, A+=2.0% | TP 3.5R | Trend Runner)"
+            "description": "RTM Max Alpha Micro-Structure Runner (รอแท่ง M5 ยืนยันปิดตามเทรนด์ก่อนเข้า รันเทรนด์ยาว | TP 3.5R)"
         },
         "SMC_X_STO_H1": {
             "id": "SMC_X_STO_H1",

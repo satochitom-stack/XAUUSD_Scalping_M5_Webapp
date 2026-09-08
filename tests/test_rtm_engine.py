@@ -1,3 +1,4 @@
+import time
 import unittest
 from unittest.mock import MagicMock
 import pandas as pd
@@ -69,7 +70,7 @@ class TestRTMEngine(unittest.TestCase):
         self.assertEqual(analytics._classify_deal_strategy(deal_m7), "RTM_M7_MAX_ALPHA")
 
     def test_rtm_confluence_execution_router(self):
-        """Test _process_rtm_confluence_engine dispatches to eligible models according to Grade."""
+        """Test _process_rtm_confluence_engine launches M5 immediately as Vanguard Scout and queues M4/M6/M7."""
         self.mock_connector.get_market_info.return_value = {"ask": 2700.0, "bid": 2699.8, "spread": 20.0}
         self.mock_connector.get_account_info.return_value = {"balance": 10000.0, "equity": 10000.0}
         self.mock_connector.get_open_positions.return_value = []
@@ -79,17 +80,77 @@ class TestRTMEngine(unittest.TestCase):
             "action": "BUY",
             "score": 88.0,
             "grade": "A+",
-            "sl": 2694.0,
+            "sl": 2690.0,
             "m15_time": datetime.now(),
-            "reason": "RTM Quasimodo Bullish QML [A+] (88 pts)"
+            "reason": "RTM Quasimodo Bullish QML [A+] (88 pts)",
+            "qml_price": 2695.0,
+            "head_extreme": 2688.0,
+            "break_level": 2702.0,
+            "signal_close": 2700.0,
+            "curr_atr": 4.0
         }
         self.bot._check_rtm_confluence_m15 = MagicMock(return_value=mock_signal)
 
         dummy_df = pd.DataFrame({'close': [2700.0]*20, 'low': [2695.0]*20, 'high': [2705.0]*20})
         
-        # Test in ALL mode: Grade A+ should trigger all 4 models
+        # Test in ALL mode: M5 should launch immediately as Vanguard Scout
         self.bot._process_rtm_confluence_engine(dummy_df, "XAUUSDc", 20.0, rtm_mode="ALL")
-        self.assertEqual(self.mock_connector.open_order.call_count, 4)
+        self.assertEqual(self.mock_connector.open_order.call_count, 1)
+        self.assertIsNotNone(self.bot.active_rtm_setup)
+        self.assertTrue(self.bot.active_rtm_setup["m5_filled"])
+        self.assertFalse(self.bot.active_rtm_setup["m4_filled"])
+        self.assertFalse(self.bot.active_rtm_setup["m6_filled"])
+        self.assertFalse(self.bot.active_rtm_setup["m7_filled"])
+
+    def test_rtm_anti_clustering_guard(self):
+        """Test Anti-Clustering blocks positions within 1.50 USD of existing RTM entry."""
+        m5_magic = STRATEGY_MAGIC_MAP["RTM_M5_ALL_WEATHER"]["pos1"]
+        self.mock_connector.get_open_positions.return_value = [
+            {"ticket": 123, "magic": m5_magic, "price_open": 2700.00, "symbol": "XAUUSDc"}
+        ]
+        # Price 2700.80 is only 0.80 away -> Must be blocked (False)
+        self.assertFalse(self.bot._check_rtm_clustering("XAUUSDc", 2700.80, min_gap=1.50))
+        # Price 2697.50 is 2.50 away -> Must be allowed (True)
+        self.assertTrue(self.bot._check_rtm_clustering("XAUUSDc", 2697.50, min_gap=1.50))
+
+    def test_rtm_pullback_m4_execution(self):
+        """Test M4 executes when price pulls back to QML / discount zone."""
+        self.mock_connector.get_account_info.return_value = {"balance": 10000.0, "equity": 10000.0}
+        self.mock_connector.open_order.return_value = {"ticket": 99998}
+        
+        # Setup pending BUY signal
+        self.bot.active_rtm_setup = {
+            "action": "BUY",
+            "grade": "A+",
+            "score": 85.0,
+            "sl": 2690.0,
+            "reason": "Bullish QML",
+            "qml_price": 2695.0,
+            "head_extreme": 2688.0,
+            "signal_close": 2700.0,
+            "curr_atr": 4.0,
+            "created_time": time.time(),
+            "expiry_time": time.time() + 1800,
+            "rtm_mode": "ALL",
+            "m4_filled": False,
+            "m5_filled": True,
+            "m6_filled": False,
+            "m7_filled": False
+        }
+        # Price pulls back to 2696.0 (saved 4.0 USD vs 2700 breakout)
+        self.mock_connector.get_market_info.return_value = {"ask": 2696.0, "bid": 2695.8, "spread": 20.0}
+        self.mock_connector.get_open_positions.return_value = [] # No clustering
+
+        rates_m5 = pd.DataFrame({
+            'time': [datetime.now()]*5,
+            'open': [2696.5]*5,
+            'high': [2697.0]*5,
+            'low': [2695.5]*5,
+            'close': [2696.0]*5
+        })
+        self.bot._check_and_execute_pending_rtm_pullbacks("XAUUSDc", rates=rates_m5)
+        self.assertTrue(self.bot.active_rtm_setup["m4_filled"])
+        self.assertEqual(self.mock_connector.open_order.call_count, 1)
 
     def test_concurrent_setups_isolation(self):
         """Test that having an open position in Setup A does not block Setup B, C, or D."""
