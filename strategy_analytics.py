@@ -537,7 +537,7 @@ class RealTradeAnalyticsManager:
         total_losses = 0
 
         # Fetch Account balance for realistic Drawdown % calculation
-        acc_balance = 1000.0
+        acc_balance = 11000.0
         if MT5_AVAILABLE:
             try:
                 acc = mt5.account_info()
