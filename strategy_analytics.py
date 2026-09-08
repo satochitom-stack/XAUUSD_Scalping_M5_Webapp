@@ -99,7 +99,7 @@ class RealTradeAnalyticsManager:
             "best_session": "High-Impact News Events (USD)",
             "magic_numbers": [555890, 555891, 555892, 555893, 666888, 666889, 666890],
             "avg_rr": "1:1.8",
-            "description": "ดักจับแท่งเทียน Breakout ความผันผวนสูงช่วงข่าวใหญ่ (CPI, NFP, FOMC) พร้อม Trailing Stop กว้าง"
+            "description": "ดักจับแท่งเทียน Breakout ความผันผวนสูงช่วงข่าวใหญ่ (CPI, NFP, FOMC) พร้อม Trailing Stop กว้าง (ความเสี่ยง 0.5%)"
         }
     }
 

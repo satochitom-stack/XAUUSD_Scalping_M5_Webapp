@@ -375,8 +375,10 @@ class GoldScalpingBot:
             self.latest_trend = f"AI PAUSED ({strat_key}: {opt_params.get('reason', 'Blocked')})"
             return
 
-        # Apply quality bonus to lot multiplier if Grade A+
-        if score_res.get("grade") == "A+":
+        # Apply quality bonus or special risk cap
+        if strat_key == "NEWS_MOMENTUM_EXPANSION":
+            opt_params["lot_multiplier"] = 0.5  # Fixed 0.5% risk requested by user
+        elif score_res.get("grade") == "A+":
             opt_params["lot_multiplier"] = round(opt_params.get("lot_multiplier", 1.0) * score_res.get("lot_recommendation", 1.15), 2)
 
         if action_type == "BUY":
@@ -947,13 +949,19 @@ class GoldScalpingBot:
             if sl_dist > 7.00: sl = ask - 7.00; sl_dist = 7.00
             tp2 = ask + (sl_dist * 1.8)
 
+        if strat_id == "NEWS_MOMENTUM_EXPANSION":
+            lot_mult = 0.5  # Fixed 0.5% risk per user instruction
+            risk_label = "0.5% Risk"
+        else:
+            risk_label = "1.0% Risk"
+
         total_lot = self.calculate_lot_size(sl_dist, lot_mult=lot_mult)
 
-        # Single Position Plan across ALL Setups: 1.0% Risk for Clean Statistical Benchmarking
+        # Single Position Plan across Setups (News=0.5%, Others=1.0%)
         res1 = self.connector.open_order(symbol, "BUY", total_lot, sl, tp2, magic_p1, f"Gold_{strat_id[:8]}")
         t1 = res1.get("ticket", 0) if isinstance(res1, dict) else 0
         self.benchmark_tracker.register_trade(t1, 0, symbol, "BUY", ask, sl, total_lot, strat_id)
-        self.add_log(f"🟢 [BUY OPENED] [{strat_id}] {reason} | Single 1.0% Risk: TP {tp2:.2f} (+{abs(tp2-ask)*100:.0f} pts) / SL {sl:.2f} (-{sl_dist*100:.0f} pts) | Lot: {total_lot}", "SUCCESS")
+        self.add_log(f"🟢 [BUY OPENED] [{strat_id}] {reason} | Single {risk_label}: TP {tp2:.2f} (+{abs(tp2-ask)*100:.0f} pts) / SL {sl:.2f} (-{sl_dist*100:.0f} pts) | Lot: {total_lot}", "SUCCESS")
         if self.notifier:
             self.notifier.notify_order_opened("BUY", symbol, total_lot, ask, sl, tp2, reason)
 
@@ -1016,13 +1024,19 @@ class GoldScalpingBot:
             if sl_dist > 7.00: sl = bid + 7.00; sl_dist = 7.00
             tp2 = bid - (sl_dist * 1.8)
 
+        if strat_id == "NEWS_MOMENTUM_EXPANSION":
+            lot_mult = 0.5  # Fixed 0.5% risk per user instruction
+            risk_label = "0.5% Risk"
+        else:
+            risk_label = "1.0% Risk"
+
         total_lot = self.calculate_lot_size(sl_dist, lot_mult=lot_mult)
 
-        # Single Position Plan across ALL Setups: 1.0% Risk for Clean Statistical Benchmarking
+        # Single Position Plan across Setups (News=0.5%, Others=1.0%)
         res1 = self.connector.open_order(symbol, "SELL", total_lot, sl, tp2, magic_p1, f"Gold_{strat_id[:8]}")
         t1 = res1.get("ticket", 0) if isinstance(res1, dict) else 0
         self.benchmark_tracker.register_trade(t1, 0, symbol, "SELL", bid, sl, total_lot, strat_id)
-        self.add_log(f"🔴 [SELL OPENED] [{strat_id}] {reason} | Single 1.0% Risk: TP {tp2:.2f} (+{abs(bid-tp2)*100:.0f} pts) / SL {sl:.2f} (-{sl_dist*100:.0f} pts) | Lot: {total_lot}", "SUCCESS")
+        self.add_log(f"🔴 [SELL OPENED] [{strat_id}] {reason} | Single {risk_label}: TP {tp2:.2f} (+{abs(bid-tp2)*100:.0f} pts) / SL {sl:.2f} (-{sl_dist*100:.0f} pts) | Lot: {total_lot}", "SUCCESS")
         if self.notifier:
             self.notifier.notify_order_opened("SELL", symbol, total_lot, bid, sl, tp2, reason)
 

@@ -118,7 +118,7 @@ SETUP_PROFILES = {
         "trailing_type": "WIDE_ATR",
         "trail_points": 400.0,
         "trail_step_points": 50.0,
-        "description": "Explosive breakout during US High-Impact economic news with wide ATR SL buffer & 3R-4R targets"
+        "description": "Explosive breakout during US High-Impact economic news with wide ATR SL buffer & 3R-4R targets (Risk 0.5%)"
     },
     "ALL_CONFLUENCE": {
         "id": "ALL_CONFLUENCE",
@@ -418,7 +418,10 @@ class RealTimeStrategyOptimizer:
 
         # 4. Lot sizing multiplier based on strategy weight & Hourly Heatmap
         hour_mult, hour_desc = self.hourly_engine.get_hour_multiplier(datetime.now().hour)
-        lot_multiplier = max(0.5, min(round(weight * hour_mult, 2), 1.75))
+        if strategy_key == "NEWS_MOMENTUM_EXPANSION":
+            lot_multiplier = 0.50  # Risk capped at 0.5% per user instruction
+        else:
+            lot_multiplier = max(0.5, min(round(weight * hour_mult, 2), 1.75))
 
         return {
             "lot_multiplier": lot_multiplier,
