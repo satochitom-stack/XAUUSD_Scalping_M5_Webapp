@@ -587,7 +587,17 @@ class RealTradeAnalyticsManager:
                 target_rr = 3.5 if k == "RTM_M7_MAX_ALPHA" else (2.0 if ("RTM_" in k or k == "SMC_X_STO_H1") else (1.8 if k in ["NEWS_MOMENTUM_EXPANSION", "ASIAN_RANGE_SNIPER"] else 2.0))
                 risk_per_lot = 850.0 if "RTM_" in k else (900.0 if k == "SMC_X_STO_H1" else (500.0 if k == "ASIAN_RANGE_SNIPER" else 700.0))
                 
-                stages = {"full_tp": 0, "trailing_lock": 0, "mid_profit": 0, "break_even": 0, "full_sl": 0, "early_cut": 0}
+                stages = {
+                    "full_tp": 0,
+                    "full_alpha_35": 0,
+                    "target_tp_20": 0,
+                    "trailing_lock_08": 0,
+                    "trailing_lock": 0,
+                    "mid_profit": 0,
+                    "break_even": 0,
+                    "full_sl": 0,
+                    "early_cut": 0
+                }
                 total_realized_r = 0.0
                 
                 for deal_item in strat_deals[k]:
@@ -597,11 +607,22 @@ class RealTradeAnalyticsManager:
                     r_val = round(d_profit / d_risk, 2)
                     total_realized_r += r_val
                     
-                    if r_val >= (target_rr - 0.2):
+                    if r_val >= (target_rr - 0.25):
                         stages["full_tp"] += 1
-                    elif r_val >= (1.6 if target_rr >= 3.0 else 0.75):
+                        if target_rr >= 3.0:
+                            stages["full_alpha_35"] += 1
+                        else:
+                            stages["target_tp_20"] += 1
+                    elif r_val >= 2.5:
+                        stages["full_alpha_35"] += 1
                         stages["trailing_lock"] += 1
-                    elif r_val >= 0.4:
+                    elif r_val >= 1.6:
+                        stages["target_tp_20"] += 1
+                        stages["trailing_lock"] += 1
+                    elif r_val >= 0.75:
+                        stages["trailing_lock_08"] += 1
+                        stages["trailing_lock"] += 1
+                    elif r_val >= 0.35:
                         stages["mid_profit"] += 1
                     elif r_val >= -0.15:
                         stages["break_even"] += 1
@@ -634,7 +655,10 @@ class RealTradeAnalyticsManager:
                 st["profit_factor"] = 0.0
                 st["avg_realized_rr"] = 0.0
                 st["target_rr"] = 3.5 if k == "RTM_M7_MAX_ALPHA" else (2.0 if ("RTM_" in k or k == "SMC_X_STO_H1") else (1.8 if k in ["NEWS_MOMENTUM_EXPANSION", "ASIAN_RANGE_SNIPER"] else 2.0))
-                st["exit_stages"] = {"full_tp": 0, "trailing_lock": 0, "mid_profit": 0, "break_even": 0, "full_sl": 0, "early_cut": 0}
+                st["exit_stages"] = {
+                    "full_tp": 0, "full_alpha_35": 0, "target_tp_20": 0, "trailing_lock_08": 0,
+                    "trailing_lock": 0, "mid_profit": 0, "break_even": 0, "full_sl": 0, "early_cut": 0
+                }
                 st["max_drawdown_usd"] = 0.0
                 st["max_drawdown_pct"] = 0.0
                 st["status"] = "🟢 บอทรันพร้อมเทรด (0 ไม้)"
