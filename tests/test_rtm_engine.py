@@ -162,18 +162,29 @@ class TestRTMEngine(unittest.TestCase):
         self.bot.manage_open_positions("XAUUSDc")
         self.mock_connector.modify_position.assert_called_with(701, 2718.0, 2735.0)
 
-    def test_asian_and_news_trailing_lock_1_4r(self):
-        """Test Asian Range Sniper and News Momentum lock +0.8R profit when reaching >= 1.4R."""
-        # Price at +1.45R (open: 2700.0, initial_r: 10.0, bid: 2714.5)
+    def test_news_momentum_trailing_lock_1_4r(self):
+        """Test News Momentum locks +0.8R profit when reaching >= 1.4R."""
         self.mock_connector.get_market_info.return_value = {"bid": 2714.5, "ask": 2714.7}
-        asian_magic = STRATEGY_MAGIC_MAP["ASIAN_RANGE_SNIPER"]["pos1"]
+        news_magic = STRATEGY_MAGIC_MAP["NEWS_MOMENTUM_EXPANSION"]["pos1"]
         self.mock_connector.get_open_positions.return_value = [
-            {"ticket": 801, "magic": asian_magic, "symbol": "XAUUSDc", "type": "BUY", "price_open": 2700.0, "sl": 2700.3, "tp": 2718.0}
+            {"ticket": 801, "magic": news_magic, "symbol": "XAUUSDc", "type": "BUY", "price_open": 2700.0, "sl": 2700.3, "tp": 2718.0}
         ]
         self.bot.initial_risk_map[801] = 10.0
         self.bot.manage_open_positions("XAUUSDc")
         # Target SL should be open + 0.8 * 10 = 2708.0
         self.mock_connector.modify_position.assert_called_with(801, 2708.0, 2718.0)
+
+    def test_asian_sniper_breakeven_breathing_room(self):
+        """Test Asian Range Sniper locks Break-Even at 1.0R and maintains breathing room without 1.4R choke."""
+        self.mock_connector.get_market_info.return_value = {"bid": 2710.5, "ask": 2710.7}
+        asian_magic = STRATEGY_MAGIC_MAP["ASIAN_RANGE_SNIPER"]["pos1"]
+        self.mock_connector.get_open_positions.return_value = [
+            {"ticket": 802, "magic": asian_magic, "symbol": "XAUUSDc", "type": "BUY", "price_open": 2700.0, "sl": 2695.0, "tp": 2718.0}
+        ]
+        self.bot.initial_risk_map[802] = 5.0
+        self.bot.manage_open_positions("XAUUSDc")
+        # Target SL should be open + 0.30 = 2700.30
+        self.mock_connector.modify_position.assert_called_with(802, 2700.30, 2718.0)
 
     def test_smc_devil_trailing_lock(self):
         """Test SMC x STO Devil locks +0.8R at 1.4R and +1.2R at 1.8R."""

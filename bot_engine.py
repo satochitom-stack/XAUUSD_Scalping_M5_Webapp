@@ -1104,7 +1104,8 @@ class GoldScalpingBot:
 
                 is_quick_harvest = strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M5_ALL_WEATHER", "RTM_M6_ELITE_GROWTH"]
                 is_m7_runner = strat_id == "RTM_M7_MAX_ALPHA"
-                is_fast_scalp = strat_id in ["ASIAN_RANGE_SNIPER", "NEWS_MOMENTUM_EXPANSION"]
+                is_asian_sniper = strat_id == "ASIAN_RANGE_SNIPER"
+                is_news_momentum = strat_id == "NEWS_MOMENTUM_EXPANSION"
                 is_smc_devil = strat_id == "SMC_X_STO_H1"
 
                 if ptype == "BUY":
@@ -1161,9 +1162,18 @@ class GoldScalpingBot:
                                 self.connector.modify_position(t_id, target_sl, tp)
                                 self.add_log(f"🛡️ [BREAK-EVEN LOCKED] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
 
-                    elif is_fast_scalp:
-                        # Fast Scalp / Momentum (Target 1.8R - Asian Sniper, News Momentum)
-                        # Step 2: At >= 1.4R -> Lock +0.8R Profit (Prevents retracement to BE)
+                    elif is_asian_sniper:
+                        # Asian Range Sniper (Target 1.8R - Clean Mean Reversion Breathing Room)
+                        # Step 1: At >= 1.0R -> Lock Break-Even (+0.30 USD), allows oscillation to hit Full TP 1.8R
+                        if r_profit >= 1.0:
+                            target_sl = round(open_p + 0.30, 2)
+                            if sl < target_sl - 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🛡️ [BREAK-EVEN LOCKED] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
+
+                    elif is_news_momentum:
+                        # News Momentum (Target 1.8R)
+                        # Step 2: At >= 1.4R -> Lock +0.8R Profit (Prevents whipsaw retracement)
                         if r_profit >= 1.4:
                             target_sl = round(open_p + (initial_r * 0.8), 2)
                             if sl < target_sl - 0.10:
@@ -1258,9 +1268,18 @@ class GoldScalpingBot:
                                 self.connector.modify_position(t_id, target_sl, tp)
                                 self.add_log(f"🛡️ [BREAK-EVEN LOCKED] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
 
-                    elif is_fast_scalp:
-                        # Fast Scalp / Momentum (Target 1.8R - Asian Sniper, News Momentum)
-                        # Step 2: At >= 1.4R -> Lock +0.8R Profit (Prevents retracement to BE)
+                    elif is_asian_sniper:
+                        # Asian Range Sniper (Target 1.8R - Clean Mean Reversion Breathing Room)
+                        # Step 1: At >= 1.0R -> Lock Break-Even (+0.30 USD)
+                        if r_profit >= 1.0:
+                            target_sl = round(open_p - 0.30, 2)
+                            if sl == 0 or sl > target_sl + 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🛡️ [BREAK-EVEN LOCKED] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
+
+                    elif is_news_momentum:
+                        # News Momentum (Target 1.8R)
+                        # Step 2: At >= 1.4R -> Lock +0.8R Profit (Prevents whipsaw retracement)
                         if r_profit >= 1.4:
                             target_sl = round(open_p - (initial_r * 0.8), 2)
                             if sl == 0 or sl > target_sl + 0.10:
