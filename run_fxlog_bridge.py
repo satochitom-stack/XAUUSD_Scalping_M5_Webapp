@@ -19,6 +19,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_private_network=True,
 )
 
 @app.middleware("http")
@@ -46,7 +47,22 @@ def index():
 @app.get("/api/journal/closed_trades")
 @app.get("/api/journal/export_trades")
 async def get_closed_trades(
-    days: int = Query(3, description="Days of history"),
+    days: int = Query(7, description="Days of history"),
+    mode: str = Query("manual", description="Mode"),
+    user: str = Query("TOM", description="Target user")
+):
+    trades = analytics.fetch_trades_for_journal(days=days, mode=mode, user=user)
+    return {
+        "status": True,
+        "mode": mode,
+        "user": user,
+        "count": len(trades),
+        "trades": trades
+    }
+
+@app.get("/api/journal/export_trades")
+async def export_trades_for_journal(
+    days: int = Query(90, description="Days of history"),
     mode: str = Query("manual", description="Mode"),
     user: str = Query("TOM", description="Target user")
 ):
@@ -90,17 +106,20 @@ if __name__ == "__main__":
         pass
 
     import MetaTrader5 as mt5
-    if not mt5.initialize():
-        print("[!] Failed to initialize MT5. Please make sure MT5 is open.")
+    manual_mt5_path = r"C:\Users\Windows11\AppData\Local\Programs\MetaTrader 5 EXNESS 2\terminal64.exe"
+    if os.path.exists(manual_mt5_path):
+        mt5.initialize(path=manual_mt5_path)
     else:
-        acc = mt5.account_info()
-        print("\n=======================================================")
-        print("[*] FXLOG PRO - Local MT5 Journal Bridge")
-        if acc:
-            print(f"[OK] Connected to MT5 Account: #{acc.login} ({acc.server})")
-            print(f"[*] Balance: {acc.balance} {acc.currency}")
-        print("[*] Listening on: http://127.0.0.1:8000")
-        print("[*] Mode: READ-ONLY (No bot trading, purely for Journal sync)")
-        print("=======================================================\n")
+        mt5.initialize()
+
+    acc = mt5.account_info()
+    print("\n=======================================================")
+    print("[*] FXLOG PRO - Local MT5 Journal Bridge")
+    if acc:
+        print(f"[OK] Connected to MT5 Account: #{acc.login} ({acc.server})")
+        print(f"[*] Balance: {acc.balance} {acc.currency}")
+    print("[*] Listening on: http://127.0.0.1:8000")
+    print("[*] Mode: READ-ONLY (No bot trading, purely for Journal sync)")
+    print("=======================================================\n")
 
     uvicorn.run(app, host="127.0.0.1", port=8000)
