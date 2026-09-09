@@ -35,6 +35,17 @@ class RealTradeAnalyticsManager:
             "avg_rr": "1:1.8",
             "description": "สไนเปอร์กรอบตลาดเอเชีย แตะขอบ Bollinger Band + Fast RSI 7 ดีดกลับเข้าหา SMA 20 (Win Rate 66.7% / DD 2.9%)"
         },
+        "PULLBACK_DR_EKK": {
+            "id": "PULLBACK_DR_EKK",
+            "name": "Signature Pullback (#PullBack ร้อยล้าน)",
+            "icon": "🎯",
+            "category": "PULLBACK_PRO",
+            "timeframe": "M5 (H1 Filter)",
+            "best_session": "London & NY (14:00 - 02:00)",
+            "magic_numbers": [555860, 555861, 555862, 555863],
+            "avg_rr": "1:2.5",
+            "description": "กลยุทธ์จากหนังสือ #PullBack ร้อยล้าน (โดย พี่เอก / Trader Overseas): 3-Confluence (EMA 60 + Fib 38.2-61.8% + S/R Flip) + Trigger Pinbar/Engulfing แบ่งปิด TP1 1.5R กันทุน แล้วรันเทรนด์ด้วย EMA 60 Trailing Stop (ความเสี่ยง Step-Up 2.0%)"
+        },
         "RTM_M4_CONSERVATIVE": {
             "id": "RTM_M4_CONSERVATIVE",
             "name": "RTM Quasimodo M4 (Conservative)",
@@ -44,18 +55,7 @@ class RealTradeAnalyticsManager:
             "best_session": "London & NY (14:00 - 23:00)",
             "magic_numbers": [777004, 777014, 777024, 777034],
             "avg_rr": "1:2.0",
-            "description": "RTM Conservative QML Retest (รอราคาย่อตัวลึกทดสอบแนว QML ไม่เข้าที่ยอด | เกรด A/A+ | ความเสี่ยง 1.0% | TP 2.0R)"
-        },
-        "RTM_M5_ALL_WEATHER": {
-            "id": "RTM_M5_ALL_WEATHER",
-            "name": "RTM Quasimodo M5 (All-Weather)",
-            "icon": "🌊",
-            "category": "RTM_PRO",
-            "timeframe": "M15 (H1 Filter)",
-            "best_session": "London & NY (14:00 - 23:00)",
-            "magic_numbers": [777005, 777015, 777025, 777035],
-            "avg_rr": "1:2.0",
-            "description": "RTM Vanguard Scout นำร่องทันทีพร้อมระบบกันทุน Break-Even ไว (เกรด B=0.5%, A/A+=1.0% | TP 2.0R)"
+            "description": "RTM Conservative QML Retest (รอราคาย่อตัวลึกทดสอบแนว QML ไม่เข้าที่ยอด | เกรด A/A+ | ความเสี่ยง Step-Up 2.0% | TP 2.0R)"
         },
         "RTM_M6_ELITE_GROWTH": {
             "id": "RTM_M6_ELITE_GROWTH",
@@ -66,18 +66,7 @@ class RealTradeAnalyticsManager:
             "best_session": "London & NY (14:00 - 23:00)",
             "magic_numbers": [777006, 777016, 777026, 777036],
             "avg_rr": "1:2.0",
-            "description": "RTM Elite Growth OTE Retest (รอราคาย่อลึกในโซน Fib 61.8-78.6% ลดระยะ SL | เกรด A=1.0%, A+=2.0% | TP 2.0R)"
-        },
-        "RTM_M7_MAX_ALPHA": {
-            "id": "RTM_M7_MAX_ALPHA",
-            "name": "RTM Quasimodo M7 (Max Alpha)",
-            "icon": "🎯",
-            "category": "RTM_PRO",
-            "timeframe": "M15 (H1 Filter)",
-            "best_session": "London & NY (14:00 - 23:00)",
-            "magic_numbers": [777007, 777017, 777027, 777037],
-            "avg_rr": "1:3.5",
-            "description": "RTM Max Alpha Micro-Structure Runner (รอแท่ง M5 ยืนยันปิดตามเทรนด์ก่อนเข้า รันเทรนด์ยาว | TP 3.5R)"
+            "description": "RTM Elite Growth OTE Retest (รอราคาย่อลึกในโซน Fib 61.8-78.6% ลดระยะ SL | เกรด A/A+ | ความเสี่ยง Step-Up 2.0% | TP 2.0R)"
         },
         "SMC_X_STO_H1": {
             "id": "SMC_X_STO_H1",
@@ -100,10 +89,21 @@ class RealTradeAnalyticsManager:
             "magic_numbers": [555890, 555891, 555892, 555893, 666888, 666889, 666890],
             "avg_rr": "1:1.8",
             "description": "ดักจับแท่งเทียน Breakout ความผันผวนสูงช่วงข่าวใหญ่ (CPI, NFP, FOMC) พร้อม Trailing Stop กว้าง (ความเสี่ยง 0.5%)"
+        },
+        "RETIRED_SETUPS": {
+            "id": "RETIRED_SETUPS",
+            "name": "เซตอัพที่เลิกใช้",
+            "icon": "📦",
+            "category": "ARCHIVED",
+            "timeframe": "Multi-TF",
+            "best_session": "ประวัติเดิม (Archived)",
+            "magic_numbers": [777005, 777015, 777025, 777035, 777007, 777017, 777027, 777037],
+            "avg_rr": "N/A",
+            "description": "รวมประวัติและสถิติการเทรดของเซตอัพที่เลิกใช้งานแล้ว (RTM M5 All-Weather, RTM M7 Max Alpha, Captain SMC, TKT SMC, Flash Scalper ฯลฯ)"
         }
     }
 
-    # Allowed Magic Numbers for Elite 4 Pillars (7 active models)
+    # Allowed Magic Numbers for Elite 5 Pillars (8 active models)
     ELITE_MAGIC_NUMBERS = {
         777004, 777014, 777024, 777034,  # RTM M4
         777005, 777015, 777025, 777035,  # RTM M5
@@ -111,7 +111,8 @@ class RealTradeAnalyticsManager:
         777007, 777017, 777027, 777037,  # RTM M7
         555770, 555771, 555772, 555773,  # SMC x STO H1
         555820, 555821, 555822, 555823,  # Asian Range Sniper
-        555890, 555891, 555892, 555893, 666888, 666889, 666890  # News Momentum Expansion
+        555890, 555891, 555892, 555893, 666888, 666889, 666890,  # News Momentum Expansion
+        555860, 555861, 555862, 555863   # Signature Pullback Dr. Ekk
     }
     
     # System Epoch Cutoff: Start recording fresh from 2026-09-07 15:00:00 (Today's update)
@@ -241,14 +242,14 @@ class RealTradeAnalyticsManager:
                     positions[pid]["out"].append(d)
 
             strategy_name_map = {
-                # 🟢 4 เสาหลัก (Active Models Only)
-                "ASIAN_RANGE_SNIPER": "Asian Range Sniper: Mean Reversion",
+                # 🟢 6 เสาหลัก (Active Models) + เซตอัพที่เลิกใช้
+                "PULLBACK_DR_EKK": "Signature Pullback (#PullBack ร้อยล้าน)",
                 "RTM_M4_CONSERVATIVE": "RTM Quasimodo M4 (Conservative)",
-                "RTM_M5_ALL_WEATHER": "RTM Quasimodo M5 (All-Weather)",
                 "RTM_M6_ELITE_GROWTH": "RTM Quasimodo M6 (Elite Growth)",
-                "RTM_M7_MAX_ALPHA": "RTM Quasimodo M7 (Max Alpha)",
                 "SMC_X_STO_H1": "SMC x STO Devil (H1 Devil System)",
-                "NEWS_MOMENTUM_EXPANSION": "News Momentum Expansion (Spikes)"
+                "ASIAN_RANGE_SNIPER": "Asian Range Sniper: Mean Reversion",
+                "NEWS_MOMENTUM_EXPANSION": "News Momentum Expansion (Spikes)",
+                "RETIRED_SETUPS": "เซตอัพที่เลิกใช้"
             }
 
             for pid, p in positions.items():
@@ -472,35 +473,34 @@ class RealTradeAnalyticsManager:
             return []
 
     def _classify_deal_strategy(self, deal) -> str:
-        """Classify deal into respective Elite 4 Pillars strategy."""
+        """Classify deal into respective active strategy or retired setups."""
         magic = deal.magic
         comment = (deal.comment or "").lower()
 
-        # 1. Active: RTM Quasimodo Multi-Model Setups (M4, M5, M6, M7)
+        # 1. Active: Signature Pullback Strategy (#PullBack ร้อยล้าน - Dr. Ekk)
+        if "dr_ekk" in comment or "pullback_ekk" in comment or "dr_ekk_pullback" in comment or (555860 <= magic <= 555863):
+            return "PULLBACK_DR_EKK"
+
+        # 2. Active: RTM Quasimodo Models (M4 Conservative, M6 Elite Growth)
         if magic in [777004, 777014, 777024, 777034] or "rtm_m4" in comment or "m4_cons" in comment:
             return "RTM_M4_CONSERVATIVE"
-        if magic in [777005, 777015, 777025, 777035] or "rtm_m5" in comment or "m5_allw" in comment:
-            return "RTM_M5_ALL_WEATHER"
         if magic in [777006, 777016, 777026, 777036] or "rtm_m6" in comment or "m6_elite" in comment:
             return "RTM_M6_ELITE_GROWTH"
-        if magic in [777007, 777017, 777027, 777037] or "rtm_m7" in comment or "m7_alpha" in comment:
-            return "RTM_M7_MAX_ALPHA"
-        if "rtm" in comment or "quasimodo" in comment:
-            return "RTM_M6_ELITE_GROWTH"
 
-        # 2. Active: SMCxSTO ระบบปีศาจ (H1 Devil System by SMC by Bossz)
+        # 3. Active: SMCxSTO ระบบปีศาจ (H1 Devil System by SMC by Bossz)
         if "sto" in comment or "devil" in comment or "smcxsto" in comment or (555770 <= magic <= 555773):
             return "SMC_X_STO_H1"
-
-        # 3. Active: High-Impact News Momentum Expansion (News Spike)
-        if "news" in comment or "goldm5_pro" in comment or (555889 <= magic <= 555893) or magic in [666888, 666889, 666890]:
-            return "NEWS_MOMENTUM_EXPANSION"
 
         # 4. Active: Asian Range Sniper
         if "asian" in comment or "⛩" in comment or "gold_asian" in comment or (555820 <= magic <= 555823):
             return "ASIAN_RANGE_SNIPER"
 
-        return "RTM_M5_ALL_WEATHER"
+        # 5. Active: High-Impact News Momentum Expansion (News Spike)
+        if "news" in comment or "goldm5_pro" in comment or (555889 <= magic <= 555893) or magic in [666888, 666889, 666890]:
+            return "NEWS_MOMENTUM_EXPANSION"
+
+        # 6. Decommissioned / Retired Setups (RTM M5, RTM M7, Captain SMC, etc.)
+        return "RETIRED_SETUPS"
 
     def get_real_stats_summary(self) -> dict:
         """Calculate 100% verified real trading statistics for BOTS ONLY from MT5 deal history."""
@@ -553,7 +553,7 @@ class RealTradeAnalyticsManager:
         for d in deals:
             st_id = d["strategy_id"]
             if st_id not in setups_data:
-                st_id = "RTM_M5_ALL_WEATHER"
+                st_id = "RETIRED_SETUPS"
 
             st = setups_data[st_id]
             profit = d["net_profit"]
@@ -584,8 +584,8 @@ class RealTradeAnalyticsManager:
                 st["status"] = f"บอทเทรดแล้ว ({st['total_trades']} ไม้)"
 
                 # Realized RR and Exit Stages Breakdown
-                target_rr = 3.5 if k == "RTM_M7_MAX_ALPHA" else (2.0 if ("RTM_" in k or k == "SMC_X_STO_H1") else (1.8 if k in ["NEWS_MOMENTUM_EXPANSION", "ASIAN_RANGE_SNIPER"] else 2.0))
-                risk_per_lot = 850.0 if "RTM_" in k else (900.0 if k == "SMC_X_STO_H1" else (500.0 if k == "ASIAN_RANGE_SNIPER" else 700.0))
+                target_rr = 2.5 if k == "PULLBACK_DR_EKK" else (2.0 if ("RTM_" in k or k == "SMC_X_STO_H1") else (1.8 if k in ["NEWS_MOMENTUM_EXPANSION", "ASIAN_RANGE_SNIPER"] else 2.0))
+                risk_per_lot = 850.0 if ("RTM_" in k or k == "PULLBACK_DR_EKK") else (900.0 if k == "SMC_X_STO_H1" else (500.0 if k == "ASIAN_RANGE_SNIPER" else 700.0))
                 
                 stages = {
                     "full_tp": 0,
@@ -654,7 +654,7 @@ class RealTradeAnalyticsManager:
                 st["winrate_pct"] = 0.0
                 st["profit_factor"] = 0.0
                 st["avg_realized_rr"] = 0.0
-                st["target_rr"] = 3.5 if k == "RTM_M7_MAX_ALPHA" else (2.0 if ("RTM_" in k or k == "SMC_X_STO_H1") else (1.8 if k in ["NEWS_MOMENTUM_EXPANSION", "ASIAN_RANGE_SNIPER"] else 2.0))
+                st["target_rr"] = 2.5 if k == "PULLBACK_DR_EKK" else (2.0 if ("RTM_" in k or k == "SMC_X_STO_H1") else (1.8 if k in ["NEWS_MOMENTUM_EXPANSION", "ASIAN_RANGE_SNIPER"] else 2.0))
                 st["exit_stages"] = {
                     "full_tp": 0, "full_alpha_35": 0, "target_tp_20": 0, "trailing_lock_08": 0,
                     "trailing_lock": 0, "mid_profit": 0, "break_even": 0, "full_sl": 0, "early_cut": 0
@@ -666,20 +666,20 @@ class RealTradeAnalyticsManager:
         # Set active status tags based on session
         now_hour = datetime.now().hour
         is_asian = (7 <= now_hour < 14)
-        if "ASIAN_RANGE_SNIPER" in setups_data:
-            setups_data["ASIAN_RANGE_SNIPER"]["status"] = "🟢 ACTIVE (ตลาดเอเชีย 07-14)" if is_asian else "⚪ STANDBY (เอเชีย 07-14)"
+        if "PULLBACK_DR_EKK" in setups_data:
+            setups_data["PULLBACK_DR_EKK"]["status"] = "🟢 ACTIVE (Signature Pullback Step-Up 2.0%)"
         if "RTM_M4_CONSERVATIVE" in setups_data:
             setups_data["RTM_M4_CONSERVATIVE"]["status"] = "🟢 ACTIVE (Confluence Grade A/A+)"
-        if "RTM_M5_ALL_WEATHER" in setups_data:
-            setups_data["RTM_M5_ALL_WEATHER"]["status"] = "🟢 ACTIVE (All-Weather Grade B/A/A+)"
         if "RTM_M6_ELITE_GROWTH" in setups_data:
-            setups_data["RTM_M6_ELITE_GROWTH"]["status"] = "🟢 ACTIVE (Elite Growth 2.0R)"
-        if "RTM_M7_MAX_ALPHA" in setups_data:
-            setups_data["RTM_M7_MAX_ALPHA"]["status"] = "🟢 ACTIVE (Max Alpha 3.5R)"
+            setups_data["RTM_M6_ELITE_GROWTH"]["status"] = "🟢 ACTIVE (Elite Growth Step-Up 2.0%)"
         if "SMC_X_STO_H1" in setups_data:
             setups_data["SMC_X_STO_H1"]["status"] = "🟢 ACTIVE (Devil H1 OB+STO)"
+        if "ASIAN_RANGE_SNIPER" in setups_data:
+            setups_data["ASIAN_RANGE_SNIPER"]["status"] = "🟢 ACTIVE (ตลาดเอเชีย 07-14)" if is_asian else "⚪ STANDBY (เอเชีย 07-14)"
         if "NEWS_MOMENTUM_EXPANSION" in setups_data:
             setups_data["NEWS_MOMENTUM_EXPANSION"]["status"] = "⚪ STANDBY (รอจังหวะข่าว USD)"
+        if "RETIRED_SETUPS" in setups_data:
+            setups_data["RETIRED_SETUPS"]["status"] = "📦 ARCHIVED (บันทึกประวัติเดิม)"
 
         total_trades = len(deals)
         overall_winrate = round((total_wins / total_trades * 100.0), 1) if total_trades > 0 else 0.0

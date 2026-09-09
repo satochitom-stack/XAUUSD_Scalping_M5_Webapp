@@ -99,7 +99,8 @@
         "pyramid_lot_ratio": 0.6,
         "strategy_mode": "ALL",
         "rtm_mode": "PULLBACK_DUO",
-        "max_concurrent_setups": 7
+        "pullback_dr_ekk_enabled": true,
+        "max_concurrent_setups": 6
       }
     }
   ],
@@ -154,9 +155,10 @@
     "max_pyramid_layers": 2,
     "pyramid_step_points": 350.0,
     "pyramid_lot_ratio": 0.6,
-    "rtm_mode": "PULLBACK_DUO",
     "strategy_mode": "ALL",
-    "max_concurrent_setups": 7
+    "rtm_mode": "PULLBACK_DUO",
+    "pullback_dr_ekk_enabled": true,
+    "max_concurrent_setups": 6
   },
   "server": {
     "host": "0.0.0.0",

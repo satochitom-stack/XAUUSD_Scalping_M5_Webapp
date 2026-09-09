@@ -22,12 +22,10 @@ class TestRTMEngine(unittest.TestCase):
         self.bot = BotEngine(self.mock_connector, self.config)
 
     def test_rtm_magics_exist(self):
-        """Test all 4 RTM models have registered magic numbers."""
+        """Test active RTM models have registered magic numbers."""
         rtm_keys = [
             "RTM_M4_CONSERVATIVE",
-            "RTM_M5_ALL_WEATHER",
-            "RTM_M6_ELITE_GROWTH",
-            "RTM_M7_MAX_ALPHA"
+            "RTM_M6_ELITE_GROWTH"
         ]
         for key in rtm_keys:
             self.assertIn(key, STRATEGY_MAGIC_MAP)
@@ -37,16 +35,18 @@ class TestRTMEngine(unittest.TestCase):
             self.assertTrue(magic_info["base"] >= 777000)
 
     def test_analytics_registry_contains_rtm_models(self):
-        """Test StrategyAnalyticsManager has all 4 RTM models registered."""
+        """Test StrategyAnalyticsManager has active RTM models and retired setups registered."""
         analytics = StrategyAnalyticsManager()
-        for key in ["RTM_M4_CONSERVATIVE", "RTM_M5_ALL_WEATHER", "RTM_M6_ELITE_GROWTH", "RTM_M7_MAX_ALPHA"]:
+        for key in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH"]:
             self.assertIn(key, analytics.STRATEGY_REGISTRY)
             entry = analytics.STRATEGY_REGISTRY[key]
             self.assertEqual(entry["category"], "RTM_PRO")
             self.assertEqual(entry["timeframe"], "M15 (H1 Filter)")
+        self.assertIn("RETIRED_SETUPS", analytics.STRATEGY_REGISTRY)
+        self.assertEqual(analytics.STRATEGY_REGISTRY["RETIRED_SETUPS"]["name"], "เซตอัพที่เลิกใช้")
 
     def test_deal_classification_for_rtm(self):
-        """Test that closed deals with RTM magics or comments are accurately classified."""
+        """Test that closed deals with RTM magics or comments are accurately classified into active or retired."""
         analytics = StrategyAnalyticsManager()
         
         deal_m4 = MagicMock()
@@ -57,7 +57,7 @@ class TestRTMEngine(unittest.TestCase):
         deal_m5 = MagicMock()
         deal_m5.magic = 777015
         deal_m5.comment = "Gold_RTM_M5_A"
-        self.assertEqual(analytics._classify_deal_strategy(deal_m5), "RTM_M5_ALL_WEATHER")
+        self.assertEqual(analytics._classify_deal_strategy(deal_m5), "RETIRED_SETUPS")
 
         deal_m6 = MagicMock()
         deal_m6.magic = 777016
@@ -67,10 +67,10 @@ class TestRTMEngine(unittest.TestCase):
         deal_m7 = MagicMock()
         deal_m7.magic = 777017
         deal_m7.comment = "Gold_RTM_M7_A"
-        self.assertEqual(analytics._classify_deal_strategy(deal_m7), "RTM_M7_MAX_ALPHA")
+        self.assertEqual(analytics._classify_deal_strategy(deal_m7), "RETIRED_SETUPS")
 
     def test_rtm_confluence_execution_router(self):
-        """Test _process_rtm_confluence_engine launches M5 immediately as Vanguard Scout and queues M4/M6/M7."""
+        """Test _process_rtm_confluence_engine queues M4/M6 for staggered pullback without breakout chasing."""
         self.mock_connector.get_market_info.return_value = {"ask": 2700.0, "bid": 2699.8, "spread": 20.0}
         self.mock_connector.get_account_info.return_value = {"balance": 10000.0, "equity": 10000.0}
         self.mock_connector.get_open_positions.return_value = []
@@ -93,21 +93,23 @@ class TestRTMEngine(unittest.TestCase):
 
         dummy_df = pd.DataFrame({'close': [2700.0]*20, 'low': [2695.0]*20, 'high': [2705.0]*20})
         
-        # Test in ALL mode: M5 should launch immediately as Vanguard Scout
-        self.bot._process_rtm_confluence_engine(dummy_df, "XAUUSDc", 20.0, rtm_mode="ALL")
-        self.assertEqual(self.mock_connector.open_order.call_count, 1)
+        # Test in PULLBACK_DUO mode: M4 and M6 queued, no immediate breakout chase order
+        self.bot._process_rtm_confluence_engine(dummy_df, "XAUUSDc", 20.0, rtm_mode="PULLBACK_DUO")
+        self.assertEqual(self.mock_connector.open_order.call_count, 0)
         self.assertIsNotNone(self.bot.active_rtm_setup)
-        self.assertTrue(self.bot.active_rtm_setup["m5_filled"])
         self.assertFalse(self.bot.active_rtm_setup["m4_filled"])
         self.assertFalse(self.bot.active_rtm_setup["m6_filled"])
-        self.assertFalse(self.bot.active_rtm_setup["m7_filled"])
 
     def test_rtm_anti_clustering_guard(self):
         """Test Anti-Clustering blocks positions within 1.50 USD of existing RTM entry."""
-        m5_magic = STRATEGY_MAGIC_MAP["RTM_M5_ALL_WEATHER"]["pos1"]
+        m6_magic = STRATEGY_MAGIC_MAP["RTM_M6_ELITE_GROWTH"]["pos1"]
         self.mock_connector.get_open_positions.return_value = [
-            {"ticket": 123, "magic": m5_magic, "price_open": 2700.00, "symbol": "XAUUSDc"}
+            {"ticket": 123, "magic": m6_magic, "price_open": 2700.00, "symbol": "XAUUSDc"}
         ]
+        # Price 2700.80 is only 0.80 away -> Must be blocked (False)
+        self.assertFalse(self.bot._check_rtm_clustering("XAUUSDc", 2700.80, min_gap=1.50))
+        # Price 2697.50 is 2.50 away -> Must be allowed (True)
+        self.assertTrue(self.bot._check_rtm_clustering("XAUUSDc", 2697.50, min_gap=1.50))
         # Price 2700.80 is only 0.80 away -> Must be blocked (False)
         self.assertFalse(self.bot._check_rtm_clustering("XAUUSDc", 2700.80, min_gap=1.50))
         # Price 2697.50 is 2.50 away -> Must be allowed (True)
@@ -131,11 +133,9 @@ class TestRTMEngine(unittest.TestCase):
             "curr_atr": 4.0,
             "created_time": time.time(),
             "expiry_time": time.time() + 1800,
-            "rtm_mode": "ALL",
+            "rtm_mode": "PULLBACK_DUO",
             "m4_filled": False,
-            "m5_filled": True,
-            "m6_filled": False,
-            "m7_filled": False
+            "m6_filled": False
         }
         # Price pulls back to 2696.0 (saved 4.0 USD vs 2700 breakout)
         self.mock_connector.get_market_info.return_value = {"ask": 2696.0, "bid": 2695.8, "spread": 20.0}
@@ -165,9 +165,8 @@ class TestRTMEngine(unittest.TestCase):
         # All other setups must NOT be blocked and report False
         self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "SMC_X_STO_H1"))
         self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "RTM_M4_CONSERVATIVE"))
-        self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "RTM_M5_ALL_WEATHER"))
         self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "RTM_M6_ELITE_GROWTH"))
-        self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "RTM_M7_MAX_ALPHA"))
+        self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "PULLBACK_DR_EKK"))
         self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "NEWS_MOMENTUM_EXPANSION"))
 
     def test_execute_sell_single_order(self):
@@ -181,7 +180,7 @@ class TestRTMEngine(unittest.TestCase):
         self.assertEqual(self.mock_connector.open_order.call_count, 1)
 
     def test_max_concurrent_setups_allows_all_models(self):
-        """Test that max_concurrent_setups defaults to len(STRATEGY_MAGIC_MAP) (7) and permits concurrent positions."""
+        """Test that max_concurrent_setups defaults to 6 and permits concurrent positions."""
         self.mock_connector.get_market_info.return_value = {"ask": 2700.0, "bid": 2699.8, "spread": 20.0}
         self.mock_connector.get_account_info.return_value = {"balance": 10000.0, "equity": 10000.0, "margin_level": 500.0}
         
@@ -192,12 +191,13 @@ class TestRTMEngine(unittest.TestCase):
             {"ticket": 3, "magic": STRATEGY_MAGIC_MAP["RTM_M4_CONSERVATIVE"]["pos1"], "symbol": "XAUUSDc", "type": "BUY"}
         ]
         
-        # Verify 4th setup is NOT blocked by has_open_positions_for_setup
-        self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "RTM_M5_ALL_WEATHER"))
+        # Verify other setups are NOT blocked by has_open_positions_for_setup
+        self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "RTM_M6_ELITE_GROWTH"))
+        self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "PULLBACK_DR_EKK"))
         self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "NEWS_MOMENTUM_EXPANSION"))
 
     def test_rtm_trailing_stop_dual_style(self):
-        """Test dual-style trailing stop: M4/M5/M6 locks +0.8R at 1.5R; M7 locks +1.0R at 2.0R, +1.8R at 2.6R, +2.4R at 3.0R."""
+        """Test trailing stop: M4/M6 locks +0.8R at 1.5R."""
         # Setup market info: BUY opened at 2700.0, SL at 2690.0 (initial_r = 10.0)
         # Price reaches 2715.5 (+1.55R)
         self.mock_connector.get_market_info.return_value = {"bid": 2715.5, "ask": 2715.7}
@@ -212,16 +212,6 @@ class TestRTMEngine(unittest.TestCase):
         
         # modify_position should be called with target_sl = 2708.0
         self.mock_connector.modify_position.assert_called_with(401, 2708.0, 2720.0)
-
-        # Test M7 (Trend Runner 3.5R) at 2.65R (bid = 2726.5) -> Expect SL locked to 2700 + 1.8 * 10 = 2718.0
-        self.mock_connector.get_market_info.return_value = {"bid": 2726.5, "ask": 2726.7}
-        m7_magic = STRATEGY_MAGIC_MAP["RTM_M7_MAX_ALPHA"]["pos1"]
-        self.mock_connector.get_open_positions.return_value = [
-            {"ticket": 701, "magic": m7_magic, "symbol": "XAUUSDc", "type": "BUY", "price_open": 2700.0, "sl": 2710.0, "tp": 2735.0}
-        ]
-        self.bot.initial_risk_map[701] = 10.0
-        self.bot.manage_open_positions("XAUUSDc")
-        self.mock_connector.modify_position.assert_called_with(701, 2718.0, 2735.0)
 
     def test_news_momentum_trailing_lock_1_4r(self):
         """Test News Momentum locks +0.8R profit when reaching >= 1.4R."""
@@ -303,33 +293,33 @@ class TestRTMEngine(unittest.TestCase):
         self.bot._check_rtm_confluence_m15 = MagicMock(return_value=mock_signal)
         dummy_df = pd.DataFrame({'close': [2700.0]*20, 'low': [2695.0]*20, 'high': [2705.0]*20})
 
-        # Test PULLBACK_DUO: M5 must NOT be opened
+        # Test PULLBACK_DUO: M5 is decommissioned, only M4 and M6 are tracked
         self.bot._process_rtm_confluence_engine(dummy_df, "XAUUSDc", 20.0, rtm_mode="PULLBACK_DUO")
         self.assertEqual(self.mock_connector.open_order.call_count, 0)
         self.assertIsNotNone(self.bot.active_rtm_setup)
-        self.assertFalse(self.bot.active_rtm_setup["m5_filled"])
+        self.assertNotIn("m5_filled", self.bot.active_rtm_setup)
         self.assertFalse(self.bot.active_rtm_setup["m4_filled"])
         self.assertFalse(self.bot.active_rtm_setup["m6_filled"])
 
     def test_step_up_compounding_lot_calculation(self):
-        """Test Step-Up Compounding calculates 3% risk on tiered milestones."""
-        self.bot.config["strategy"]["risk_percent"] = 3.0
+        """Test Step-Up Compounding calculates 2% risk on tiered milestones."""
+        self.bot.config["strategy"]["risk_percent"] = 2.0
         self.bot.config["strategy"]["enable_step_up_compounding"] = True
 
-        # Tier 1 ($10,000 base) -> 3% = $300 risk. With SL dist 3.00 USD (300 pts) -> 300 / (3.0 * 100) = 1.00 Lot
+        # Tier 1 ($10,000 base) -> 2% = $200 risk. With SL dist 3.00 USD (300 pts) -> 200 / (3.0 * 100) = 0.67 Lot
         self.mock_connector.get_account_info.return_value = {"balance": 11300.0, "equity": 11350.0}
         lot_t1 = self.bot.calculate_lot_size(3.00)
-        self.assertEqual(lot_t1, 1.00)
+        self.assertEqual(lot_t1, 0.67)
 
-        # Tier 2 ($15,000 base) -> 3% = $450 risk. With SL dist 3.00 USD -> 450 / 300 = 1.50 Lot
+        # Tier 2 ($15,000 base) -> 2% = $300 risk. With SL dist 3.00 USD -> 300 / 300 = 1.00 Lot
         self.mock_connector.get_account_info.return_value = {"balance": 16500.0, "equity": 16500.0}
         lot_t2 = self.bot.calculate_lot_size(3.00)
-        self.assertEqual(lot_t2, 1.50)
+        self.assertEqual(lot_t2, 1.00)
 
-        # Tier 3 ($20,000 base) -> 3% = $600 risk. With SL dist 3.00 USD -> 600 / 300 = 2.00 Lot
+        # Tier 3 ($20,000 base) -> 2% = $400 risk. With SL dist 3.00 USD -> 400 / 300 = 1.33 Lot
         self.mock_connector.get_account_info.return_value = {"balance": 22000.0, "equity": 22000.0}
         lot_t3 = self.bot.calculate_lot_size(3.00)
-        self.assertEqual(lot_t3, 2.00)
+        self.assertEqual(lot_t3, 1.33)
 
     def test_earthetc_structural_sl_no_choke(self):
         """Test that wide structural SL (e.g. 11.50 USD) is preserved without 8.50 clamp."""

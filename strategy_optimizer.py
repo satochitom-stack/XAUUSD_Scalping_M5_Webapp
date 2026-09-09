@@ -19,12 +19,11 @@ from hourly_heat_engine import HourlyHeatEngine
 logger = logging.getLogger("StrategyOptimizer")
 
 DEFAULT_STRATEGIES = [
-    "ASIAN_RANGE_SNIPER",
+    "PULLBACK_DR_EKK",
     "RTM_M4_CONSERVATIVE",
-    "RTM_M5_ALL_WEATHER",
     "RTM_M6_ELITE_GROWTH",
-    "RTM_M7_MAX_ALPHA",
     "SMC_X_STO_H1",
+    "ASIAN_RANGE_SNIPER",
     "NEWS_MOMENTUM_EXPANSION"
 ]
 
@@ -55,19 +54,6 @@ SETUP_PROFILES = {
         "trail_step_points": 40.0,
         "description": "RTM Quasimodo + ICT + Fib 61.8-78.6% (Grade A/A+ only | Fixed 1.0% Risk | 3.0R TP)"
     },
-    "RTM_M5_ALL_WEATHER": {
-        "id": "RTM_M5_ALL_WEATHER",
-        "name": "RTM Quasimodo M5 (All-Weather)",
-        "icon": "🌊",
-        "win_prob": 78.0,
-        "base_rr": 3.00,
-        "min_rr": 2.00,
-        "max_rr": 4.00,
-        "trailing_type": "CONFLUENCE_STAGE",
-        "trail_points": 250.0,
-        "trail_step_points": 40.0,
-        "description": "RTM Quasimodo All-Weather (Grade B=0.5%, A=1.0%, A+=2.0% | 3.0R TP)"
-    },
     "RTM_M6_ELITE_GROWTH": {
         "id": "RTM_M6_ELITE_GROWTH",
         "name": "RTM Quasimodo M6 (Elite Growth)",
@@ -81,18 +67,31 @@ SETUP_PROFILES = {
         "trail_step_points": 40.0,
         "description": "RTM Elite Confluence (Grade A=1.0%, A+=2.0% | 3.0R TP | Return +180.9%)"
     },
-    "RTM_M7_MAX_ALPHA": {
-        "id": "RTM_M7_MAX_ALPHA",
-        "name": "RTM Quasimodo M7 (Max Alpha)",
+    "PULLBACK_DR_EKK": {
+        "id": "PULLBACK_DR_EKK",
+        "name": "Signature Pullback (#PullBack ร้อยล้าน)",
         "icon": "🎯",
-        "win_prob": 79.0,
-        "base_rr": 3.50,
-        "min_rr": 2.50,
-        "max_rr": 5.00,
+        "win_prob": 70.0,
+        "base_rr": 2.50,
+        "min_rr": 1.50,
+        "max_rr": 4.50,
+        "trailing_type": "EMA_TRAIL",
+        "trail_points": 250.0,
+        "trail_step_points": 40.0,
+        "description": "Signature Pullback #PullBack ร้อยล้าน (EMA 60 + Fib 38.2-61.8% + S/R Flip + Runner)"
+    },
+    "RETIRED_SETUPS": {
+        "id": "RETIRED_SETUPS",
+        "name": "เซตอัพที่เลิกใช้",
+        "icon": "📦",
+        "win_prob": 50.0,
+        "base_rr": 2.00,
+        "min_rr": 1.00,
+        "max_rr": 3.00,
         "trailing_type": "CONFLUENCE_STAGE",
-        "trail_points": 300.0,
-        "trail_step_points": 50.0,
-        "description": "RTM Elite Confluence Max Alpha (Grade A=1.0%, A+=2.0% | 3.5R TP | Return +229.0%)"
+        "trail_points": 250.0,
+        "trail_step_points": 40.0,
+        "description": "รวมประวัติเซตอัพเดิมที่เลิกใช้งานแล้ว (RTM M5, RTM M7, Captain SMC ฯลฯ)"
     },
     "SMC_X_STO_H1": {
         "id": "SMC_X_STO_H1",
@@ -496,7 +495,7 @@ class RealTimeStrategyOptimizer:
         """Recomputes all strategy scorecards strictly from unique trade history records."""
         self.strategy_stats = {}
         for k in DEFAULT_STRATEGIES:
-            prof = SETUP_PROFILES.get(k, SETUP_PROFILES["RTM_M5_ALL_WEATHER"])
+            prof = SETUP_PROFILES.get(k, SETUP_PROFILES["RETIRED_SETUPS"])
             self.strategy_stats[k] = {
                 "id": k,
                 "name": prof["name"],
@@ -509,27 +508,38 @@ class RealTimeStrategyOptimizer:
                 "atr_sl_multiplier": 1.0,
                 "strictness_level": "NORMAL",
                 "trailing_type": prof["trailing_type"],
-                "learning_note": "Initialized factory weights",
-                "active": True
+                "learning_note": "Initial Baseline Profile"
             }
 
-        # Deduplicate trade_history by ticket if present
+        # Deduplicate trade history by ticket
         seen_tickets = set()
         clean_history = []
         for t in self.trade_history:
-            ticket = t.get("ticket")
-            if ticket is not None:
-                if ticket in seen_tickets:
-                    continue
-                seen_tickets.add(ticket)
+            tk = t.get("ticket")
+            if tk and tk in seen_tickets:
+                continue
+            if tk:
+                seen_tickets.add(tk)
             clean_history.append(t)
         self.trade_history = clean_history
 
         # Recalculate each strategy stats strictly from actual history
         for t in self.trade_history:
-            strat = t.get("strategy", "RTM_M5_ALL_WEATHER")
+            strat = t.get("strategy", "RETIRED_SETUPS")
             if strat not in self.strategy_stats:
-                strat = "RTM_M5_ALL_WEATHER"
+                strat = "RETIRED_SETUPS"
+                if "RETIRED_SETUPS" not in self.strategy_stats:
+                    self.strategy_stats["RETIRED_SETUPS"] = {
+                        "id": "RETIRED_SETUPS",
+                        "name": "เซตอัพที่เลิกใช้",
+                        "icon": "📦",
+                        "trades": 0, "wins": 0, "losses": 0, "winrate": 50.0,
+                        "profit": 0.0, "profit_factor": 1.0, "streak": 0,
+                        "weight": 1.0, "base_rr": 2.0, "current_dynamic_rr": 2.0,
+                        "atr_sl_multiplier": 1.0, "strictness_level": "NORMAL",
+                        "trailing_type": "CONFLUENCE_STAGE",
+                        "learning_note": "Archived Profile"
+                    }
             stat = self.strategy_stats[strat]
             pnl = t.get("profit", 0.0)
             stat["trades"] = stat.get("trades", 0) + 1
@@ -552,22 +562,22 @@ class RealTimeStrategyOptimizer:
             else: stat["weight"] = 0.70
 
             # Dynamic R:R and Loss Mitigation Adjustment based on Streak
-            prof = SETUP_PROFILES.get(strat, SETUP_PROFILES["RTM_M5_ALL_WEATHER"])
+            prof = SETUP_PROFILES.get(strat, SETUP_PROFILES["RETIRED_SETUPS"])
             if stat["streak"] >= 2:
                 stat["current_dynamic_rr"] = min(prof["max_rr"], round(prof["base_rr"] * 1.30, 2))
                 stat["atr_sl_multiplier"] = 1.0
                 stat["strictness_level"] = "NORMAL"
                 stat["learning_note"] = f"🔥 +{stat['streak']} Win Streak Boost (Target {stat['current_dynamic_rr']}R)"
             elif stat["streak"] <= -2:
-                stat["current_dynamic_rr"] = max(prof["min_rr"], round(prof["base_rr"] * 0.90, 2))
-                stat["atr_sl_multiplier"] = 1.35
-                stat["strictness_level"] = "STRICT"
-                stat["learning_note"] = f"🛡️ {stat['streak']} Loss Streak: SL Expanded x1.35 & Strict Filter"
+                stat["current_dynamic_rr"] = max(prof["min_rr"], round(prof["base_rr"] * 0.80, 2))
+                stat["atr_sl_multiplier"] = 1.15
+                stat["strictness_level"] = "DEFENSIVE"
+                stat["learning_note"] = f"🛡️ {stat['streak']} Drawdown Protection (Target {stat['current_dynamic_rr']}R / SL x1.15)"
             else:
                 stat["current_dynamic_rr"] = prof["base_rr"]
                 stat["atr_sl_multiplier"] = 1.0
                 stat["strictness_level"] = "NORMAL"
-                stat["learning_note"] = "Balanced Calibration"
+                stat["learning_note"] = "Standard Optimized Model"
 
     def reset_learning(self):
         """Reset learning data back to factory defaults."""
@@ -578,7 +588,7 @@ class RealTimeStrategyOptimizer:
 
     def record_trade_outcome(self, strategy_key: str, profit: float, pips: float, entry_reason: str, ticket: Optional[int] = None):
         """Record trade result and update strategy scorecard & streaks in real-time."""
-        matched_strat = "RTM_M5_ALL_WEATHER"
+        matched_strat = "RETIRED_SETUPS"
         for key in DEFAULT_STRATEGIES:
             if key in strategy_key or key in entry_reason:
                 matched_strat = key
@@ -613,15 +623,14 @@ class RealTimeStrategyOptimizer:
             comment = str(deal.get("comment", "")).lower()
             profit = deal.get("profit", 0.0) + deal.get("swap", 0.0) + deal.get("commission", 0.0)
             
-            strat = "RTM_M5_ALL_WEATHER"
-            if "rtm_m4" in comment or "m4_cons" in comment: strat = "RTM_M4_CONSERVATIVE"
-            elif "rtm_m5" in comment or "m5_allw" in comment: strat = "RTM_M5_ALL_WEATHER"
+            strat = "RETIRED_SETUPS"
+            if "dr_ekk" in comment or "pullback_ekk" in comment: strat = "PULLBACK_DR_EKK"
+            elif "rtm_m4" in comment or "m4_cons" in comment: strat = "RTM_M4_CONSERVATIVE"
             elif "rtm_m6" in comment or "m6_elite" in comment: strat = "RTM_M6_ELITE_GROWTH"
-            elif "rtm_m7" in comment or "m7_alpha" in comment: strat = "RTM_M7_MAX_ALPHA"
-            elif "rtm" in comment or "quasimodo" in comment: strat = "RTM_M6_ELITE_GROWTH"
             elif "sto" in comment or "devil" in comment or "smcxsto" in comment: strat = "SMC_X_STO_H1"
             elif "news" in comment or "momentum" in comment: strat = "NEWS_MOMENTUM_EXPANSION"
             elif "asian" in comment: strat = "ASIAN_RANGE_SNIPER"
+            elif "rtm_m5" in comment or "m5_allw" in comment or "rtm_m7" in comment or "m7_alpha" in comment: strat = "RETIRED_SETUPS"
 
             self.record_trade_outcome(strat, profit, 0.0, comment, ticket=deal.get("ticket"))
 

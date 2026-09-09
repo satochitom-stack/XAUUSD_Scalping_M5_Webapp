@@ -28,12 +28,11 @@ except ImportError:
 logger = logging.getLogger("BotEngine")
 
 STRATEGY_MAGIC_MAP = {
-    "ASIAN_RANGE_SNIPER": {"base": 555820, "pos1": 555821, "pos2": 555822, "pos3": 555823},
-    "SMC_X_STO_H1": {"base": 555770, "pos1": 555771, "pos2": 555772, "pos3": 555773},
+    "PULLBACK_DR_EKK": {"base": 555860, "pos1": 555861, "pos2": 555862, "pos3": 555863},
     "RTM_M4_CONSERVATIVE": {"base": 777004, "pos1": 777014, "pos2": 777024, "pos3": 777034},
-    "RTM_M5_ALL_WEATHER": {"base": 777005, "pos1": 777015, "pos2": 777025, "pos3": 777035},
     "RTM_M6_ELITE_GROWTH": {"base": 777006, "pos1": 777016, "pos2": 777026, "pos3": 777036},
-    "RTM_M7_MAX_ALPHA": {"base": 777007, "pos1": 777017, "pos2": 777027, "pos3": 777037},
+    "SMC_X_STO_H1": {"base": 555770, "pos1": 555771, "pos2": 555772, "pos3": 555773},
+    "ASIAN_RANGE_SNIPER": {"base": 555820, "pos1": 555821, "pos2": 555822, "pos3": 555823},
     "NEWS_MOMENTUM_EXPANSION": {"base": 555890, "pos1": 555891, "pos2": 555892, "pos3": 555893}
 }
 
@@ -291,9 +290,18 @@ class GoldScalpingBot:
 
         df['ema20'] = df['close'].ewm(span=20, adjust=False).mean()
         df['ema50'] = df['close'].ewm(span=fast_period, adjust=False).mean()
+        df['ema60'] = df['close'].ewm(span=60, adjust=False).mean()  # Signature Dr. Ekk line
         df['ema100'] = df['close'].ewm(span=100, adjust=False).mean()
         df['ema150'] = df['close'].ewm(span=slow_period, adjust=False).mean()
         df['ema200'] = df['close'].ewm(span=200, adjust=False).mean()
+
+        # ATR 14
+        hl = df['high'] - df['low']
+        hc = (df['high'] - df['close'].shift()).abs()
+        lc = (df['low'] - df['close'].shift()).abs()
+        tr = pd.concat([hl, hc, lc], axis=1).max(axis=1)
+        df['atr14'] = tr.rolling(window=14).mean().bfill()
+        df['atr'] = df['atr14']
 
         df['sma20'] = df['close'].rolling(window=20).mean()
         df['std20'] = df['close'].rolling(window=20).std()
@@ -364,10 +372,17 @@ class GoldScalpingBot:
                     self._process_single_setup_signal(df, symbol, spread, "SMC_X_STO_H1", "BUY" if b_sig else "SELL", reason)
 
         # --- PILLAR 4: RTM Quasimodo Multi-Model Institutional Engine (M15 + H1 Filter) ---
-        rtm_mode = strat_cfg.get("rtm_mode", "ALL")
-        rtm_variants = ["RTM_M4_CONSERVATIVE", "RTM_M5_ALL_WEATHER", "RTM_M6_ELITE_GROWTH", "RTM_M7_MAX_ALPHA"]
+        rtm_mode = strat_cfg.get("rtm_mode", "PULLBACK_DUO")
+        rtm_variants = ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH"]
         if strat_mode in ["ALL", "RTM"] or any(strat_mode == v for v in rtm_variants):
             self._process_rtm_confluence_engine(df, symbol, spread, rtm_mode)
+
+        # --- PILLAR 5: Signature Pullback Engine (#PullBack ร้อยล้าน - Dr. Ekk / Trader Overseas) ---
+        if strat_mode in ["ALL", "PULLBACK_DR_EKK", "DR_EKK_PULLBACK"]:
+            if not self.has_open_positions_for_setup(symbol, "PULLBACK_DR_EKK"):
+                b_sig, s_sig, reason = self._check_pullback_dr_ekk(df)
+                if b_sig or s_sig:
+                    self._process_single_setup_signal(df, symbol, spread, "PULLBACK_DR_EKK", "BUY" if b_sig else "SELL", reason)
 
         # Update Trend Badge with News Radar
         if news_status.get("is_news_active"):
@@ -575,6 +590,116 @@ class GoldScalpingBot:
             if touched_upper and closed_inside_upper and b1['close'] < b1['open'] and (upper_wick / candle_range) >= 0.35:
                 if b1['rsi7'] >= 62 and b1['rsi7'] < b2['rsi7']:
                     return False, True, "⛩️ Sideway Range Sniper: Resistance Rebound + Trend Filter (0.5% Risk)"
+
+        return False, False, ""
+
+    def _check_pullback_dr_ekk(self, df: pd.DataFrame) -> Tuple[bool, bool, str]:
+        """
+        🎯 Signature Pullback Strategy (#PullBack ร้อยล้าน - Dr. Ekk / Trader Overseas):
+        - Books: บทที่ 20 (Trade Checklist), บทที่ 8 (Breakout & Pullback 3-Confluence), บทที่ 5 (Chart Patterns), บทที่ 12 (SL/TP & Trailing)
+        - Core Rules:
+          1. Trend Context: M5 EMA 60 > EMA 150 (Buy) or EMA 60 < EMA 150 (Sell).
+          2. Impulse Leg: Recent breakout of swing high/low structure with range >= 1.2 * ATR.
+          3. 3-Confluence Zone:
+             - Dynamic Level: Pullback touches or approaches EMA 60 (within 0.35 * ATR).
+             - Fibonacci Retracement: 0.35 <= Retracement <= 0.68 (Golden pocket 50.0% - 61.8%).
+             - S/R Flip: Broken prior resistance/support retested as new support/resistance (within 0.75 * ATR).
+          4. Trigger Candlestick:
+             - Rejection Pinbar (wick >= 45% of range) bouncing off the zone
+             - OR Engulfing candle closing decisively in trend direction.
+          5. Confluence Score >= 2 (EMA 60 / S/R Flip + Fib Retracement).
+          6. Risk: Strictly 1.0% per trade.
+        """
+        if len(df) < 35:
+            return False, False, ""
+
+        b1 = df.iloc[-2]  # Last closed bar
+        close_p = float(b1['close'])
+        high_p = float(b1['high'])
+        low_p = float(b1['low'])
+        open_p = float(b1['open'])
+        ema60 = float(b1.get('ema60', b1['close']))
+        ema150 = float(b1.get('ema150', b1['close']))
+        atr = float(b1.get('atr14', b1.get('atr', 2.50)))
+
+        is_uptrend = (ema60 > ema150) and (close_p > ema60 - 0.25 * atr)
+        is_downtrend = (ema60 < ema150) and (close_p < ema60 + 0.25 * atr)
+
+        candle_range = high_p - low_p
+        if candle_range <= 0.20:
+            return False, False, ""
+
+        upper_wick = high_p - max(open_p, close_p)
+        lower_wick = min(open_p, close_p) - low_p
+        body_size = abs(close_p - open_p)
+
+        # Candle triggers
+        bullish_pinbar = (lower_wick >= 0.45 * candle_range) and (close_p >= low_p + 0.45 * candle_range)
+        bearish_pinbar = (upper_wick >= 0.45 * candle_range) and (close_p <= high_p - 0.45 * candle_range)
+
+        prev_bar = df.iloc[-3]
+        bullish_engulfing = (close_p > open_p) and (close_p > float(prev_bar['high'])) and (body_size >= 0.55 * candle_range)
+        bearish_engulfing = (close_p < open_p) and (close_p < float(prev_bar['low'])) and (body_size >= 0.55 * candle_range)
+
+        window = df.iloc[-32:-2]
+        if len(window) < 20:
+            return False, False, ""
+
+        # Bullish Pullback Evaluation
+        if is_uptrend and (bullish_pinbar or bullish_engulfing):
+            swing_high_val = float(window['high'].max())
+            swing_high_idx = window['high'].idxmax()
+            window_prior = df.loc[window.index[0]:swing_high_idx]
+            if len(window_prior) >= 4:
+                swing_low_val = float(window_prior['low'].min())
+                impulse_range = swing_high_val - swing_low_val
+
+                if impulse_range >= 1.2 * atr:
+                    pullback_low = float(df.loc[swing_high_idx:df.index[-2], 'low'].min())
+                    retrace_pct = (swing_high_val - pullback_low) / (impulse_range + 1e-9)
+
+                    fib_conf = 0.35 <= retrace_pct <= 0.68
+                    ema_conf = (low_p <= ema60 + 0.35 * atr) and (high_p >= ema60 - 0.40 * atr)
+
+                    prev_window = df.iloc[-65:max(0, len(df)-20)]
+                    sr_flip_conf = False
+                    if len(prev_window) > 8:
+                        prev_res = float(prev_window['high'].max())
+                        sr_flip_conf = abs(pullback_low - prev_res) <= 0.75 * atr
+
+                    conf_score = int(fib_conf) + int(ema_conf) + int(sr_flip_conf)
+                    if conf_score >= 2:
+                        grade = "A+" if conf_score == 3 else "A"
+                        trig_type = "Pinbar" if bullish_pinbar else "Engulfing"
+                        return True, False, f"🎯 Pullback Dr. Ekk: Bullish {trig_type} at 3-Confluence ({grade} | Fib {retrace_pct*100:.0f}% + EMA60)"
+
+        # Bearish Pullback Evaluation
+        if is_downtrend and (bearish_pinbar or bearish_engulfing):
+            swing_low_val = float(window['low'].min())
+            swing_low_idx = window['low'].idxmin()
+            window_prior = df.loc[window.index[0]:swing_low_idx]
+            if len(window_prior) >= 4:
+                swing_high_val = float(window_prior['high'].max())
+                impulse_range_down = swing_high_val - swing_low_val
+
+                if impulse_range_down >= 1.2 * atr:
+                    pullback_high = float(df.loc[swing_low_idx:df.index[-2], 'high'].max())
+                    retrace_pct = (pullback_high - swing_low_val) / (impulse_range_down + 1e-9)
+
+                    fib_conf = 0.35 <= retrace_pct <= 0.68
+                    ema_conf = (high_p >= ema60 - 0.35 * atr) and (low_p <= ema60 + 0.40 * atr)
+
+                    prev_window = df.iloc[-65:max(0, len(df)-20)]
+                    sr_flip_conf = False
+                    if len(prev_window) > 8:
+                        prev_sup = float(prev_window['low'].min())
+                        sr_flip_conf = abs(pullback_high - prev_sup) <= 0.75 * atr
+
+                    conf_score = int(fib_conf) + int(ema_conf) + int(sr_flip_conf)
+                    if conf_score >= 2:
+                        grade = "A+" if conf_score == 3 else "A"
+                        trig_type = "Pinbar" if bearish_pinbar else "Engulfing"
+                        return False, True, f"🎯 Pullback Dr. Ekk: Bearish {trig_type} at 3-Confluence ({grade} | Fib {retrace_pct*100:.0f}% + EMA60)"
 
         return False, False, ""
 
@@ -913,7 +1038,7 @@ class GoldScalpingBot:
             self.add_log(f"🛡️ [RTM COOLDOWN ACTIVE] {action} paused ({cooldown_rem:.0f}s left) after recent Stop Loss to prevent stop hunt sweep", "WARNING")
             return
 
-        # 2. Register active RTM setup for staggered entries
+        # 2. Register active RTM setup for staggered entries (M4 & M6 only)
         self.active_rtm_setup = {
             "action": action,
             "grade": grade,
@@ -929,30 +1054,10 @@ class GoldScalpingBot:
             "expiry_time": time.time() + (45 * 60), # 45 minutes
             "rtm_mode": rtm_mode,
             "m4_filled": False,
-            "m5_filled": False,
-            "m6_filled": False,
-            "m7_filled": False
+            "m6_filled": False
         }
 
-        # 3. M5 (All-Weather): Immediate Vanguard Scout
-        # In PULLBACK_DUO mode, M5 is dormant to eliminate breakout chasing
-        if rtm_mode in ["ALL", "MODEL_5"] and grade in ["A+", "A", "B"]:
-            if not self.has_open_positions_for_setup(symbol, "RTM_M5_ALL_WEATHER"):
-                lot_m = 1.0 if grade in ["A+", "A"] else 0.5
-                opt = {
-                    "custom_sl": sl,
-                    "tp_ratio": 2.0,
-                    "lot_multiplier": lot_m
-                }
-                if action == "BUY":
-                    self.execute_buy(df, symbol, f"{reason} | RTM_M5_ALL_WEATHER (Vanguard Scout)", opt_params=opt, strat_id="RTM_M5_ALL_WEATHER")
-                elif action == "SELL":
-                    self.execute_sell(df, symbol, f"{reason} | RTM_M5_ALL_WEATHER (Vanguard Scout)", opt_params=opt, strat_id="RTM_M5_ALL_WEATHER")
-                self.active_rtm_setup["m5_filled"] = True
-                self.add_log(f"🌊 [RTM VANGUARD LAUNCHED] M5 All-Weather scout deployed on {action} | SL: {sl:.2f}", "SUCCESS")
-
-        if rtm_mode in ["ALL", "MODEL_4", "MODEL_6", "MODEL_7", "PULLBACK_DUO"]:
-            self.add_log(f"⏳ [RTM STAGGERED QUEUE] Staggered monitoring active for M4 (QML Retest) & M6 (OTE Zone) | Target QML: {sig.get('qml_price', 0.0):.2f}", "INFO")
+        self.add_log(f"⏳ [RTM PULLBACK DUO QUEUE] Staggered monitoring active for M4 (QML Retest) & M6 (OTE Zone) | Target QML: {sig.get('qml_price', 0.0):.2f}", "INFO")
 
     def _check_and_execute_pending_rtm_pullbacks(self, symbol: str, rates: Optional[pd.DataFrame] = None):
         """
@@ -1080,49 +1185,11 @@ class GoldScalpingBot:
                     setup["m6_filled"] = True
                     self.add_log(f"👑 [RTM M6 FILLED] Elite Growth OTE Golden Zone executed @ {curr_price:.2f}", "SUCCESS")
 
-        # --- MODEL 7 (Max Alpha): M5 Micro-Structure Confirmation ---
-        if rtm_mode in ["ALL", "MODEL_7"] and grade in ["A+", "A"] and not setup["m7_filled"]:
-            if not self.has_open_positions_for_setup(symbol, "RTM_M7_MAX_ALPHA"):
-                closed_m5 = rates_m5.iloc[-2]
-                m5_bar_time = closed_m5['time']
-                is_m7_confirmed = False
-
-                if getattr(self, 'last_rtm_m5_confirmed_bar', None) != m5_bar_time:
-                    if action == "BUY":
-                        m5_range = max(float(closed_m5['high']) - float(closed_m5['low']), 0.1)
-                        upper_wick = float(closed_m5['high']) - float(closed_m5['close'])
-                        if float(closed_m5['close']) > float(closed_m5['open']) and (upper_wick / m5_range) <= 0.40:
-                            is_m7_confirmed = True
-                    elif action == "SELL":
-                        m5_range = max(float(closed_m5['high']) - float(closed_m5['low']), 0.1)
-                        lower_wick = float(closed_m5['close']) - float(closed_m5['low'])
-                        if float(closed_m5['close']) < float(closed_m5['open']) and (lower_wick / m5_range) <= 0.40:
-                            is_m7_confirmed = True
-
-                if is_m7_confirmed and self._check_rtm_clustering(symbol, curr_price, min_gap=1.50):
-                    self.last_rtm_m5_confirmed_bar = m5_bar_time
-                    lot_m = 1.5 if grade == "A+" else 1.0
-                    opt = {
-                        "custom_sl": sl,
-                        "tp_ratio": 3.5,
-                        "lot_multiplier": lot_m
-                    }
-                    if action == "BUY":
-                        self.execute_buy(rates_m5, symbol, f"🎯 RTM M7 (M5 Structure Break & Close Confirmed @ {curr_price:.2f})", opt_params=opt, strat_id="RTM_M7_MAX_ALPHA")
-                    else:
-                        self.execute_sell(rates_m5, symbol, f"🎯 RTM M7 (M5 Structure Break & Close Confirmed @ {curr_price:.2f})", opt_params=opt, strat_id="RTM_M7_MAX_ALPHA")
-                    setup["m7_filled"] = True
-                    self.add_log(f"🎯 [RTM M7 FILLED] Max Alpha M5 Micro-Structure Confirmation executed @ {curr_price:.2f}", "SUCCESS")
-
-        # If all eligible models are filled, clear active setup
+        # If all eligible models (M4 and M6) are filled, clear active setup
         all_done = True
-        if rtm_mode in ["ALL", "MODEL_4", "PULLBACK_DUO"] and grade in ["A+", "A"] and not setup["m4_filled"]:
+        if rtm_mode in ["ALL", "MODEL_4", "PULLBACK_DUO"] and grade in ["A+", "A"] and not setup.get("m4_filled", False):
             all_done = False
-        if rtm_mode in ["ALL", "MODEL_5"] and grade in ["A+", "A", "B"] and not setup["m5_filled"]:
-            all_done = False
-        if rtm_mode in ["ALL", "MODEL_6", "PULLBACK_DUO"] and grade in ["A+", "A"] and not setup["m6_filled"]:
-            all_done = False
-        if rtm_mode in ["ALL", "MODEL_7"] and grade in ["A+", "A"] and not setup["m7_filled"]:
+        if rtm_mode in ["ALL", "MODEL_6", "PULLBACK_DUO"] and grade in ["A+", "A"] and not setup.get("m6_filled", False):
             all_done = False
 
         if all_done:
@@ -1157,7 +1224,7 @@ class GoldScalpingBot:
 
         return False, "Fixed TP (Normal S/R Targets)"
 
-    def execute_buy(self, df: pd.DataFrame, symbol: str, reason: str, is_asian_scalp: bool = False, opt_params: Optional[dict] = None, strat_id: str = "RTM_M5_ALL_WEATHER", **kwargs):
+    def execute_buy(self, df: pd.DataFrame, symbol: str, reason: str, is_asian_scalp: bool = False, opt_params: Optional[dict] = None, strat_id: str = "PULLBACK_DR_EKK", **kwargs):
         ask = self.connector.get_market_info(symbol).get("ask", 0.0)
         if ask <= 0: return
 
@@ -1207,6 +1274,17 @@ class GoldScalpingBot:
                 tp2 = float(custom_tp)
             else:
                 tp2 = ask + (sl_dist * target_rr)
+        elif strat_id == "PULLBACK_DR_EKK":
+            lowest_low = float(df['low'].iloc[-12:-1].min())
+            ema60_val = float(df['ema60'].iloc[-2]) if 'ema60' in df else lowest_low
+            structural_ref = min(lowest_low, ema60_val)
+            sl_buffer = 0.50 * sl_mult
+            sl = structural_ref - sl_buffer
+            sl_dist = ask - sl
+            if sl_dist < 2.50: sl = ask - 2.50; sl_dist = 2.50
+            if sl_dist > 12.00: sl = ask - 12.00; sl_dist = 12.00
+            target_rr = opt.get("tp_ratio", 2.5)
+            tp2 = ask + (sl_dist * target_rr)
         else:
             # News Momentum Expansion / Default (EarthETC Structural SL)
             if len(df) >= 15:
@@ -1228,8 +1306,8 @@ class GoldScalpingBot:
             if sl_dist > 18.00: sl = ask - 18.00; sl_dist = 18.00  # EarthETC: wide structural room, no arbitrary 7.00 choke
             tp2 = ask + (sl_dist * 1.8)
 
-        if strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH"]:
-            risk_label = "Step-Up 3% Risk" if self.config.get("strategy", {}).get("enable_step_up_compounding", True) else "3.0% Risk"
+        if strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH", "PULLBACK_DR_EKK"]:
+            risk_label = "Step-Up 2% Risk" if self.config.get("strategy", {}).get("enable_step_up_compounding", True) else "2.0% Risk"
         elif strat_id in ["NEWS_MOMENTUM_EXPANSION", "ASIAN_RANGE_SNIPER"]:
             lot_mult = 0.5  # Fixed 0.5% risk per user instruction
             risk_label = "0.5% Risk"
@@ -1246,7 +1324,7 @@ class GoldScalpingBot:
         if self.notifier:
             self.notifier.notify_order_opened("BUY", symbol, total_lot, ask, sl, tp2, reason)
 
-    def execute_sell(self, df: pd.DataFrame, symbol: str, reason: str, is_asian_scalp: bool = False, opt_params: Optional[dict] = None, strat_id: str = "RTM_M5_ALL_WEATHER", **kwargs):
+    def execute_sell(self, df: pd.DataFrame, symbol: str, reason: str, is_asian_scalp: bool = False, opt_params: Optional[dict] = None, strat_id: str = "PULLBACK_DR_EKK", **kwargs):
         bid = self.connector.get_market_info(symbol).get("bid", 0.0)
         if bid <= 0: return
 
@@ -1296,6 +1374,17 @@ class GoldScalpingBot:
                 tp2 = float(custom_tp)
             else:
                 tp2 = bid - (sl_dist * target_rr)
+        elif strat_id == "PULLBACK_DR_EKK":
+            highest_high = float(df['high'].iloc[-12:-1].max())
+            ema60_val = float(df['ema60'].iloc[-2]) if 'ema60' in df else highest_high
+            structural_ref = max(highest_high, ema60_val)
+            sl_buffer = 0.50 * sl_mult
+            sl = structural_ref + sl_buffer
+            sl_dist = sl - bid
+            if sl_dist < 2.50: sl = bid + 2.50; sl_dist = 2.50
+            if sl_dist > 12.00: sl = bid + 12.00; sl_dist = 12.00
+            target_rr = opt.get("tp_ratio", 2.5)
+            tp2 = bid - (sl_dist * target_rr)
         else:
             # News Momentum Expansion / Default (EarthETC Structural SL)
             if len(df) >= 15:
@@ -1317,8 +1406,8 @@ class GoldScalpingBot:
             if sl_dist > 18.00: sl = bid + 18.00; sl_dist = 18.00  # EarthETC: wide structural room, no arbitrary 7.00 choke
             tp2 = bid - (sl_dist * 1.8)
 
-        if strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH"]:
-            risk_label = "Step-Up 3% Risk" if self.config.get("strategy", {}).get("enable_step_up_compounding", True) else "3.0% Risk"
+        if strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH", "PULLBACK_DR_EKK"]:
+            risk_label = "Step-Up 2% Risk" if self.config.get("strategy", {}).get("enable_step_up_compounding", True) else "2.0% Risk"
         elif strat_id in ["NEWS_MOMENTUM_EXPANSION", "ASIAN_RANGE_SNIPER"]:
             lot_mult = 0.5  # Fixed 0.5% risk per user instruction
             risk_label = "0.5% Risk"
@@ -1341,9 +1430,9 @@ class GoldScalpingBot:
         balance = float(acc.get("balance", 10000.0))
         equity = float(acc.get("equity", balance))
 
-        # ONLY RTM M4 and M6 receive 3.0% Risk with Step-Up Compounding!
-        if strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH"]:
-            risk_pct = 3.0
+        # RTM M4, M6, and PULLBACK_DR_EKK receive 2.0% Risk with Step-Up Compounding!
+        if strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH", "PULLBACK_DR_EKK"]:
+            risk_pct = 2.0
             use_step_up = strat_cfg.get("enable_step_up_compounding", True)
             if use_step_up:
                 eval_equity = max(balance, equity)
@@ -1428,13 +1517,13 @@ class GoldScalpingBot:
                         initial_r = abs(open_p - sl)
                         self.initial_risk_map[t_id] = initial_r
                     elif tp > 0:
-                        if strat_id == "RTM_M7_MAX_ALPHA":
-                            initial_r = abs(open_p - tp) / 3.5
-                        elif strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M5_ALL_WEATHER", "RTM_M6_ELITE_GROWTH"]:
+                        if strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH"]:
                             raw_dist = abs(open_p - tp)
                             initial_r = raw_dist / 3.0 if raw_dist > 20.0 else raw_dist / 2.0
                         elif strat_id == "SMC_X_STO_H1":
                             initial_r = abs(open_p - tp) / 2.2
+                        elif strat_id == "PULLBACK_DR_EKK":
+                            initial_r = abs(open_p - tp) / 1.5
                         else:
                             initial_r = abs(open_p - tp) / 1.8
                         self.initial_risk_map[t_id] = initial_r
@@ -1444,11 +1533,11 @@ class GoldScalpingBot:
                 if initial_r <= 0.50:
                     continue
 
-                is_quick_harvest = strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M5_ALL_WEATHER", "RTM_M6_ELITE_GROWTH"]
-                is_m7_runner = strat_id == "RTM_M7_MAX_ALPHA"
+                is_quick_harvest = strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH"]
                 is_asian_sniper = strat_id == "ASIAN_RANGE_SNIPER"
                 is_news_momentum = strat_id == "NEWS_MOMENTUM_EXPANSION"
                 is_smc_devil = strat_id == "SMC_X_STO_H1"
+                is_pullback_dr_ekk = strat_id == "PULLBACK_DR_EKK"
 
                 if ptype == "BUY":
                     profit_dist = bid - open_p
@@ -1470,33 +1559,6 @@ class GoldScalpingBot:
                             if sl < target_sl - 0.10:
                                 self.connector.modify_position(t_id, target_sl, tp)
                                 self.add_log(f"🎯 [PROFIT LOCKED +0.8R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +0.8R ({target_sl:.2f})", "SUCCESS")
-                        # Step 1: At >= 1.0R -> Lock Break-Even (+0.30 USD)
-                        elif r_profit >= 1.0:
-                            target_sl = round(open_p + 0.30, 2)
-                            if sl < target_sl - 0.10:
-                                self.connector.modify_position(t_id, target_sl, tp)
-                                self.add_log(f"🛡️ [BREAK-EVEN LOCKED] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
-
-                    elif is_m7_runner:
-                        # Trend Runner Trailing (Target 3.5R)
-                        # Step 4: At >= 3.0R -> Lock +2.4R Profit
-                        if r_profit >= 3.0:
-                            target_sl = round(open_p + (initial_r * 2.4), 2)
-                            if sl < target_sl - 0.10:
-                                self.connector.modify_position(t_id, target_sl, tp)
-                                self.add_log(f"🚀 [PROFIT LOCKED +2.4R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +2.4R ({target_sl:.2f})", "SUCCESS")
-                        # Step 3: At >= 2.6R -> Lock +1.8R Profit
-                        elif r_profit >= 2.6:
-                            target_sl = round(open_p + (initial_r * 1.8), 2)
-                            if sl < target_sl - 0.10:
-                                self.connector.modify_position(t_id, target_sl, tp)
-                                self.add_log(f"🎯 [PROFIT LOCKED +1.8R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.8R ({target_sl:.2f})", "SUCCESS")
-                        # Step 2: At >= 2.0R -> Lock +1.0R Profit
-                        elif r_profit >= 2.0:
-                            target_sl = round(open_p + (initial_r * 1.0), 2)
-                            if sl < target_sl - 0.10:
-                                self.connector.modify_position(t_id, target_sl, tp)
-                                self.add_log(f"💰 [PROFIT LOCKED +1.0R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.0R ({target_sl:.2f})", "SUCCESS")
                         # Step 1: At >= 1.0R -> Lock Break-Even (+0.30 USD)
                         elif r_profit >= 1.0:
                             target_sl = round(open_p + 0.30, 2)
@@ -1547,7 +1609,21 @@ class GoldScalpingBot:
                             target_sl = round(open_p + 0.30, 2)
                             if sl < target_sl - 0.10:
                                 self.connector.modify_position(t_id, target_sl, tp)
-                                self.add_log(f"🛡️ [BREAK-EVEN LOCKED] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
+                    elif is_pullback_dr_ekk:
+                        # Dr. Ekk Chapter 12: Mode 3 (EMA 60 Trailing Runner)
+                        # Step 2: At >= 1.5R -> Trail behind EMA 60 (or lock +0.8R minimum)
+                        if r_profit >= 1.5:
+                            ema60_val = float(df['ema60'].iloc[-2]) if 'ema60' in df and not df.empty else 0.0
+                            target_sl = round(max(open_p + (initial_r * 0.8), ema60_val - 0.50), 2) if ema60_val > open_p else round(open_p + (initial_r * 0.8), 2)
+                            if sl < target_sl - 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🎯 [DR EKK EMA60 TRAIL] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL trailed to {target_sl:.2f}", "SUCCESS")
+                        # Step 1: At >= 1.0R -> Lock Break-Even (+0.30 USD)
+                        elif r_profit >= 1.0:
+                            target_sl = round(open_p + 0.30, 2)
+                            if sl < target_sl - 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🛡️ [DR EKK BREAK-EVEN] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
 
                     else:
                         if r_profit >= 1.0:
@@ -1576,33 +1652,6 @@ class GoldScalpingBot:
                             if sl == 0 or sl > target_sl + 0.10:
                                 self.connector.modify_position(t_id, target_sl, tp)
                                 self.add_log(f"🎯 [PROFIT LOCKED +0.8R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +0.8R ({target_sl:.2f})", "SUCCESS")
-                        # Step 1: At >= 1.0R -> Lock Break-Even (+0.30 USD)
-                        elif r_profit >= 1.0:
-                            target_sl = round(open_p - 0.30, 2)
-                            if sl == 0 or sl > target_sl + 0.10:
-                                self.connector.modify_position(t_id, target_sl, tp)
-                                self.add_log(f"🛡️ [BREAK-EVEN LOCKED] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
-
-                    elif is_m7_runner:
-                        # Trend Runner Trailing (Target 3.5R)
-                        # Step 4: At >= 3.0R -> Lock +2.4R Profit
-                        if r_profit >= 3.0:
-                            target_sl = round(open_p - (initial_r * 2.4), 2)
-                            if sl == 0 or sl > target_sl + 0.10:
-                                self.connector.modify_position(t_id, target_sl, tp)
-                                self.add_log(f"🚀 [PROFIT LOCKED +2.4R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +2.4R ({target_sl:.2f})", "SUCCESS")
-                        # Step 3: At >= 2.6R -> Lock +1.8R Profit
-                        elif r_profit >= 2.6:
-                            target_sl = round(open_p - (initial_r * 1.8), 2)
-                            if sl == 0 or sl > target_sl + 0.10:
-                                self.connector.modify_position(t_id, target_sl, tp)
-                                self.add_log(f"🎯 [PROFIT LOCKED +1.8R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.8R ({target_sl:.2f})", "SUCCESS")
-                        # Step 2: At >= 2.0R -> Lock +1.0R Profit
-                        elif r_profit >= 2.0:
-                            target_sl = round(open_p - (initial_r * 1.0), 2)
-                            if sl == 0 or sl > target_sl + 0.10:
-                                self.connector.modify_position(t_id, target_sl, tp)
-                                self.add_log(f"💰 [PROFIT LOCKED +1.0R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.0R ({target_sl:.2f})", "SUCCESS")
                         # Step 1: At >= 1.0R -> Lock Break-Even (+0.30 USD)
                         elif r_profit >= 1.0:
                             target_sl = round(open_p - 0.30, 2)
@@ -1653,7 +1702,21 @@ class GoldScalpingBot:
                             target_sl = round(open_p - 0.30, 2)
                             if sl == 0 or sl > target_sl + 0.10:
                                 self.connector.modify_position(t_id, target_sl, tp)
-                                self.add_log(f"🛡️ [BREAK-EVEN LOCKED] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
+                    elif is_pullback_dr_ekk:
+                        # Dr. Ekk Chapter 12: Mode 3 (EMA 60 Trailing Runner)
+                        # Step 2: At >= 1.5R -> Trail behind EMA 60 (or lock +0.8R minimum)
+                        if r_profit >= 1.5:
+                            ema60_val = float(df['ema60'].iloc[-2]) if 'ema60' in df and not df.empty else 0.0
+                            target_sl = round(min(open_p - (initial_r * 0.8), ema60_val + 0.50), 2) if (ema60_val < open_p and ema60_val > 0) else round(open_p - (initial_r * 0.8), 2)
+                            if sl == 0 or sl > target_sl + 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🎯 [DR EKK EMA60 TRAIL] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL trailed to {target_sl:.2f}", "SUCCESS")
+                        # Step 1: At >= 1.0R -> Lock Break-Even (+0.30 USD)
+                        elif r_profit >= 1.0:
+                            target_sl = round(open_p - 0.30, 2)
+                            if sl == 0 or sl > target_sl + 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🛡️ [DR EKK BREAK-EVEN] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
 
                     else:
                         if r_profit >= 1.0:

@@ -473,14 +473,13 @@ async def get_system_version():
     return {
         "status": True,
         "latest_commit": commit_str,
-        "strategies_count": 7,
+        "strategies_count": 6,
         "strategies": [
-            "ASIAN_RANGE_SNIPER",
+            "PULLBACK_DR_EKK",
             "RTM_M4_CONSERVATIVE",
-            "RTM_M5_ALL_WEATHER",
             "RTM_M6_ELITE_GROWTH",
-            "RTM_M7_MAX_ALPHA",
             "SMC_X_STO_H1",
+            "ASIAN_RANGE_SNIPER",
             "NEWS_MOMENTUM_EXPANSION"
         ]
     }
