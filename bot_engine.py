@@ -1203,13 +1203,15 @@ class GoldScalpingBot:
             if sl_dist > 18.00: sl = ask - 18.00; sl_dist = 18.00  # EarthETC: wide structural room, no arbitrary 7.00 choke
             tp2 = ask + (sl_dist * 1.8)
 
-        if strat_id == "NEWS_MOMENTUM_EXPANSION":
+        if strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH"]:
+            risk_label = "Step-Up 3% Risk" if self.config.get("strategy", {}).get("enable_step_up_compounding", True) else "3.0% Risk"
+        elif strat_id == "NEWS_MOMENTUM_EXPANSION":
             lot_mult = 0.5  # Fixed 0.5% risk per user instruction
             risk_label = "0.5% Risk"
         else:
-            risk_label = "Step-Up 3% Risk" if self.config.get("strategy", {}).get("enable_step_up_compounding", True) else f"{self.config.get('strategy', {}).get('risk_percent', 3.0)}% Risk"
+            risk_label = "1.0% Risk"
 
-        total_lot = self.calculate_lot_size(sl_dist, lot_mult=lot_mult)
+        total_lot = self.calculate_lot_size(sl_dist, lot_mult=lot_mult, strat_id=strat_id)
 
         # Single Position Plan across Setups
         res1 = self.connector.open_order(symbol, "BUY", total_lot, sl, tp2, magic_p1, f"Gold_{strat_id[:8]}")
@@ -1290,13 +1292,15 @@ class GoldScalpingBot:
             if sl_dist > 18.00: sl = bid + 18.00; sl_dist = 18.00  # EarthETC: wide structural room, no arbitrary 7.00 choke
             tp2 = bid - (sl_dist * 1.8)
 
-        if strat_id == "NEWS_MOMENTUM_EXPANSION":
+        if strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH"]:
+            risk_label = "Step-Up 3% Risk" if self.config.get("strategy", {}).get("enable_step_up_compounding", True) else "3.0% Risk"
+        elif strat_id == "NEWS_MOMENTUM_EXPANSION":
             lot_mult = 0.5  # Fixed 0.5% risk per user instruction
             risk_label = "0.5% Risk"
         else:
-            risk_label = "Step-Up 3% Risk" if self.config.get("strategy", {}).get("enable_step_up_compounding", True) else f"{self.config.get('strategy', {}).get('risk_percent', 3.0)}% Risk"
+            risk_label = "1.0% Risk"
 
-        total_lot = self.calculate_lot_size(sl_dist, lot_mult=lot_mult)
+        total_lot = self.calculate_lot_size(sl_dist, lot_mult=lot_mult, strat_id=strat_id)
 
         # Single Position Plan across Setups (News=0.5%, Others=1.0%)
         res1 = self.connector.open_order(symbol, "SELL", total_lot, sl, tp2, magic_p1, f"Gold_{strat_id[:8]}")
@@ -1306,36 +1310,46 @@ class GoldScalpingBot:
         if self.notifier:
             self.notifier.notify_order_opened("SELL", symbol, total_lot, bid, sl, tp2, reason)
 
-    def calculate_lot_size(self, sl_dist: float, lot_mult: float = 1.0) -> float:
+    def calculate_lot_size(self, sl_dist: float, lot_mult: float = 1.0, strat_id: str = "RTM_M4_CONSERVATIVE") -> float:
         strat_cfg = self.config.get("strategy", {})
-        risk_pct = float(strat_cfg.get("risk_percent", 3.0))
-        use_step_up = strat_cfg.get("enable_step_up_compounding", True)
-
         acc = self.connector.get_account_info()
         balance = float(acc.get("balance", 10000.0))
         equity = float(acc.get("equity", balance))
 
-        if use_step_up:
-            # Step-Up Compounding Tiers (Milestone-based risk scaling with Step-down protection)
-            eval_equity = max(balance, equity)
-            if eval_equity >= 45000.0:
-                tier_base = 45000.0
-            elif eval_equity >= 30000.0:
-                tier_base = 30000.0
-            elif eval_equity >= 20000.0:
-                tier_base = 20000.0
-            elif eval_equity >= 15000.0:
-                tier_base = 15000.0
-            elif eval_equity >= 10000.0:
-                tier_base = 10000.0
+        # ONLY RTM M4 and M6 receive 3.0% Risk with Step-Up Compounding!
+        if strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH"]:
+            risk_pct = 3.0
+            use_step_up = strat_cfg.get("enable_step_up_compounding", True)
+            if use_step_up:
+                eval_equity = max(balance, equity)
+                if eval_equity >= 45000.0:
+                    tier_base = 45000.0
+                elif eval_equity >= 30000.0:
+                    tier_base = 30000.0
+                elif eval_equity >= 20000.0:
+                    tier_base = 20000.0
+                elif eval_equity >= 15000.0:
+                    tier_base = 15000.0
+                elif eval_equity >= 10000.0:
+                    tier_base = 10000.0
+                else:
+                    tier_base = max(1000.0, balance)
+                risk_money = tier_base * (risk_pct / 100.0)
             else:
-                # Proportional scaling for sub-10k or micro accounts
-                tier_base = max(1000.0, balance)
-            risk_money = tier_base * (risk_pct / 100.0)
+                risk_money = balance * (risk_pct / 100.0)
+        elif strat_id == "NEWS_MOMENTUM_EXPANSION":
+            risk_pct = 0.5  # Fixed 0.5% risk
+            risk_money = balance * (risk_pct / 100.0)
         else:
+            # ALL OTHER SETUPS (Asian Range Sniper, SMCxSTO H1, M5, M7, etc.) STRICTLY 1.0% RISK
+            risk_pct = 1.0
             risk_money = balance * (risk_pct / 100.0)
 
         lot = (risk_money / (sl_dist * 100.0 + 1e-9)) * lot_mult
+
+        # Additional safety cap for Asian Range Scalp (max 0.35 lot on 10k account)
+        if strat_id == "ASIAN_RANGE_SNIPER":
+            lot = min(lot, 0.35)
 
         # Dynamic Lot Reduction (Only if enabled in config, default false)
         dynamic_reduction = strat_cfg.get("dynamic_lot_reduction", False)
