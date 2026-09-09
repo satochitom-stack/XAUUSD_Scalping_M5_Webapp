@@ -489,15 +489,26 @@ async def get_system_version():
 async def hot_reload_modules(auth: bool = Depends(verify_token)):
     """Hot-reloads bot_engine and swaps running bot instances without restarting uvicorn."""
     import importlib
+    global app_config
     try:
+        app_config = load_config()
+        account_manager.global_config = app_config
         import bot_engine
         importlib.reload(bot_engine)
         import strategy_analytics
         importlib.reload(strategy_analytics)
         account_manager.analytics = strategy_analytics.RealTradeAnalyticsManager()
 
+        acc_dict_map = {a.get("id"): a for a in app_config.get("accounts", [])}
+
         reloaded_accounts = []
         for acc_id, acc in account_manager.accounts.items():
+            strat_cfg = dict(app_config.get("strategy", {}))
+            if acc_id in acc_dict_map and "strategy" in acc_dict_map[acc_id]:
+                strat_cfg.update(acc_dict_map[acc_id]["strategy"])
+            acc.strategy_cfg = strat_cfg
+            acc.bot_config["strategy"] = strat_cfg
+
             if hasattr(acc, "bot"):
                 was_running = acc.bot.is_running
                 old_logs = getattr(acc.bot, "logs", [])
@@ -512,7 +523,7 @@ async def hot_reload_modules(auth: bool = Depends(verify_token)):
 
         return {
             "status": True,
-            "message": f"Hot-reloaded bot_engine and {len(reloaded_accounts)} account instances.",
+            "message": f"Hot-reloaded bot_engine, configs, and {len(reloaded_accounts)} account instances.",
             "accounts": reloaded_accounts
         }
     except Exception as e:
