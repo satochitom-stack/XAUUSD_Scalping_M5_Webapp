@@ -285,5 +285,67 @@ class TestRTMEngine(unittest.TestCase):
         b_sig, s_sig, _ = self.bot._check_news_momentum_expansion(df_high, {"is_news_active": False})
         self.assertTrue(b_sig)
 
+    def test_rtm_pullback_duo_mode_bypasses_m5(self):
+        """Test that in PULLBACK_DUO mode, M5 breakout scout is bypassed and only M4 & M6 are queued."""
+        mock_signal = {
+            "action": "BUY",
+            "score": 85.0,
+            "grade": "A+",
+            "sl": 2690.0,
+            "m15_time": datetime.now(),
+            "reason": "Bullish QML",
+            "qml_price": 2695.0,
+            "head_extreme": 2688.0,
+            "break_level": 2702.0,
+            "signal_close": 2700.0,
+            "curr_atr": 4.0
+        }
+        self.bot._check_rtm_confluence_m15 = MagicMock(return_value=mock_signal)
+        dummy_df = pd.DataFrame({'close': [2700.0]*20, 'low': [2695.0]*20, 'high': [2705.0]*20})
+
+        # Test PULLBACK_DUO: M5 must NOT be opened
+        self.bot._process_rtm_confluence_engine(dummy_df, "XAUUSDc", 20.0, rtm_mode="PULLBACK_DUO")
+        self.assertEqual(self.mock_connector.open_order.call_count, 0)
+        self.assertIsNotNone(self.bot.active_rtm_setup)
+        self.assertFalse(self.bot.active_rtm_setup["m5_filled"])
+        self.assertFalse(self.bot.active_rtm_setup["m4_filled"])
+        self.assertFalse(self.bot.active_rtm_setup["m6_filled"])
+
+    def test_step_up_compounding_lot_calculation(self):
+        """Test Step-Up Compounding calculates 3% risk on tiered milestones."""
+        self.bot.config["strategy"]["risk_percent"] = 3.0
+        self.bot.config["strategy"]["enable_step_up_compounding"] = True
+
+        # Tier 1 ($10,000 base) -> 3% = $300 risk. With SL dist 3.00 USD (300 pts) -> 300 / (3.0 * 100) = 1.00 Lot
+        self.mock_connector.get_account_info.return_value = {"balance": 11300.0, "equity": 11350.0}
+        lot_t1 = self.bot.calculate_lot_size(3.00)
+        self.assertEqual(lot_t1, 1.00)
+
+        # Tier 2 ($15,000 base) -> 3% = $450 risk. With SL dist 3.00 USD -> 450 / 300 = 1.50 Lot
+        self.mock_connector.get_account_info.return_value = {"balance": 16500.0, "equity": 16500.0}
+        lot_t2 = self.bot.calculate_lot_size(3.00)
+        self.assertEqual(lot_t2, 1.50)
+
+        # Tier 3 ($20,000 base) -> 3% = $600 risk. With SL dist 3.00 USD -> 600 / 300 = 2.00 Lot
+        self.mock_connector.get_account_info.return_value = {"balance": 22000.0, "equity": 22000.0}
+        lot_t3 = self.bot.calculate_lot_size(3.00)
+        self.assertEqual(lot_t3, 2.00)
+
+    def test_earthetc_structural_sl_no_choke(self):
+        """Test that wide structural SL (e.g. 11.50 USD) is preserved without 8.50 clamp."""
+        self.mock_connector.get_market_info.return_value = {"ask": 2700.0, "bid": 2699.8, "spread": 20.0}
+        self.mock_connector.get_account_info.return_value = {"balance": 10000.0, "equity": 10000.0}
+        self.mock_connector.open_order.return_value = {"ticket": 5555}
+        dummy_df = pd.DataFrame({'close': [2700.0]*20, 'low': [2685.0]*20, 'high': [2705.0]*20})
+
+        # Provide custom SL at 2688.50 (SL dist = 11.50 USD, > 8.50)
+        opt = {"custom_sl": 2688.50, "tp_ratio": 2.0, "lot_multiplier": 1.0}
+        self.bot.execute_buy(dummy_df, "XAUUSDc", "Test Structural SL", opt_params=opt, strat_id="RTM_M4_CONSERVATIVE")
+        
+        # Verify open_order was called with sl = 2688.50 (NOT clamped to 2691.50)
+        call_args = self.mock_connector.open_order.call_args[0]
+        sl_placed = call_args[3]
+        self.assertEqual(sl_placed, 2688.50)
+
 if __name__ == "__main__":
     unittest.main()

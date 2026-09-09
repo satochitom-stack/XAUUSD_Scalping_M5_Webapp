@@ -764,7 +764,9 @@ class GoldScalpingBot:
 
                     if score >= 50.0:
                         grade = "A+" if score >= 85.0 else ("A" if score >= 70.0 else "B")
-                        stop_loss = head_hh + (0.3 * curr_atr)
+                        # EarthETC Structural SL: Head extreme + minimum 1.50 USD (150 pts) buffer
+                        sl_buf = max(0.4 * curr_atr, 1.50)
+                        stop_loss = head_hh + sl_buf
                         self.last_rtm_m15_bar_time = m15_bar_time
                         return {
                             "action": "SELL",
@@ -802,7 +804,9 @@ class GoldScalpingBot:
 
                     if score >= 50.0:
                         grade = "A+" if score >= 85.0 else ("A" if score >= 70.0 else "B")
-                        stop_loss = head_ll - (0.3 * curr_atr)
+                        # EarthETC Structural SL: Head extreme - minimum 1.50 USD (150 pts) buffer
+                        sl_buf = max(0.4 * curr_atr, 1.50)
+                        stop_loss = head_ll - sl_buf
                         self.last_rtm_m15_bar_time = m15_bar_time
                         return {
                             "action": "BUY",
@@ -906,7 +910,7 @@ class GoldScalpingBot:
         }
 
         # 3. M5 (All-Weather): Immediate Vanguard Scout
-        # M5 enters immediately upon confirmation with its proven rapid BE lock (+0.30 USD)
+        # In PULLBACK_DUO mode, M5 is dormant to eliminate breakout chasing
         if rtm_mode in ["ALL", "MODEL_5"] and grade in ["A+", "A", "B"]:
             if not self.has_open_positions_for_setup(symbol, "RTM_M5_ALL_WEATHER"):
                 lot_m = 1.0 if grade in ["A+", "A"] else 0.5
@@ -922,8 +926,8 @@ class GoldScalpingBot:
                 self.active_rtm_setup["m5_filled"] = True
                 self.add_log(f"🌊 [RTM VANGUARD LAUNCHED] M5 All-Weather scout deployed on {action} | SL: {sl:.2f}", "SUCCESS")
 
-        if rtm_mode in ["ALL", "MODEL_4", "MODEL_6", "MODEL_7"]:
-            self.add_log(f"⏳ [RTM STAGGERED QUEUE] Staggered monitoring active for M4 (QML Retest), M6 (OTE Zone), M7 (M5 Break) | Target QML: {sig.get('qml_price', 0.0):.2f}", "INFO")
+        if rtm_mode in ["ALL", "MODEL_4", "MODEL_6", "MODEL_7", "PULLBACK_DUO"]:
+            self.add_log(f"⏳ [RTM STAGGERED QUEUE] Staggered monitoring active for M4 (QML Retest) & M6 (OTE Zone) | Target QML: {sig.get('qml_price', 0.0):.2f}", "INFO")
 
     def _check_and_execute_pending_rtm_pullbacks(self, symbol: str, rates: Optional[pd.DataFrame] = None):
         """
@@ -988,7 +992,7 @@ class GoldScalpingBot:
             return
 
         # --- MODEL 4 (Conservative): Genuine Pullback / QML Retest ---
-        if rtm_mode in ["ALL", "MODEL_4"] and grade in ["A+", "A"] and not setup["m4_filled"]:
+        if rtm_mode in ["ALL", "MODEL_4", "PULLBACK_DUO"] and grade in ["A+", "A"] and not setup["m4_filled"]:
             if not self.has_open_positions_for_setup(symbol, "RTM_M4_CONSERVATIVE"):
                 is_m4_pullback = False
                 dist_saved = 0.0
@@ -1021,7 +1025,7 @@ class GoldScalpingBot:
                     self.add_log(f"🛡️ [RTM M4 FILLED] Conservative QML Pullback executed @ {curr_price:.2f} (Saved {dist_saved:.2f} USD vs breakout)", "SUCCESS")
 
         # --- MODEL 6 (Elite Growth): Deep Retest OTE Zone (Fib 61.8% - 78.6%) ---
-        if rtm_mode in ["ALL", "MODEL_6"] and grade in ["A+", "A"] and not setup["m6_filled"]:
+        if rtm_mode in ["ALL", "MODEL_6", "PULLBACK_DUO"] and grade in ["A+", "A"] and not setup["m6_filled"]:
             if not self.has_open_positions_for_setup(symbol, "RTM_M6_ELITE_GROWTH"):
                 is_m6_ote = False
                 impulse_range = abs(signal_close - head_extreme)
@@ -1038,7 +1042,7 @@ class GoldScalpingBot:
                             is_m6_ote = True
 
                 if is_m6_ote and self._check_rtm_clustering(symbol, curr_price, min_gap=1.50):
-                    lot_m = 2.0 if grade == "A+" else 1.0
+                    lot_m = 1.5 if grade == "A+" else 1.0
                     opt = {
                         "custom_sl": sl,
                         "tp_ratio": 2.0,
@@ -1072,7 +1076,7 @@ class GoldScalpingBot:
 
                 if is_m7_confirmed and self._check_rtm_clustering(symbol, curr_price, min_gap=1.50):
                     self.last_rtm_m5_confirmed_bar = m5_bar_time
-                    lot_m = 2.0 if grade == "A+" else 1.0
+                    lot_m = 1.5 if grade == "A+" else 1.0
                     opt = {
                         "custom_sl": sl,
                         "tp_ratio": 3.5,
@@ -1087,11 +1091,11 @@ class GoldScalpingBot:
 
         # If all eligible models are filled, clear active setup
         all_done = True
-        if rtm_mode in ["ALL", "MODEL_4"] and grade in ["A+", "A"] and not setup["m4_filled"]:
+        if rtm_mode in ["ALL", "MODEL_4", "PULLBACK_DUO"] and grade in ["A+", "A"] and not setup["m4_filled"]:
             all_done = False
         if rtm_mode in ["ALL", "MODEL_5"] and grade in ["A+", "A", "B"] and not setup["m5_filled"]:
             all_done = False
-        if rtm_mode in ["ALL", "MODEL_6"] and grade in ["A+", "A"] and not setup["m6_filled"]:
+        if rtm_mode in ["ALL", "MODEL_6", "PULLBACK_DUO"] and grade in ["A+", "A"] and not setup["m6_filled"]:
             all_done = False
         if rtm_mode in ["ALL", "MODEL_7"] and grade in ["A+", "A"] and not setup["m7_filled"]:
             all_done = False
@@ -1170,8 +1174,9 @@ class GoldScalpingBot:
                 sl_buffer = 0.50 * sl_mult
                 sl = lowest_low - sl_buffer
                 sl_dist = ask - sl
-            if sl_dist < 3.50: sl = ask - 3.50; sl_dist = 3.50
-            if sl_dist > 8.50: sl = ask - 8.50; sl_dist = 8.50
+            # EarthETC Structural SL: respect true Swing Head extreme + buffer without artificial 8.50 clamp
+            if sl_dist < 2.50: sl = ask - 2.50; sl_dist = 2.50
+            if sl_dist > 18.00: sl = ask - 18.00; sl_dist = 18.00
             target_rr = opt.get("tp_ratio", 2.0)
             if custom_tp and custom_tp > ask:
                 tp2 = float(custom_tp)
@@ -1191,11 +1196,11 @@ class GoldScalpingBot:
             lot_mult = 0.5  # Fixed 0.5% risk per user instruction
             risk_label = "0.5% Risk"
         else:
-            risk_label = "1.0% Risk"
+            risk_label = "Step-Up 3% Risk" if self.config.get("strategy", {}).get("enable_step_up_compounding", True) else f"{self.config.get('strategy', {}).get('risk_percent', 3.0)}% Risk"
 
         total_lot = self.calculate_lot_size(sl_dist, lot_mult=lot_mult)
 
-        # Single Position Plan across Setups (News=0.5%, Others=1.0%)
+        # Single Position Plan across Setups
         res1 = self.connector.open_order(symbol, "BUY", total_lot, sl, tp2, magic_p1, f"Gold_{strat_id[:8]}")
         t1 = res1.get("ticket", 0) if isinstance(res1, dict) else 0
         self.benchmark_tracker.register_trade(t1, 0, symbol, "BUY", ask, sl, total_lot, strat_id)
@@ -1245,8 +1250,9 @@ class GoldScalpingBot:
                 sl_buffer = 0.50 * sl_mult
                 sl = highest_high + sl_buffer
                 sl_dist = sl - bid
-            if sl_dist < 3.50: sl = bid + 3.50; sl_dist = 3.50
-            if sl_dist > 8.50: sl = bid + 8.50; sl_dist = 8.50
+            # EarthETC Structural SL: respect true Swing Head extreme + buffer without arbitrary 8.50 clamp
+            if sl_dist < 2.50: sl = bid + 2.50; sl_dist = 2.50
+            if sl_dist > 18.00: sl = bid + 18.00; sl_dist = 18.00
             target_rr = opt.get("tp_ratio", 2.0)
             if custom_tp and custom_tp < bid:
                 tp2 = float(custom_tp)
@@ -1279,15 +1285,38 @@ class GoldScalpingBot:
             self.notifier.notify_order_opened("SELL", symbol, total_lot, bid, sl, tp2, reason)
 
     def calculate_lot_size(self, sl_dist: float, lot_mult: float = 1.0) -> float:
-        risk_pct = self.config.get("strategy", {}).get("risk_percent", 1.0)
+        strat_cfg = self.config.get("strategy", {})
+        risk_pct = float(strat_cfg.get("risk_percent", 3.0))
+        use_step_up = strat_cfg.get("enable_step_up_compounding", True)
+
         acc = self.connector.get_account_info()
-        balance = acc.get("balance", 10000.0)
-        risk_money = balance * (risk_pct / 100.0)
+        balance = float(acc.get("balance", 10000.0))
+        equity = float(acc.get("equity", balance))
+
+        if use_step_up:
+            # Step-Up Compounding Tiers (Milestone-based risk scaling with Step-down protection)
+            eval_equity = max(balance, equity)
+            if eval_equity >= 45000.0:
+                tier_base = 45000.0
+            elif eval_equity >= 30000.0:
+                tier_base = 30000.0
+            elif eval_equity >= 20000.0:
+                tier_base = 20000.0
+            elif eval_equity >= 15000.0:
+                tier_base = 15000.0
+            elif eval_equity >= 10000.0:
+                tier_base = 10000.0
+            else:
+                # Proportional scaling for sub-10k or micro accounts
+                tier_base = max(1000.0, balance)
+            risk_money = tier_base * (risk_pct / 100.0)
+        else:
+            risk_money = balance * (risk_pct / 100.0)
 
         lot = (risk_money / (sl_dist * 100.0 + 1e-9)) * lot_mult
 
-        # Dynamic Lot Reduction (Only if enabled in config, default false for Option A)
-        dynamic_reduction = self.config.get("strategy", {}).get("dynamic_lot_reduction", False)
+        # Dynamic Lot Reduction (Only if enabled in config, default false)
+        dynamic_reduction = strat_cfg.get("dynamic_lot_reduction", False)
         if dynamic_reduction:
             if self.consecutive_losses == 1: lot *= 0.50
             elif self.consecutive_losses >= 2: lot *= 0.25
