@@ -347,5 +347,26 @@ class TestRTMEngine(unittest.TestCase):
         sl_placed = call_args[3]
         self.assertEqual(sl_placed, 2688.50)
 
+    def test_news_momentum_earthetc_structural_sl_no_choke(self):
+        """Test that News Momentum Expansion uses EarthETC Structural SL without arbitrary 7.00 choke."""
+        self.mock_connector.get_market_info.return_value = {"ask": 2700.0, "bid": 2699.8, "spread": 20.0}
+        self.mock_connector.get_account_info.return_value = {"balance": 10000.0, "equity": 10000.0}
+        self.mock_connector.open_order.return_value = {"ticket": 9999}
+        
+        # Create df where lowest low in last 10 candles is 2690.0 (10.0 USD away)
+        lows = [2695.0]*10 + [2690.0] + [2698.0]*9
+        highs = [2702.0]*20
+        closes = [2700.0]*20
+        df = pd.DataFrame({'close': closes, 'low': lows, 'high': highs})
+        
+        self.bot.execute_buy(df, "XAUUSDc", "News Spike Breakout", strat_id="NEWS_MOMENTUM_EXPANSION")
+        
+        # Verify open_order was called with wide structural SL (NOT choked at 2700 - 7.00 = 2693.0)
+        call_args = self.mock_connector.open_order.call_args[0]
+        sl_placed = call_args[3]
+        self.assertLess(sl_placed, 2692.0)  # Must be below the 7.00 choke line
+        self.assertGreaterEqual(sl_placed, 2682.0)  # Must be above the 18.00 max ceiling
+
 if __name__ == "__main__":
     unittest.main()
+

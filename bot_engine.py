@@ -1183,13 +1183,24 @@ class GoldScalpingBot:
             else:
                 tp2 = ask + (sl_dist * target_rr)
         else:
-            # News Momentum Expansion / Default
-            lowest_low = df['low'].iloc[-10:-1].min()
-            sl_buffer = 0.50 * sl_mult
+            # News Momentum Expansion / Default (EarthETC Structural SL)
+            if len(df) >= 15:
+                hl = df['high'] - df['low']
+                hc = (df['high'] - df['close'].shift()).abs()
+                lc = (df['low'] - df['close'].shift()).abs()
+                tr = pd.concat([hl, hc, lc], axis=1).max(axis=1)
+                curr_atr = float(tr.rolling(window=14).mean().iloc[-2])
+                if math.isnan(curr_atr) or curr_atr <= 0:
+                    curr_atr = 2.50
+            else:
+                curr_atr = 2.50
+
+            lowest_low = float(df['low'].iloc[-10:-1].min())
+            sl_buffer = max(0.4 * curr_atr, 1.50) * sl_mult
             sl = lowest_low - sl_buffer
             sl_dist = ask - sl
             if sl_dist < 3.50: sl = ask - 3.50; sl_dist = 3.50
-            if sl_dist > 7.00: sl = ask - 7.00; sl_dist = 7.00
+            if sl_dist > 18.00: sl = ask - 18.00; sl_dist = 18.00  # EarthETC: wide structural room, no arbitrary 7.00 choke
             tp2 = ask + (sl_dist * 1.8)
 
         if strat_id == "NEWS_MOMENTUM_EXPANSION":
@@ -1259,20 +1270,31 @@ class GoldScalpingBot:
             else:
                 tp2 = bid - (sl_dist * target_rr)
         else:
-            # News Momentum Expansion / Default
-            highest_high = df['high'].iloc[-10:-1].max()
-            sl_buffer = 0.50 * sl_mult
+            # News Momentum Expansion / Default (EarthETC Structural SL)
+            if len(df) >= 15:
+                hl = df['high'] - df['low']
+                hc = (df['high'] - df['close'].shift()).abs()
+                lc = (df['low'] - df['close'].shift()).abs()
+                tr = pd.concat([hl, hc, lc], axis=1).max(axis=1)
+                curr_atr = float(tr.rolling(window=14).mean().iloc[-2])
+                if math.isnan(curr_atr) or curr_atr <= 0:
+                    curr_atr = 2.50
+            else:
+                curr_atr = 2.50
+
+            highest_high = float(df['high'].iloc[-10:-1].max())
+            sl_buffer = max(0.4 * curr_atr, 1.50) * sl_mult
             sl = highest_high + sl_buffer
             sl_dist = sl - bid
             if sl_dist < 3.50: sl = bid + 3.50; sl_dist = 3.50
-            if sl_dist > 7.00: sl = bid + 7.00; sl_dist = 7.00
+            if sl_dist > 18.00: sl = bid + 18.00; sl_dist = 18.00  # EarthETC: wide structural room, no arbitrary 7.00 choke
             tp2 = bid - (sl_dist * 1.8)
 
         if strat_id == "NEWS_MOMENTUM_EXPANSION":
             lot_mult = 0.5  # Fixed 0.5% risk per user instruction
             risk_label = "0.5% Risk"
         else:
-            risk_label = "1.0% Risk"
+            risk_label = "Step-Up 3% Risk" if self.config.get("strategy", {}).get("enable_step_up_compounding", True) else f"{self.config.get('strategy', {}).get('risk_percent', 3.0)}% Risk"
 
         total_lot = self.calculate_lot_size(sl_dist, lot_mult=lot_mult)
 
