@@ -343,8 +343,14 @@ class GoldScalpingBot:
                 if b_sig or s_sig:
                     self._process_single_setup_signal(df, symbol, spread, "NEWS_MOMENTUM_EXPANSION", "BUY" if b_sig else "SELL", reason)
 
-        # --- PILLAR 2: Asian Range Mean-Reversion Sniper (Morning Asian Session 07:00-14:00) ---
-        if session == "ASIAN SESSION" or strat_mode == "ASIAN_RANGE_SNIPER":
+        # --- PILLAR 2: All-Weather Sideway Range Sniper (Mean-Reversion Across All Sessions) ---
+        is_sideway_regime = (
+            session == "ASIAN SESSION" or
+            (getattr(self.optimizer, "last_regime", "") in ["RANGING_SIDEWAY", "RANGING_CHOPPY"]) or
+            (self.latest_trend in ["SIDEWAY", "ASIAN RANGE (MEAN REVERSION)"]) or
+            (abs(float(b1.get('ema50', 0)) - float(b1.get('ema150', 0))) <= max(1.5 * float(b1.get('atr', 2.5)), 4.00))
+        )
+        if (is_sideway_regime or strat_mode == "ASIAN_RANGE_SNIPER") and strat_mode in ["ALL", "ASIAN_RANGE_SNIPER"]:
             if not self.has_open_positions_for_setup(symbol, "ASIAN_RANGE_SNIPER"):
                 b_sig, s_sig, reason = self._check_asian_range_sniper(df)
                 if b_sig or s_sig:
@@ -526,30 +532,49 @@ class GoldScalpingBot:
 
         b1 = df.iloc[-2]
         b2 = df.iloc[-3]
-        lookback = df.iloc[-17:-2]
-        asian_high = lookback['high'].max()
-        asian_low = lookback['low'].min()
+        lookback = df.iloc[-19:-2]
+        range_high = lookback['high'].max()
+        range_low = lookback['low'].min()
 
         candle_range = b1['high'] - b1['low']
         if candle_range <= 0.20:
             return False, False, ""
 
+        atr = float(b1.get('atr', 2.50)) if 'atr' in df else 2.50
+        
+        # Filter 1: Block during massive breakout spike candles
+        if candle_range > (2.5 * atr):
+            return False, False, ""
+
+        # Filter 2: Bollinger Band expansion blowout check
+        bb_width = float(b1['bb_upper']) - float(b1['bb_lower'])
+        if bb_width > (4.0 * atr):
+            return False, False, ""
+
+        # Trend Filter: EMA50 vs EMA150 directional alignment
+        ema50 = float(b1.get('ema50', b1['close']))
+        ema150 = float(b1.get('ema150', b1['close']))
+        is_strong_uptrend = ema50 > (ema150 + 1.2 * atr)
+        is_strong_downtrend = ema50 < (ema150 - 1.2 * atr)
+
         upper_wick = b1['high'] - max(b1['open'], b1['close'])
         lower_wick = min(b1['open'], b1['close']) - b1['low']
 
-        # Bullish: Lower band touched or Pina Colada Coming Back Bullish
-        touched_lower = (b1['low'] <= b1['bb_lower'] or b1['low'] <= (asian_low + 0.30) or pina.get("coming_back_bull"))
-        closed_inside_lower = b1['close'] > b1['bb_lower'] or pina.get("coming_back_bull")
-        if touched_lower and closed_inside_lower and b1['close'] > b1['open'] and (lower_wick / candle_range) >= 0.35:
-            if b1['rsi7'] <= 38 and b1['rsi7'] > b2['rsi7']:
-                return True, False, "⛩️ Asian Range Sniper: Pina Colada Coming Back Rebound (85% WR)"
+        # Bullish Rebound (At Range Low / BB Lower) - Blocked if market is in strong downtrend
+        if not is_strong_downtrend:
+            touched_lower = (b1['low'] <= b1['bb_lower'] or b1['low'] <= (range_low + 0.30) or pina.get("coming_back_bull"))
+            closed_inside_lower = b1['close'] > b1['bb_lower'] or pina.get("coming_back_bull")
+            if touched_lower and closed_inside_lower and b1['close'] > b1['open'] and (lower_wick / candle_range) >= 0.35:
+                if b1['rsi7'] <= 38 and b1['rsi7'] > b2['rsi7']:
+                    return True, False, "⛩️ Sideway Range Sniper: Support Rebound + Trend Filter (0.5% Risk)"
 
-        # Bearish: Upper band touched or Pina Colada Coming Back Bearish
-        touched_upper = (b1['high'] >= b1['bb_upper'] or b1['high'] >= (asian_high - 0.30) or pina.get("coming_back_bear"))
-        closed_inside_upper = b1['close'] < b1['bb_upper'] or pina.get("coming_back_bear")
-        if touched_upper and closed_inside_upper and b1['close'] < b1['open'] and (upper_wick / candle_range) >= 0.35:
-            if b1['rsi7'] >= 62 and b1['rsi7'] < b2['rsi7']:
-                return False, True, "⛩️ Asian Range Sniper: Pina Colada Coming Back Rebound (85% WR)"
+        # Bearish Rebound (At Range High / BB Upper) - Blocked if market is in strong uptrend
+        if not is_strong_uptrend:
+            touched_upper = (b1['high'] >= b1['bb_upper'] or b1['high'] >= (range_high - 0.30) or pina.get("coming_back_bear"))
+            closed_inside_upper = b1['close'] < b1['bb_upper'] or pina.get("coming_back_bear")
+            if touched_upper and closed_inside_upper and b1['close'] < b1['open'] and (upper_wick / candle_range) >= 0.35:
+                if b1['rsi7'] >= 62 and b1['rsi7'] < b2['rsi7']:
+                    return False, True, "⛩️ Sideway Range Sniper: Resistance Rebound + Trend Filter (0.5% Risk)"
 
         return False, False, ""
 
@@ -1205,7 +1230,7 @@ class GoldScalpingBot:
 
         if strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH"]:
             risk_label = "Step-Up 3% Risk" if self.config.get("strategy", {}).get("enable_step_up_compounding", True) else "3.0% Risk"
-        elif strat_id == "NEWS_MOMENTUM_EXPANSION":
+        elif strat_id in ["NEWS_MOMENTUM_EXPANSION", "ASIAN_RANGE_SNIPER"]:
             lot_mult = 0.5  # Fixed 0.5% risk per user instruction
             risk_label = "0.5% Risk"
         else:
@@ -1294,7 +1319,7 @@ class GoldScalpingBot:
 
         if strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH"]:
             risk_label = "Step-Up 3% Risk" if self.config.get("strategy", {}).get("enable_step_up_compounding", True) else "3.0% Risk"
-        elif strat_id == "NEWS_MOMENTUM_EXPANSION":
+        elif strat_id in ["NEWS_MOMENTUM_EXPANSION", "ASIAN_RANGE_SNIPER"]:
             lot_mult = 0.5  # Fixed 0.5% risk per user instruction
             risk_label = "0.5% Risk"
         else:
@@ -1337,19 +1362,19 @@ class GoldScalpingBot:
                 risk_money = tier_base * (risk_pct / 100.0)
             else:
                 risk_money = balance * (risk_pct / 100.0)
-        elif strat_id == "NEWS_MOMENTUM_EXPANSION":
+        elif strat_id in ["NEWS_MOMENTUM_EXPANSION", "ASIAN_RANGE_SNIPER"]:
             risk_pct = 0.5  # Fixed 0.5% risk
             risk_money = balance * (risk_pct / 100.0)
         else:
-            # ALL OTHER SETUPS (Asian Range Sniper, SMCxSTO H1, M5, M7, etc.) STRICTLY 1.0% RISK
+            # ALL OTHER SETUPS (SMCxSTO H1, M5, M7, etc.) STRICTLY 1.0% RISK
             risk_pct = 1.0
             risk_money = balance * (risk_pct / 100.0)
 
         lot = (risk_money / (sl_dist * 100.0 + 1e-9)) * lot_mult
 
-        # Additional safety cap for Asian Range Scalp (max 0.35 lot on 10k account)
+        # Additional safety cap for Asian Range Scalp (max 0.20 lot on 10k account)
         if strat_id == "ASIAN_RANGE_SNIPER":
-            lot = min(lot, 0.35)
+            lot = min(lot, 0.20)
 
         # Dynamic Lot Reduction (Only if enabled in config, default false)
         dynamic_reduction = strat_cfg.get("dynamic_lot_reduction", False)
