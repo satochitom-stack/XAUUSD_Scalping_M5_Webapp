@@ -100,7 +100,7 @@
         "strategy_mode": "ALL",
         "rtm_mode": "PULLBACK_DUO",
         "pullback_dr_ekk_enabled": true,
-        "max_concurrent_setups": 5
+        "max_concurrent_setups": 4
       }
     }
   ],
@@ -158,7 +158,7 @@
     "strategy_mode": "ALL",
     "rtm_mode": "PULLBACK_DUO",
     "pullback_dr_ekk_enabled": true,
-    "max_concurrent_setups": 5
+    "max_concurrent_setups": 4
   },
   "server": {
     "host": "0.0.0.0",

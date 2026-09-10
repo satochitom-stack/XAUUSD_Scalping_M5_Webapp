@@ -166,7 +166,6 @@ class TestRTMEngine(unittest.TestCase):
         self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "SMC_X_STO_H1"))
         self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "RTM_M4_CONSERVATIVE"))
         self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "RTM_M6_ELITE_GROWTH"))
-        self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "NEWS_MOMENTUM_EXPANSION"))
 
     def test_execute_sell_single_order(self):
         """Test that execute_sell places exactly 1 order per call, avoiding duplicate orders."""
@@ -179,7 +178,7 @@ class TestRTMEngine(unittest.TestCase):
         self.assertEqual(self.mock_connector.open_order.call_count, 1)
 
     def test_max_concurrent_setups_allows_all_models(self):
-        """Test that max_concurrent_setups defaults to 5 and permits concurrent positions."""
+        """Test that max_concurrent_setups permits concurrent positions across active models."""
         self.mock_connector.get_market_info.return_value = {"ask": 2700.0, "bid": 2699.8, "spread": 20.0}
         self.mock_connector.get_account_info.return_value = {"balance": 10000.0, "equity": 10000.0, "margin_level": 500.0}
         
@@ -192,7 +191,6 @@ class TestRTMEngine(unittest.TestCase):
         
         # Verify other setups are NOT blocked by has_open_positions_for_setup
         self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "RTM_M6_ELITE_GROWTH"))
-        self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "NEWS_MOMENTUM_EXPANSION"))
 
     def test_rtm_trailing_stop_dual_style(self):
         """Test trailing stop: M4/M6 locks +0.8R at 1.5R."""
@@ -211,22 +209,11 @@ class TestRTMEngine(unittest.TestCase):
         # modify_position should be called with target_sl = 2708.0
         self.mock_connector.modify_position.assert_called_with(401, 2708.0, 2720.0)
 
-    def test_news_momentum_trailing_lock_1_4r(self):
-        """Test News Momentum locks +0.8R profit when reaching >= 1.4R."""
-        self.mock_connector.get_market_info.return_value = {"bid": 2714.5, "ask": 2714.7}
-        news_magic = STRATEGY_MAGIC_MAP["NEWS_MOMENTUM_EXPANSION"]["pos1"]
-        self.mock_connector.get_open_positions.return_value = [
-            {"ticket": 801, "magic": news_magic, "symbol": "XAUUSDc", "type": "BUY", "price_open": 2700.0, "sl": 2700.3, "tp": 2718.0}
-        ]
-        self.bot.initial_risk_map[801] = 10.0
-        self.bot.manage_open_positions("XAUUSDc")
-        # Target SL should be open + 0.8 * 10 = 2708.0
-        self.mock_connector.modify_position.assert_called_with(801, 2708.0, 2718.0)
-
-    def test_asian_sniper_retired_from_active_magics(self):
-        """Test Asian Range Sniper is retired and not present in STRATEGY_MAGIC_MAP."""
+    def test_retired_setups_not_in_active_magics(self):
+        """Test Asian Range Sniper and News Momentum are retired and not present in STRATEGY_MAGIC_MAP."""
         self.assertNotIn("ASIAN_RANGE_SNIPER", STRATEGY_MAGIC_MAP)
-        self.assertEqual(len(STRATEGY_MAGIC_MAP), 5)
+        self.assertNotIn("NEWS_MOMENTUM_EXPANSION", STRATEGY_MAGIC_MAP)
+        self.assertEqual(len(STRATEGY_MAGIC_MAP), 4)
 
     def test_smc_devil_trailing_lock(self):
         """Test SMC x STO Devil locks +0.8R at 1.4R and +1.2R at 1.8R."""
@@ -327,26 +314,6 @@ class TestRTMEngine(unittest.TestCase):
         call_args = self.mock_connector.open_order.call_args[0]
         sl_placed = call_args[3]
         self.assertEqual(sl_placed, 2688.50)
-
-    def test_news_momentum_earthetc_structural_sl_no_choke(self):
-        """Test that News Momentum Expansion uses EarthETC Structural SL without arbitrary 7.00 choke."""
-        self.mock_connector.get_market_info.return_value = {"ask": 2700.0, "bid": 2699.8, "spread": 20.0}
-        self.mock_connector.get_account_info.return_value = {"balance": 10000.0, "equity": 10000.0}
-        self.mock_connector.open_order.return_value = {"ticket": 9999}
-        
-        # Create df where lowest low in last 10 candles is 2690.0 (10.0 USD away)
-        lows = [2695.0]*10 + [2690.0] + [2698.0]*9
-        highs = [2702.0]*20
-        closes = [2700.0]*20
-        df = pd.DataFrame({'close': closes, 'low': lows, 'high': highs})
-        
-        self.bot.execute_buy(df, "XAUUSDc", "News Spike Breakout", strat_id="NEWS_MOMENTUM_EXPANSION")
-        
-        # Verify open_order was called with wide structural SL (NOT choked at 2700 - 7.00 = 2693.0)
-        call_args = self.mock_connector.open_order.call_args[0]
-        sl_placed = call_args[3]
-        self.assertLess(sl_placed, 2692.0)  # Must be below the 7.00 choke line
-        self.assertGreaterEqual(sl_placed, 2682.0)  # Must be above the 18.00 max ceiling
 
 if __name__ == "__main__":
     unittest.main()

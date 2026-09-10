@@ -22,8 +22,7 @@ DEFAULT_STRATEGIES = [
     "PULLBACK_DR_EKK",
     "RTM_M4_CONSERVATIVE",
     "RTM_M6_ELITE_GROWTH",
-    "SMC_X_STO_H1",
-    "NEWS_MOMENTUM_EXPANSION"
+    "SMC_X_STO_H1"
 ]
 
 SETUP_PROFILES = {
@@ -43,28 +42,28 @@ SETUP_PROFILES = {
     "RTM_M6_ELITE_GROWTH": {
         "id": "RTM_M6_ELITE_GROWTH",
         "name": "RTM Quasimodo M6 (Elite Growth)",
-        "icon": "👑",
-        "win_prob": 80.0,
+        "icon": "🚀",
+        "win_prob": 75.0,
         "base_rr": 3.00,
         "min_rr": 2.00,
         "max_rr": 4.50,
         "trailing_type": "CONFLUENCE_STAGE",
         "trail_points": 250.0,
         "trail_step_points": 40.0,
-        "description": "RTM Elite Confluence (Grade A=1.0%, A+=2.0% | 3.0R TP | Return +180.9%)"
+        "description": "RTM Quasimodo Trend Continuation + Step-Up Recovery 2.0% Risk (Grade A+)"
     },
     "PULLBACK_DR_EKK": {
         "id": "PULLBACK_DR_EKK",
         "name": "Signature Pullback (#PullBack ร้อยล้าน)",
         "icon": "🎯",
-        "win_prob": 70.0,
+        "win_prob": 85.0,
         "base_rr": 2.50,
-        "min_rr": 1.50,
-        "max_rr": 4.50,
-        "trailing_type": "EMA_TRAIL",
-        "trail_points": 250.0,
-        "trail_step_points": 40.0,
-        "description": "Signature Pullback #PullBack ร้อยล้าน (EMA 60 + Fib 38.2-61.8% + S/R Flip + Runner)"
+        "min_rr": 2.00,
+        "max_rr": 5.00,
+        "trailing_type": "CONFLUENCE_STAGE",
+        "trail_points": 200.0,
+        "trail_step_points": 30.0,
+        "description": "EMA 50 Pullback + Engulfing/Pinbar Trigger + Step-Up Recovery 2.0% Risk"
     },
     "RETIRED_SETUPS": {
         "id": "RETIRED_SETUPS",
@@ -77,11 +76,11 @@ SETUP_PROFILES = {
         "trailing_type": "CONFLUENCE_STAGE",
         "trail_points": 250.0,
         "trail_step_points": 40.0,
-        "description": "รวมประวัติเซตอัพเดิมที่เลิกใช้งานแล้ว (Asian Range Sniper, RTM M5, RTM M7, Captain SMC ฯลฯ)"
+        "description": "รวมประวัติเซตอัพเดิมที่เลิกใช้งานแล้ว (News Momentum, Asian Range Sniper, RTM M5, RTM M7, Captain SMC ฯลฯ)"
     },
     "SMC_X_STO_H1": {
         "id": "SMC_X_STO_H1",
-        "name": "SMCxSTO ระบบปีศาจ (H1 Devil System)",
+        "name": "SMC x STO H1 Devil System",
         "icon": "😈",
         "win_prob": 78.0,
         "base_rr": 2.00,
@@ -91,19 +90,6 @@ SETUP_PROFILES = {
         "trail_points": 280.0,
         "trail_step_points": 40.0,
         "description": "Trend EMA 50/200 + Discount/Premium ATR + Single OB + Stoch 14,3,3"
-    },
-    "NEWS_MOMENTUM_EXPANSION": {
-        "id": "NEWS_MOMENTUM_EXPANSION",
-        "name": "High-Impact News Momentum Breakout",
-        "icon": "⚡",
-        "win_prob": 76.0,
-        "base_rr": 2.50,
-        "min_rr": 2.00,
-        "max_rr": 4.50,
-        "trailing_type": "WIDE_ATR",
-        "trail_points": 400.0,
-        "trail_step_points": 50.0,
-        "description": "Explosive breakout during US High-Impact economic news with wide ATR SL buffer & 3R-4R targets (Risk 0.5%)"
     },
     "ALL_CONFLUENCE": {
         "id": "ALL_CONFLUENCE",
@@ -227,7 +213,7 @@ class RealTimeStrategyOptimizer:
             label = news_info.get("label", "⚡ HIGH IMPACT NEWS SPIKE")
             trend_direction = "BULLISH" if b1_close > b1_e50 else "BEARISH"
             is_choppy = False
-            recommended = ["NEWS_MOMENTUM_EXPANSION", "BB_SQUEEZE"]
+            recommended = ["SMC_X_STO_H1"]
         elif is_choppy:
             regime = "RANGING_CHOPPY"
             label = "⚠️ Choppy / Consolidation Noise"
@@ -237,7 +223,7 @@ class RealTimeStrategyOptimizer:
             regime = "HIGH_VOLATILITY"
             label = "⚡ High Volatility / Expansion"
             trend_direction = "BULLISH" if b1_close > b1_e50 else "BEARISH"
-            recommended = ["NEWS_MOMENTUM_EXPANSION", "SMC_X_STO_H1"]
+            recommended = ["PULLBACK_DR_EKK", "SMC_X_STO_H1"]
         elif bullish_alignment and fast_slope > 25.0:
             regime = "STRONG_BULLISH_TREND"
             label = "🟢 Strong Bullish Trend"
@@ -288,8 +274,6 @@ class RealTimeStrategyOptimizer:
         if news_info.get("is_news_active"):
             if strategy_key in news_info.get("blocked_strategies", []):
                 return 0.0 # Completely block unsafe strategy
-            if strategy_key == "NEWS_MOMENTUM_EXPANSION":
-                return 1.40 # Max confidence for news breakout setup
 
         # Streak multiplier
         streak = stat.get("streak", 0)
@@ -366,14 +350,14 @@ class RealTimeStrategyOptimizer:
 
         # 2. Dynamic ATR Stop Loss Adjustment
         atr_sl_buffer = max(1.50, curr_atr * 0.70)
-        if strategy_key == "NEWS_MOMENTUM_EXPANSION" or regime_info.get("regime") == "NEWS_IMPACT_SPIKE":
+        if regime_info.get("regime") == "NEWS_IMPACT_SPIKE":
             atr_sl_buffer = max(3.00, curr_atr * 1.50) # Expand SL to give wide breathing room during news
         adjusted_sl = max(base_sl_points, atr_sl_buffer * 100.0)
 
         # 3. Dynamic R:R (Risk:Reward) Calculation based on Setup Profile + Real-Time Market Regime & Streak
         regime = regime_info.get("regime", "")
-        if regime == "NEWS_IMPACT_SPIKE" or strategy_key == "NEWS_MOMENTUM_EXPANSION":
-            regime_rr_mult = 1.40 # In news momentum, target big 2.5R-4.0R expansion
+        if regime == "NEWS_IMPACT_SPIKE":
+            regime_rr_mult = 1.40 # In news spike, target big 2.5R-4.0R expansion
             trail_points = 400.0
         elif "STRONG" in regime and "TREND" in regime:
             regime_rr_mult = 1.25 # In strong trends, expand TP target by +25%
@@ -403,10 +387,7 @@ class RealTimeStrategyOptimizer:
 
         # 4. Lot sizing multiplier based on strategy weight & Hourly Heatmap
         hour_mult, hour_desc = self.hourly_engine.get_hour_multiplier(datetime.now().hour)
-        if strategy_key == "NEWS_MOMENTUM_EXPANSION":
-            lot_multiplier = 0.50  # Risk capped at 0.5% per user instruction
-        else:
-            lot_multiplier = max(0.5, min(round(weight * hour_mult, 2), 1.75))
+        lot_multiplier = max(0.5, min(round(weight * hour_mult, 2), 1.75))
 
         return {
             "lot_multiplier": lot_multiplier,
@@ -431,8 +412,6 @@ class RealTimeStrategyOptimizer:
             atr_sl_multiplier = 1.25
         if streak <= -2:
             atr_sl_multiplier = 1.50
-        if strategy_key == "NEWS_MOMENTUM_EXPANSION":
-            atr_sl_multiplier = max(atr_sl_multiplier, 1.80)
 
         strictness = "NORMAL"
         if streak <= -3:
@@ -444,7 +423,7 @@ class RealTimeStrategyOptimizer:
         exec_dict["atr_sl_multiplier"] = atr_sl_multiplier
         exec_dict["strictness_level"] = strictness
         
-        if strictness == "ULTRA_STRICT" and strategy_key != "NEWS_MOMENTUM_EXPANSION":
+        if strictness == "ULTRA_STRICT":
             exec_dict["should_execute"] = False
             exec_dict["reason"] = f"AI Loss Cooldown ({strategy_key}): {streak} Consecutive Losses"
 
@@ -614,8 +593,7 @@ class RealTimeStrategyOptimizer:
             elif "rtm_m4" in comment or "m4_cons" in comment: strat = "RTM_M4_CONSERVATIVE"
             elif "rtm_m6" in comment or "m6_elite" in comment: strat = "RTM_M6_ELITE_GROWTH"
             elif "sto" in comment or "devil" in comment or "smcxsto" in comment: strat = "SMC_X_STO_H1"
-            elif "news" in comment or "momentum" in comment: strat = "NEWS_MOMENTUM_EXPANSION"
-            elif "asian" in comment or "rtm_m5" in comment or "m5_allw" in comment or "rtm_m7" in comment or "m7_alpha" in comment: strat = "RETIRED_SETUPS"
+            elif "news" in comment or "momentum" in comment or "asian" in comment or "rtm_m5" in comment or "m5_allw" in comment or "rtm_m7" in comment or "m7_alpha" in comment: strat = "RETIRED_SETUPS"
 
             self.record_trade_outcome(strat, profit, 0.0, comment, ticket=deal.get("ticket"))
 

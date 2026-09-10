@@ -68,17 +68,6 @@ class RealTradeAnalyticsManager:
             "avg_rr": "1:2.0",
             "description": "ระบบ SMCxSTO กฎข้อเดียว: เทรนด์ EMA 50/200 + โซน Discount/Premium (ATR) + Order Block + Stochastic Oversold/Overbought"
         },
-        "NEWS_MOMENTUM_EXPANSION": {
-            "id": "NEWS_MOMENTUM_EXPANSION",
-            "name": "News Momentum Expansion",
-            "icon": "⚡",
-            "category": "NEWS_TRADING",
-            "timeframe": "M5",
-            "best_session": "High-Impact News Events (USD)",
-            "magic_numbers": [555890, 555891, 555892, 555893, 666888, 666889, 666890],
-            "avg_rr": "1:1.8",
-            "description": "ดักจับแท่งเทียน Breakout ความผันผวนสูงช่วงข่าวใหญ่ (CPI, NFP, FOMC) พร้อม Trailing Stop กว้าง (ความเสี่ยง 0.5%)"
-        },
         "RETIRED_SETUPS": {
             "id": "RETIRED_SETUPS",
             "name": "เซตอัพที่เลิกใช้",
@@ -86,9 +75,9 @@ class RealTradeAnalyticsManager:
             "category": "ARCHIVED",
             "timeframe": "Multi-TF",
             "best_session": "ประวัติเดิม (Archived)",
-            "magic_numbers": [777005, 777015, 777025, 777035, 777007, 777017, 777027, 777037, 555820, 555821, 555822, 555823],
+            "magic_numbers": [777005, 777015, 777025, 777035, 777007, 777017, 777027, 777037, 555820, 555821, 555822, 555823, 555890, 555891, 555892, 555893, 666888, 666889, 666890],
             "avg_rr": "N/A",
-            "description": "รวมประวัติและสถิติการเทรดของเซตอัพที่เลิกใช้งานแล้ว (Asian Range Sniper, RTM M5 All-Weather, RTM M7 Max Alpha, Captain SMC, TKT SMC, Flash Scalper ฯลฯ)"
+            "description": "รวมประวัติและสถิติการเทรดของเซตอัพที่เลิกใช้งานแล้ว (News Momentum Expansion, Asian Range Sniper, RTM M5 All-Weather, RTM M7 Max Alpha, Captain SMC, TKT SMC, Flash Scalper ฯลฯ)"
         }
     }
 
@@ -231,12 +220,11 @@ class RealTradeAnalyticsManager:
                     positions[pid]["out"].append(d)
 
             strategy_name_map = {
-                # 🟢 5 เสาหลัก (Active Models) + เซตอัพที่เลิกใช้
+                # 🟢 4 เสาหลัก (Active Models) + เซตอัพที่เลิกใช้
                 "PULLBACK_DR_EKK": "Signature Pullback (#PullBack ร้อยล้าน)",
                 "RTM_M4_CONSERVATIVE": "RTM Quasimodo M4 (Conservative)",
                 "RTM_M6_ELITE_GROWTH": "RTM Quasimodo M6 (Elite Growth)",
                 "SMC_X_STO_H1": "SMC x STO Devil (H1 Devil System)",
-                "NEWS_MOMENTUM_EXPANSION": "News Momentum Expansion (Spikes)",
                 "RETIRED_SETUPS": "เซตอัพที่เลิกใช้"
             }
 
@@ -479,11 +467,7 @@ class RealTradeAnalyticsManager:
         if "sto" in comment or "devil" in comment or "smcxsto" in comment or (555770 <= magic <= 555773):
             return "SMC_X_STO_H1"
 
-        # 4. Active: High-Impact News Momentum Expansion (News Spike)
-        if "news" in comment or "goldm5_pro" in comment or (555889 <= magic <= 555893) or magic in [666888, 666889, 666890]:
-            return "NEWS_MOMENTUM_EXPANSION"
-
-        # 5. Decommissioned / Retired Setups (Asian Range Sniper, RTM M5, RTM M7, Captain SMC, etc.)
+        # 4. Decommissioned / Retired Setups (News Momentum, Asian Range Sniper, RTM M5, RTM M7, Captain SMC, etc.)
         return "RETIRED_SETUPS"
 
     def get_real_stats_summary(self) -> dict:
@@ -568,7 +552,7 @@ class RealTradeAnalyticsManager:
                 st["status"] = f"บอทเทรดแล้ว ({st['total_trades']} ไม้)"
 
                 # Realized RR and Exit Stages Breakdown
-                target_rr = 2.5 if k == "PULLBACK_DR_EKK" else (2.0 if ("RTM_" in k or k == "SMC_X_STO_H1") else (1.8 if k == "NEWS_MOMENTUM_EXPANSION" else 2.0))
+                target_rr = 2.5 if k == "PULLBACK_DR_EKK" else (2.0 if ("RTM_" in k or k == "SMC_X_STO_H1") else 2.0)
                 risk_per_lot = 850.0 if ("RTM_" in k or k == "PULLBACK_DR_EKK") else (900.0 if k == "SMC_X_STO_H1" else 700.0)
                 
                 stages = {
@@ -638,7 +622,7 @@ class RealTradeAnalyticsManager:
                 st["winrate_pct"] = 0.0
                 st["profit_factor"] = 0.0
                 st["avg_realized_rr"] = 0.0
-                st["target_rr"] = 2.5 if k == "PULLBACK_DR_EKK" else (2.0 if ("RTM_" in k or k == "SMC_X_STO_H1") else (1.8 if k == "NEWS_MOMENTUM_EXPANSION" else 2.0))
+                st["target_rr"] = 2.5 if k == "PULLBACK_DR_EKK" else (2.0 if ("RTM_" in k or k == "SMC_X_STO_H1") else 2.0)
                 st["exit_stages"] = {
                     "full_tp": 0, "full_alpha_35": 0, "target_tp_20": 0, "trailing_lock_08": 0,
                     "trailing_lock": 0, "mid_profit": 0, "break_even": 0, "full_sl": 0, "early_cut": 0
@@ -656,8 +640,6 @@ class RealTradeAnalyticsManager:
             setups_data["RTM_M6_ELITE_GROWTH"]["status"] = "🟢 ACTIVE (Elite Growth Step-Up 2.0%)"
         if "SMC_X_STO_H1" in setups_data:
             setups_data["SMC_X_STO_H1"]["status"] = "🟢 ACTIVE (Devil H1 OB+STO)"
-        if "NEWS_MOMENTUM_EXPANSION" in setups_data:
-            setups_data["NEWS_MOMENTUM_EXPANSION"]["status"] = "⚪ STANDBY (รอจังหวะข่าว USD)"
         if "RETIRED_SETUPS" in setups_data:
             setups_data["RETIRED_SETUPS"]["status"] = "📦 ARCHIVED (บันทึกประวัติเดิม)"
 
