@@ -480,6 +480,10 @@ class RealTradeAnalyticsManager:
         magic = deal.magic
         comment = (deal.comment or "").lower()
 
+        # 0. Decommissioned / Retired Legacy Setups (Captain SMC, etc.)
+        if "captain" in comment or "captai" in comment:
+            return "RETIRED_SETUPS"
+
         # 1. Active: Signature Pullback Strategy (#PullBack ร้อยล้าน - Dr. Ekk)
         if "dr_ekk" in comment or "pullback_ekk" in comment or "dr_ekk_pullback" in comment or (555860 <= magic <= 555863):
             return "PULLBACK_DR_EKK"
