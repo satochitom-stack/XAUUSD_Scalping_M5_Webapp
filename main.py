@@ -79,6 +79,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.middleware("http")
+async def add_pna_header(request, call_next):
+    response = await call_next(request)
+    response.headers["Access-Control-Allow-Private-Network"] = "true"
+    return response
+
+@app.options("/{rest_of_path:path}")
+async def preflight_handler(rest_of_path: str):
+    from fastapi.responses import Response
+    response = Response()
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    response.headers["Access-Control-Allow-Private-Network"] = "true"
+    return response
+
 # --- TOKEN AUTHENTICATION DEPENDENCY ---
 def verify_token(x_access_token: Optional[str] = Header(None), token: Optional[str] = None):
     """Verify Access Token against authorized tokens list in config."""
