@@ -23,10 +23,24 @@ DEFAULT_STRATEGIES = [
     "RTM_M4_CONSERVATIVE",
     "RTM_M6_ELITE_GROWTH",
     "SMC_X_STO_H1",
-    "KC_LIQUIDITY_DOMINANCE"
+    "KC_LIQUIDITY_DOMINANCE",
+    "CONFLUENCE_SQUEEZE_M15"
 ]
 
 SETUP_PROFILES = {
+    "CONFLUENCE_SQUEEZE_M15": {
+        "id": "CONFLUENCE_SQUEEZE_M15",
+        "name": "AI Confluence Squeeze Breakout (Self-Designed)",
+        "icon": "🧭",
+        "win_prob": 55.0,
+        "base_rr": 2.00,
+        "min_rr": 1.50,
+        "max_rr": 4.00,
+        "trailing_type": "CONFLUENCE_STAGE",
+        "trail_points": 220.0,
+        "trail_step_points": 35.0,
+        "description": "Volatility Squeeze (BB Width/GARCH) + Expansion Breakout + Structure + Volume + Session/H1 Trend Confluence (Fixed 0.5% Risk | Trend Runner ~2.0R+ | new setup, no live track record yet - conservative win-rate assumption)"
+    },
     "KC_LIQUIDITY_DOMINANCE": {
         "id": "KC_LIQUIDITY_DOMINANCE",
         "name": "KC Forex: Liquidity Sweep x Candle Dominance",

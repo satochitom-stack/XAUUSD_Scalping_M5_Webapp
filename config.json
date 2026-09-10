@@ -101,7 +101,8 @@
         "rtm_mode": "PULLBACK_DUO",
         "pullback_dr_ekk_enabled": true,
         "kc_liquidity_dominance_enabled": true,
-        "max_concurrent_setups": 5
+        "confluence_squeeze_enabled": true,
+        "max_concurrent_setups": 6
       }
     }
   ],
@@ -160,7 +161,8 @@
     "rtm_mode": "PULLBACK_DUO",
     "pullback_dr_ekk_enabled": true,
     "kc_liquidity_dominance_enabled": true,
-    "max_concurrent_setups": 5
+    "confluence_squeeze_enabled": true,
+    "max_concurrent_setups": 6
   },
   "server": {
     "host": "0.0.0.0",

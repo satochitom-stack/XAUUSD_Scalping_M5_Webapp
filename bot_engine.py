@@ -1,11 +1,12 @@
 """
 Advanced Trading Bot Strategy Engine for XAUUSD (Gold)
-Streamlined to the "Elite 5 Active Pillars" across Market Sessions:
+Streamlined to the "Elite 6 Active Pillars" across Market Sessions:
 1. PULLBACK_DR_EKK - Signature Pullback (#PullBack ร้อยล้าน - Dr. Ekk / Trader Overseas)
 2. RTM_M4_CONSERVATIVE - RTM Quasimodo Conservative QML Retest (M15 + H1)
 3. RTM_M6_ELITE_GROWTH - RTM Quasimodo Elite Growth Institutional Retest (M15 + H1)
 4. SMC_X_STO_H1 - SMCxSTO ระบบปีศาจ H1 Swing Devil System (EMA 50/200 + Discount/Premium ATR + Single OB + Stoch)
 5. KC_LIQUIDITY_DOMINANCE - KC Forex Trading: Liquidity Sweep + Candle Dominance (M5)
+6. CONFLUENCE_SQUEEZE_M15 - AI Confluence Squeeze Breakout: Volatility Squeeze + Expansion Breakout + Structure + Volume (M15)
 """
 
 import time
@@ -33,7 +34,8 @@ STRATEGY_MAGIC_MAP = {
     "RTM_M4_CONSERVATIVE": {"base": 777004, "pos1": 777014, "pos2": 777024, "pos3": 777034},
     "RTM_M6_ELITE_GROWTH": {"base": 777006, "pos1": 777016, "pos2": 777026, "pos3": 777036},
     "SMC_X_STO_H1": {"base": 555770, "pos1": 555771, "pos2": 555772, "pos3": 555773},
-    "KC_LIQUIDITY_DOMINANCE": {"base": 555880, "pos1": 555881, "pos2": 555882, "pos3": 555883}
+    "KC_LIQUIDITY_DOMINANCE": {"base": 555880, "pos1": 555881, "pos2": 555882, "pos3": 555883},
+    "CONFLUENCE_SQUEEZE_M15": {"base": 555950, "pos1": 555951, "pos2": 555952, "pos3": 555953}
 }
 
 class GoldScalpingBot:
@@ -371,6 +373,14 @@ class GoldScalpingBot:
                 b_sig, s_sig, reason = self._check_kc_liquidity_dominance(df, symbol)
                 if b_sig or s_sig:
                     self._process_single_setup_signal(df, symbol, spread, "KC_LIQUIDITY_DOMINANCE", "BUY" if b_sig else "SELL", reason)
+
+        # --- PILLAR 7: AI Confluence Squeeze Breakout M15 (Volatility Squeeze Breakout) ---
+        confluence_enabled = strat_cfg.get("confluence_squeeze_enabled", True)
+        if confluence_enabled and (strat_mode in ["ALL", "CONFLUENCE_SQUEEZE_M15", "CONFLUENCE_SQUEEZE"]):
+            if not self.has_open_positions_for_setup(symbol, "CONFLUENCE_SQUEEZE_M15"):
+                b_sig, s_sig, reason = self._check_confluence_squeeze_m15(symbol)
+                if b_sig or s_sig:
+                    self._process_single_setup_signal(df, symbol, spread, "CONFLUENCE_SQUEEZE_M15", "BUY" if b_sig else "SELL", reason)
 
         # Update Trend Badge with News Radar
         if news_status.get("is_news_active"):
@@ -818,6 +828,146 @@ class GoldScalpingBot:
                 return False, True, f"🕯️ KC Dominance: Bearish Liquidity Sweep ({dom_type} | Body {curr_body_ratio*100:.0f}% | Swept {prior_swing_high:.2f})"
 
         return False, False, ""
+
+    def _check_confluence_squeeze_m15(self, symbol: str) -> Tuple[bool, bool, str]:
+        """
+        🧭 AI Confluence Squeeze Breakout M15 (self-designed 6th pillar):
+        Volatility-REGIME TRANSITION setup combining five independent principles:
+          1. Volatility Squeeze (Bollinger Band width compressed into lowest ~20% of 50-bar range)
+          2. Expansion Breakout Candle (>= 55% body, range >= 1.3x ATR14)
+          3. Market Structure Confirmation (closes beyond coil range AND 20-bar swing high/low)
+          4. Liquidity/Volume Confirmation (tick volume >= 1.3x 20-bar average)
+          5. Session + H1 Trend Filter (London/NY only, aligned with H1 EMA50 trend)
+        """
+        try:
+            df_m15 = self.connector.get_rates(symbol, "M15", 80)
+        except Exception:
+            return False, False, ""
+
+        if df_m15 is None or df_m15.empty or len(df_m15) < 60:
+            return False, False, ""
+
+        m15_bar_time = df_m15['time'].iloc[-2]
+        # Bar Lock: Max 1 evaluation per M15 bar close to prevent re-firing mid-bar
+        if getattr(self, 'last_confluence_squeeze_m15_bar_time', None) == m15_bar_time:
+            return False, False, ""
+
+        # --- Bollinger Band Width (own M15 series, independent of the M5 df passed to process_strategy) ---
+        sma20 = df_m15['close'].rolling(window=20).mean()
+        std20 = df_m15['close'].rolling(window=20).std()
+        bb_upper = sma20 + (2.0 * std20)
+        bb_lower = sma20 - (2.0 * std20)
+        bb_width = (bb_upper - bb_lower) / (sma20 + 1e-9)
+
+        # --- ATR 14 on M15 ---
+        hl = df_m15['high'] - df_m15['low']
+        hc = (df_m15['high'] - df_m15['close'].shift()).abs()
+        lc = (df_m15['low'] - df_m15['close'].shift()).abs()
+        tr = pd.concat([hl, hc, lc], axis=1).max(axis=1)
+        atr_series = tr.rolling(window=14).mean()
+        atr = float(atr_series.iloc[-2]) if not pd.isna(atr_series.iloc[-2]) else 2.50
+        if atr <= 0:
+            atr = 2.50
+
+        # --- RSI 14 on M15 (momentum confluence for direction alignment) ---
+        delta = df_m15['close'].diff()
+        gain14 = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss14 = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rsi14 = 100 - (100 / (1 + (gain14 / (loss14 + 1e-9))))
+
+        b1 = df_m15.iloc[-2]  # Breakout candle (last closed)
+
+        # 1. Volatility Squeeze: the bar just before the breakout bar must sit in the lowest
+        #    ~20% of its own 50-bar BB-width range (i.e. price was unusually quiet/coiling).
+        width_lookback = bb_width.iloc[-52:-3]
+        if len(width_lookback) < 30:
+            return False, False, ""
+        width_prior = float(bb_width.iloc[-3])
+        if pd.isna(width_prior):
+            return False, False, ""
+        squeeze_threshold = float(width_lookback.quantile(0.20))
+        is_squeeze = width_prior <= squeeze_threshold
+        if not is_squeeze:
+            return False, False, ""
+
+        # 2. Expansion Breakout Candle
+        candle_range = float(b1['high']) - float(b1['low'])
+        candle_body = abs(float(b1['close']) - float(b1['open']))
+        body_pct = candle_body / (candle_range + 1e-9)
+        is_expansion = (body_pct >= 0.55) and (candle_range >= 1.3 * atr)
+        if not is_expansion:
+            return False, False, ""
+
+        # Coiled range boundary (the few bars leading into, and including, the squeeze bar)
+        coil_lookback = df_m15.iloc[-9:-2]
+        if len(coil_lookback) < 5:
+            return False, False, ""
+        coil_high = float(coil_lookback['high'].max())
+        coil_low = float(coil_lookback['low'].min())
+
+        # 3. Market Structure Confirmation (20-bar swing, excluding the breakout bar itself)
+        swing_lookback = df_m15.iloc[-22:-2]
+        swing_high = float(swing_lookback['high'].max())
+        swing_low = float(swing_lookback['low'].min())
+
+        close_p = float(b1['close'])
+        is_buy_breakout = (close_p > coil_high) and (close_p > swing_high) and (close_p > float(b1['open']))
+        is_sell_breakout = (close_p < coil_low) and (close_p < swing_low) and (close_p < float(b1['open']))
+        if not is_buy_breakout and not is_sell_breakout:
+            return False, False, ""
+
+        # 4. Liquidity/Volume Confirmation
+        vol_series = df_m15.get('tick_volume')
+        if vol_series is not None and len(vol_series) >= 22:
+            vol_ma20 = float(vol_series.iloc[-22:-2].mean())
+            curr_vol = float(b1.get('tick_volume', 0))
+            is_volume_confirmed = (vol_ma20 <= 0) or (curr_vol >= (1.3 * vol_ma20))
+        else:
+            is_volume_confirmed = True
+        if not is_volume_confirmed:
+            return False, False, ""
+
+        # 5. Session + H1 Trend Filter
+        session = self.get_current_session()
+        if session not in ["LONDON SESSION", "NEW YORK SESSION"]:
+            return False, False, ""
+
+        rsi_now = float(rsi14.iloc[-2]) if not pd.isna(rsi14.iloc[-2]) else 50.0
+
+        h1_bull_allowed = True
+        h1_bear_allowed = True
+        if self.connector:
+            try:
+                df_h1 = self.connector.get_rates(symbol, "H1", 60)
+                if df_h1 is not None and not df_h1.empty and len(df_h1) >= 55:
+                    h1_ema50 = df_h1['close'].ewm(span=50, adjust=False).mean()
+                    h1_close = float(df_h1['close'].iloc[-2])
+                    h1_ema50_now = float(h1_ema50.iloc[-2])
+                    h1_ema50_prev = float(h1_ema50.iloc[-7])
+                    h1_slope = h1_ema50_now - h1_ema50_prev
+                    is_h1_strong_downtrend = (h1_close < h1_ema50_now) and (h1_slope < -0.50)
+                    is_h1_strong_uptrend = (h1_close > h1_ema50_now) and (h1_slope > 0.50)
+                    h1_bull_allowed = not is_h1_strong_downtrend
+                    h1_bear_allowed = not is_h1_strong_uptrend
+            except Exception:
+                pass
+
+        buy_signal = False
+        sell_signal = False
+        reason = ""
+
+        if is_buy_breakout and rsi_now >= 50.0 and h1_bull_allowed:
+            buy_signal = True
+            reason = f"🧭 AI Confluence Squeeze Breakout (BUY): Vol-Squeeze + Structure Break + Volume + {session}"
+        elif is_sell_breakout and rsi_now <= 50.0 and h1_bear_allowed:
+            sell_signal = True
+            reason = f"🧭 AI Confluence Squeeze Breakout (SELL): Vol-Squeeze + Structure Break + Volume + {session}"
+
+        if not buy_signal and not sell_signal:
+            return False, False, ""
+
+        self.last_confluence_squeeze_m15_bar_time = m15_bar_time
+        return buy_signal, sell_signal, reason
 
     def _check_smc_x_sto_h1(self, symbol: str) -> Tuple[bool, bool, str]:
         """
@@ -1373,6 +1523,10 @@ class GoldScalpingBot:
         if strat_id.startswith("RTM_"):
             return True, "AI Trend Trail (RTM Quasimodo High R:R Runner)"
 
+        # 4b. AI Confluence Squeeze Breakout M15 -> Trend Runner (Trailing Stop)
+        if strat_id == "CONFLUENCE_SQUEEZE_M15":
+            return True, "AI Trend Trail (Confluence Squeeze Breakout - Volatility Expansion)"
+
         # 5. Fallback: Check Market Regime
         regime = self.optimizer.classify_market_regime(df)
         if "TREND" in regime.get("regime", "") or regime.get("volatility_ratio", 1.0) >= 1.25:
@@ -1450,6 +1604,23 @@ class GoldScalpingBot:
             if sl_dist > 12.00: sl = ask - 12.00; sl_dist = 12.00
             target_rr = opt.get("tp_ratio", 2.0)
             tp2 = ask + (sl_dist * target_rr)
+        elif strat_id == "CONFLUENCE_SQUEEZE_M15":
+            # Structural SL: beyond the compressed "coil" range that preceded the breakout
+            try:
+                df_m15 = self.connector.get_rates(symbol, "M15", 15)
+            except Exception:
+                df_m15 = None
+            if df_m15 is not None and not df_m15.empty and len(df_m15) >= 9:
+                coil_low = float(df_m15['low'].iloc[-9:-2].min())
+            else:
+                coil_low = float(df['low'].iloc[-10:-1].min())
+            sl_buffer = 0.50 * sl_mult
+            sl = coil_low - sl_buffer
+            sl_dist = ask - sl
+            if sl_dist < 2.00: sl = ask - 2.00; sl_dist = 2.00
+            if sl_dist > 10.00: sl = ask - 10.00; sl_dist = 10.00
+            target_rr = opt.get("tp_ratio", 2.0)
+            tp2 = ask + (sl_dist * target_rr)
         else:
             # News Momentum Expansion / Default (EarthETC Structural SL)
             if len(df) >= 15:
@@ -1473,6 +1644,8 @@ class GoldScalpingBot:
 
         if strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH", "PULLBACK_DR_EKK", "KC_LIQUIDITY_DOMINANCE"]:
             risk_label = "Step-Up 1.5% Risk" if strat_id == "KC_LIQUIDITY_DOMINANCE" else ("Step-Up 2% Risk" if self.config.get("strategy", {}).get("enable_step_up_compounding", True) else "2.0% Risk")
+        elif strat_id == "CONFLUENCE_SQUEEZE_M15":
+            risk_label = "0.5% Fixed Risk"
         elif strat_id in ["NEWS_MOMENTUM_EXPANSION", "ASIAN_RANGE_SNIPER"]:
             lot_mult = 0.5  # Fixed 0.5% risk per user instruction
             risk_label = "0.5% Risk"
@@ -1559,6 +1732,23 @@ class GoldScalpingBot:
             if sl_dist > 12.00: sl = bid + 12.00; sl_dist = 12.00
             target_rr = opt.get("tp_ratio", 2.0)
             tp2 = bid - (sl_dist * target_rr)
+        elif strat_id == "CONFLUENCE_SQUEEZE_M15":
+            # Structural SL: beyond the compressed "coil" range that preceded the breakout
+            try:
+                df_m15 = self.connector.get_rates(symbol, "M15", 15)
+            except Exception:
+                df_m15 = None
+            if df_m15 is not None and not df_m15.empty and len(df_m15) >= 9:
+                coil_high = float(df_m15['high'].iloc[-9:-2].max())
+            else:
+                coil_high = float(df['high'].iloc[-10:-1].max())
+            sl_buffer = 0.50 * sl_mult
+            sl = coil_high + sl_buffer
+            sl_dist = sl - bid
+            if sl_dist < 2.00: sl = bid + 2.00; sl_dist = 2.00
+            if sl_dist > 10.00: sl = bid + 10.00; sl_dist = 10.00
+            target_rr = opt.get("tp_ratio", 2.0)
+            tp2 = bid - (sl_dist * target_rr)
         else:
             # News Momentum Expansion / Default (EarthETC Structural SL)
             if len(df) >= 15:
@@ -1582,6 +1772,8 @@ class GoldScalpingBot:
 
         if strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH", "PULLBACK_DR_EKK", "KC_LIQUIDITY_DOMINANCE"]:
             risk_label = "Step-Up 1.5% Risk" if strat_id == "KC_LIQUIDITY_DOMINANCE" else ("Step-Up 2% Risk" if self.config.get("strategy", {}).get("enable_step_up_compounding", True) else "2.0% Risk")
+        elif strat_id == "CONFLUENCE_SQUEEZE_M15":
+            risk_label = "0.5% Fixed Risk"
         elif strat_id in ["NEWS_MOMENTUM_EXPANSION", "ASIAN_RANGE_SNIPER"]:
             lot_mult = 0.5  # Fixed 0.5% risk per user instruction
             risk_label = "0.5% Risk"
@@ -1628,6 +1820,10 @@ class GoldScalpingBot:
         elif strat_id in ["NEWS_MOMENTUM_EXPANSION", "ASIAN_RANGE_SNIPER"]:
             risk_pct = 0.5  # Fixed 0.5% risk
             risk_money = balance * (risk_pct / 100.0)
+        elif strat_id == "CONFLUENCE_SQUEEZE_M15":
+            # Fixed 0.5% risk (conservative sizing - new self-designed setup, no live track record yet)
+            risk_pct = 0.5
+            risk_money = balance * (risk_pct / 100.0)
         else:
             # ALL OTHER SETUPS (SMCxSTO H1, M5, M7, etc.) STRICTLY 1.0% RISK
             risk_pct = 1.0
@@ -1653,6 +1849,24 @@ class GoldScalpingBot:
         m_info = self.connector.get_market_info(symbol)
         bid = m_info.get('bid', 0.0)
         ask = m_info.get('ask', 0.0)
+
+        # Lazy-loaded M5 EMA 60 reference for the Dr. Ekk EMA60 Trailing Runner. This method is
+        # called with no `df` argument (see run_iteration), so previously the Dr. Ekk trail branch
+        # referenced an undefined `df` and raised NameError - silently swallowed by the caller's
+        # broad except, which skipped trailing/BE-lock updates for ALL strategies that cycle.
+        # Fetched at most once per call, and only if a Dr. Ekk position actually needs it.
+        ema60_cache: Dict[str, float] = {}
+        def _pullback_ema60() -> float:
+            if "value" not in ema60_cache:
+                try:
+                    df_m5 = self.connector.get_rates(symbol, "M5", 200)
+                    if df_m5 is not None and not df_m5.empty and len(df_m5) >= 60:
+                        ema60_cache["value"] = float(df_m5['close'].ewm(span=60, adjust=False).mean().iloc[-2])
+                    else:
+                        ema60_cache["value"] = 0.0
+                except Exception:
+                    ema60_cache["value"] = 0.0
+            return ema60_cache["value"]
 
         # Iterate through every strategy setup independently
         for strat_id, s_magics in STRATEGY_MAGIC_MAP.items():
@@ -1698,7 +1912,7 @@ class GoldScalpingBot:
                             initial_r = abs(open_p - tp) / 2.2
                         elif strat_id == "PULLBACK_DR_EKK":
                             initial_r = abs(open_p - tp) / 1.5
-                        elif strat_id == "KC_LIQUIDITY_DOMINANCE":
+                        elif strat_id in ["KC_LIQUIDITY_DOMINANCE", "CONFLUENCE_SQUEEZE_M15"]:
                             initial_r = abs(open_p - tp) / 2.0
                         else:
                             initial_r = abs(open_p - tp) / 1.8
@@ -1715,6 +1929,7 @@ class GoldScalpingBot:
                 is_smc_devil = strat_id == "SMC_X_STO_H1"
                 is_pullback_dr_ekk = strat_id == "PULLBACK_DR_EKK"
                 is_kc_dominance = strat_id == "KC_LIQUIDITY_DOMINANCE"
+                is_confluence_squeeze = strat_id == "CONFLUENCE_SQUEEZE_M15"
 
                 if ptype == "BUY":
                     profit_dist = bid - open_p
@@ -1790,7 +2005,7 @@ class GoldScalpingBot:
                         # Dr. Ekk Chapter 12: Mode 3 (EMA 60 Trailing Runner)
                         # Step 2: At >= 1.5R -> Trail behind EMA 60 (or lock +0.8R minimum)
                         if r_profit >= 1.5:
-                            ema60_val = float(df['ema60'].iloc[-2]) if 'ema60' in df and not df.empty else 0.0
+                            ema60_val = _pullback_ema60()
                             target_sl = round(max(open_p + (initial_r * 0.8), ema60_val - 0.50), 2) if ema60_val > open_p else round(open_p + (initial_r * 0.8), 2)
                             if sl < target_sl - 0.10:
                                 self.connector.modify_position(t_id, target_sl, tp)
@@ -1816,6 +2031,21 @@ class GoldScalpingBot:
                             if sl < target_sl - 0.10:
                                 self.connector.modify_position(t_id, target_sl, tp)
                                 self.add_log(f"🛡️ [KC DOMINANCE BREAK-EVEN] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
+
+                    elif is_confluence_squeeze:
+                        # AI Confluence Squeeze Breakout (Trend Runner, Target ~2.0R+) - two-stage
+                        # lock: BE at 1.0R, then +0.9R at 1.6R to protect gains while still letting
+                        # a genuine post-squeeze expansion run.
+                        if r_profit >= 1.6:
+                            target_sl = round(open_p + (initial_r * 0.9), 2)
+                            if sl < target_sl - 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🎯 [SQUEEZE PROFIT LOCKED +0.9R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +0.9R ({target_sl:.2f})", "SUCCESS")
+                        elif r_profit >= 1.0:
+                            target_sl = round(open_p + 0.30, 2)
+                            if sl < target_sl - 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🛡️ [SQUEEZE BREAK-EVEN] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
 
                     else:
                         if r_profit >= 1.0:
@@ -1898,7 +2128,7 @@ class GoldScalpingBot:
                         # Dr. Ekk Chapter 12: Mode 3 (EMA 60 Trailing Runner)
                         # Step 2: At >= 1.5R -> Trail behind EMA 60 (or lock +0.8R minimum)
                         if r_profit >= 1.5:
-                            ema60_val = float(df['ema60'].iloc[-2]) if 'ema60' in df and not df.empty else 0.0
+                            ema60_val = _pullback_ema60()
                             target_sl = round(min(open_p - (initial_r * 0.8), ema60_val + 0.50), 2) if (ema60_val < open_p and ema60_val > 0) else round(open_p - (initial_r * 0.8), 2)
                             if sl == 0 or sl > target_sl + 0.10:
                                 self.connector.modify_position(t_id, target_sl, tp)
@@ -1924,6 +2154,21 @@ class GoldScalpingBot:
                             if sl == 0 or sl > target_sl + 0.10:
                                 self.connector.modify_position(t_id, target_sl, tp)
                                 self.add_log(f"🛡️ [KC DOMINANCE BREAK-EVEN] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
+
+                    elif is_confluence_squeeze:
+                        # AI Confluence Squeeze Breakout (Trend Runner, Target ~2.0R+) - two-stage
+                        # lock: BE at 1.0R, then +0.9R at 1.6R to protect gains while still letting
+                        # a genuine post-squeeze expansion run.
+                        if r_profit >= 1.6:
+                            target_sl = round(open_p - (initial_r * 0.9), 2)
+                            if sl == 0 or sl > target_sl + 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🎯 [SQUEEZE PROFIT LOCKED +0.9R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +0.9R ({target_sl:.2f})", "SUCCESS")
+                        elif r_profit >= 1.0:
+                            target_sl = round(open_p - 0.30, 2)
+                            if sl == 0 or sl > target_sl + 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🛡️ [SQUEEZE BREAK-EVEN] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
 
                     else:
                         if r_profit >= 1.0:

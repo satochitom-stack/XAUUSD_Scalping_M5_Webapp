@@ -1,13 +1,54 @@
 """
-Historical Multi-Strategy Backtesting Engine for XAUUSD (Gold)
-Simulates exact bot logic from bot_engine.py with realistic 2-Position Multi-TP, Pina Colada, and Session Gates.
+Historical Multi-Strategy Backtesting Engine for XAUUSD (Gold) - Elite 6 Pillars Edition
+
+Design goal: ZERO logic duplication. This engine does not reimplement any strategy rule,
+AI-gating threshold, SL/TP formula, or lot-sizing rule. Instead it builds a paper-trading
+"connector" that implements the exact same interface as mt5_connector.MT5Connector
+(get_rates, get_market_info, get_account_info, get_open_positions, open_order,
+modify_position, close_position) and runs the REAL bot_engine.GoldScalpingBot against it,
+calling its real run_iteration() every simulated M5 bar close - the identical entry point
+main.py's scheduler calls in production. This guarantees the backtest exercises the exact
+same code path as live trading: MarketRegimeScorer quality filter, RealTimeStrategyOptimizer
+dynamic R:R / AI throttle, execute_buy/execute_sell SL-TP construction, calculate_lot_size
+risk sizing, and manage_open_positions trailing/BE-lock - for all 6 active pillars
+(PULLBACK_DR_EKK, RTM_M4_CONSERVATIVE, RTM_M6_ELITE_GROWTH, SMC_X_STO_H1, KC_LIQUIDITY_DOMINANCE,
+CONFLUENCE_SQUEEZE_M15).
+
+Two data sources are supported:
+  1. CSV files exported from MT5 (History Center "Export" button, or chart right-click ->
+     "Save As" CSV). Works with the standard MT5 tab-separated export format
+     (<DATE> <TIME> <OPEN> <HIGH> <LOW> <CLOSE> <TICKVOL> <VOL> <SPREAD>) as well as generic
+     Date/Time/Open/High/Low/Close[/Volume] CSVs. No network access required - this is the
+     path to use from a sandboxed / network-restricted environment.
+  2. Live MT5 terminal (MetaTrader5 python package + a running, logged-in terminal) via
+     load_from_mt5() - unchanged in spirit from the original version of this file. This is
+     the path to use on the VPS / a machine with the real Exness MT5 terminal installed,
+     where genuine broker-feed historical data is available.
+
+Known simplifications (documented, not hidden):
+  - Fixed spread assumption (spread_points, default 20.0) rather than a real historical
+    spread series - MT5 exports rarely include reliable historical spread anyway.
+  - Same-bar SL+TP conflict resolves to SL first (pessimistic/conservative convention).
+  - Account equity for the daily target/max-loss guard tracks REALIZED balance only (no
+    intra-bar floating P&L mark-to-market of open positions).
+  - RealTimeStrategyOptimizer / MarketRegimeScorer / ExitBenchmarkTracker are instantiated
+    with isolated, throwaway state files (never the live strategy_learning_data.json /
+    regime_scorer_stats.json / exit_benchmark_history.json) so a backtest run can never
+    pollute production learning data.
+  - get_current_session() / check_new_day() are overridden to use the SIMULATED bar clock
+    instead of the real wall clock (production reads datetime.now()), and time.time() is
+    monkeypatched for the duration of the run so the RTM pending-setup expiry (45 min) and
+    anti-clustering cooldown (15 min) - both wall-clock based in production - are evaluated
+    against simulated market time instead of real elapsed process time.
 """
 
-import math
+import os
+import sys
 import json
+import copy
 import logging
-from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Tuple, Optional
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Tuple
 import pandas as pd
 import numpy as np
 
@@ -17,589 +58,550 @@ try:
 except ImportError:
     MT5_AVAILABLE = False
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+import bot_engine as bot_engine_module
+from bot_engine import GoldScalpingBot, STRATEGY_MAGIC_MAP
+
+logging.basicConfig(level=logging.WARNING, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("BacktestEngine")
 
+_real_time_time = bot_engine_module.time.time
+
+
+# ---------------------------------------------------------------------------
+# Data loading
+# ---------------------------------------------------------------------------
+
+def load_ohlc_csv(path: str) -> pd.DataFrame:
+    """
+    Load an OHLC CSV into the normalized schema (time, open, high, low, close, tick_volume)
+    that bot_engine.py's strategy checks expect. Accepts:
+      - MT5 History Center export: tab-separated, headers like <DATE> <TIME> <OPEN> <HIGH>
+        <LOW> <CLOSE> <TICKVOL> <VOL> <SPREAD>, date as YYYY.MM.DD.
+      - Generic CSV with Date/Time or DateTime + Open/High/Low/Close[/Volume] columns.
+    """
+    df = pd.read_csv(path, sep=None, engine="python")
+    df.columns = [str(c).strip().strip("<>").lower() for c in df.columns]
+
+    rename_map = {
+        "tickvol": "tick_volume", "vol": "tick_volume", "volume": "tick_volume",
+        "o": "open", "h": "high", "l": "low", "c": "close",
+    }
+    df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
+
+    if "time" not in df.columns:
+        if "date" in df.columns and "time" in df.columns:
+            pass
+        if "datetime" in df.columns:
+            df["time"] = pd.to_datetime(df["datetime"])
+        elif "date" in df.columns and "hour" in df.columns:
+            df["time"] = pd.to_datetime(df["date"] + " " + df["hour"].astype(str), errors="coerce")
+        elif "date" in df.columns:
+            # MT5 export always has separate <DATE> (YYYY.MM.DD) and <TIME> (HH:MM[:SS]) columns
+            time_col = df["time"] if "time" in df.columns else "00:00:00"
+            df["time"] = pd.to_datetime(
+                df["date"].astype(str).str.replace(".", "-", regex=False) + " " + df.get("time", "00:00:00").astype(str),
+                errors="coerce"
+            )
+        else:
+            raise ValueError(f"Could not find a date/time column in {path}. Columns found: {list(df.columns)}")
+    else:
+        df["time"] = pd.to_datetime(df["time"], errors="coerce")
+
+    required = ["open", "high", "low", "close"]
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        raise ValueError(f"CSV {path} is missing required OHLC column(s): {missing}. Columns found: {list(df.columns)}")
+
+    if "tick_volume" not in df.columns:
+        df["tick_volume"] = 100
+
+    df = df[["time", "open", "high", "low", "close", "tick_volume"]].dropna(subset=["time", "open", "high", "low", "close"])
+    df = df.sort_values("time").drop_duplicates(subset=["time"]).reset_index(drop=True)
+    for c in ["open", "high", "low", "close", "tick_volume"]:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+    df = df.dropna(subset=["open", "high", "low", "close"]).reset_index(drop=True)
+    return df
+
+
+def resample_ohlc(df_m5: pd.DataFrame, rule: str) -> pd.DataFrame:
+    """Derive a higher timeframe (e.g. '15min', '1h') from M5 bars by resampling."""
+    idx = df_m5.set_index("time")
+    agg = idx.resample(rule, label="left", closed="left").agg({
+        "open": "first", "high": "max", "low": "min", "close": "last", "tick_volume": "sum"
+    })
+    agg = agg.dropna(subset=["open", "high", "low", "close"]).reset_index()
+    return agg
+
+
+# ---------------------------------------------------------------------------
+# Paper-trading connector (implements the MT5Connector interface)
+# ---------------------------------------------------------------------------
+
+class BacktestConnector:
+    """Paper-trading connector backed by preloaded historical DataFrames + a virtual account.
+    Implements the same method signatures as mt5_connector.MT5Connector so bot_engine's real
+    GoldScalpingBot can be driven against it unmodified."""
+
+    def __init__(self, symbol: str, m5_df: pd.DataFrame, m15_df: pd.DataFrame, h1_df: pd.DataFrame,
+                 initial_balance: float = 3000.0, spread_points: float = 20.0):
+        self.symbol = symbol
+        self.m5_df = m5_df.reset_index(drop=True)
+        self.m15_df = m15_df.reset_index(drop=True)
+        self.h1_df = h1_df.reset_index(drop=True)
+        self.spread_points = spread_points
+
+        self.balance = initial_balance
+        self.equity = initial_balance
+
+        self.now_idx = 0
+        self.current_time: Optional[pd.Timestamp] = None
+        self.current_open: Optional[float] = None
+
+        self.positions: List[dict] = []
+        self.closed_trades: List[dict] = []
+        self._next_ticket = 100000
+
+        self.equity_curve: List[Tuple[pd.Timestamp, float]] = []
+
+    # --- simulated clock ---
+    def advance_to(self, i: int):
+        self.now_idx = i
+        row = self.m5_df.iloc[i]
+        self.current_time = row["time"]
+        self.current_open = float(row["open"])
+
+    # --- MT5Connector-compatible interface ---
+    def get_rates(self, symbol: str, timeframe: str = "M5", count: int = 100) -> pd.DataFrame:
+        tf = timeframe.upper()
+        src = {"M5": self.m5_df, "M15": self.m15_df, "H1": self.h1_df}.get(tf, self.m5_df)
+        if self.current_time is None or src.empty:
+            return pd.DataFrame()
+        sliced = src[src["time"] <= self.current_time]
+        if sliced.empty:
+            return pd.DataFrame()
+        return sliced.tail(count).reset_index(drop=True)
+
+    def get_market_info(self, symbol: str) -> dict:
+        half_spread = (self.spread_points * 0.01) / 2.0
+        bid = self.current_open - half_spread
+        ask = self.current_open + half_spread
+        return {
+            "symbol": symbol, "bid": round(bid, 3), "ask": round(ask, 3),
+            "spread": self.spread_points, "point": 0.01, "digits": 2, "trade_allowed": True
+        }
+
+    def get_account_info(self) -> dict:
+        return {
+            "login": 0, "server": "Backtest", "currency": "USD",
+            "balance": round(self.balance, 2), "equity": round(self.equity, 2),
+            "margin": 0.0, "free_margin": round(self.balance, 2),
+            "margin_level": 999.0, "profit": 0.0,
+            "mode": "Backtest", "connected": True
+        }
+
+    def get_open_positions(self, symbol: Optional[str] = None) -> List[dict]:
+        return [dict(p) for p in self.positions if symbol is None or p["symbol"] == symbol]
+
+    def open_order(self, symbol: str, order_type: str, volume: float, sl: float, tp: float,
+                    magic: int, comment: str = "") -> dict:
+        m_info = self.get_market_info(symbol)
+        price = m_info["ask"] if order_type.upper() == "BUY" else m_info["bid"]
+        ticket = self._next_ticket
+        self._next_ticket += 1
+        self.positions.append({
+            "ticket": ticket, "symbol": symbol, "type": order_type.upper(), "volume": float(volume),
+            "price_open": float(price), "sl": float(sl or 0.0), "tp": float(tp or 0.0),
+            "price_current": float(price), "profit": 0.0, "swap": 0.0, "comment": comment,
+            "magic": int(magic), "open_time": self.current_time
+        })
+        return {"status": True, "ticket": ticket, "price": price}
+
+    def modify_position(self, ticket: int, sl: float, tp: float) -> bool:
+        for p in self.positions:
+            if p["ticket"] == ticket:
+                p["sl"] = float(sl or 0.0)
+                p["tp"] = float(tp or 0.0)
+                return True
+        return False
+
+    def close_position(self, ticket: int) -> bool:
+        for p in list(self.positions):
+            if p["ticket"] == ticket:
+                self._close(p, self.current_open, "Manual Close")
+                return True
+        return False
+
+    def close_all_positions(self, magic: Optional[int] = None) -> int:
+        closed = 0
+        for p in list(self.positions):
+            if magic is None or p["magic"] == magic:
+                self._close(p, self.current_open, "Close All")
+                closed += 1
+        return closed
+
+    # --- exit simulation (called by the walk-forward driver, not by bot_engine itself) ---
+    def process_bar_exits(self, bar) -> None:
+        """Check every currently open position against this M5 bar's high/low for a TP/SL fill.
+        Same-bar SL+TP conflicts resolve to SL first (conservative convention)."""
+        high, low = float(bar["high"]), float(bar["low"])
+        for p in list(self.positions):
+            sl, tp = p["sl"], p["tp"]
+            hit_sl = hit_tp = False
+            if p["type"] == "BUY":
+                if sl > 0 and low <= sl:
+                    hit_sl = True
+                if tp > 0 and high >= tp:
+                    hit_tp = True
+            else:
+                if sl > 0 and high >= sl:
+                    hit_sl = True
+                if tp > 0 and low <= tp:
+                    hit_tp = True
+            if hit_sl:
+                self._close(p, sl, "SL")
+            elif hit_tp:
+                self._close(p, tp, "TP")
+
+    def _close(self, p: dict, exit_price: float, reason: str) -> None:
+        direction = 1 if p["type"] == "BUY" else -1
+        # $100 per lot per $1.00 move - matches bot_engine.calculate_lot_size's own
+        # (risk_money / (sl_dist * 100.0)) convention, so sizing and P&L stay self-consistent.
+        pnl = direction * (exit_price - p["price_open"]) * p["volume"] * 100.0
+        self.balance += pnl
+        self.equity = self.balance
+        self.closed_trades.append({
+            "ticket": p["ticket"], "magic": p["magic"], "symbol": p["symbol"], "type": p["type"],
+            "volume": p["volume"], "price_open": p["price_open"], "price_close": exit_price,
+            "open_time": p.get("open_time"), "close_time": self.current_time,
+            "profit": round(pnl, 2), "exit_reason": reason, "comment": p.get("comment", "")
+        })
+        self.equity_curve.append((self.current_time, self.balance))
+        if p in self.positions:
+            self.positions.remove(p)
+
+
+# ---------------------------------------------------------------------------
+# Bot subclass: redirect wall-clock-dependent methods to the simulated clock
+# ---------------------------------------------------------------------------
+
+class BacktestBotEngine(GoldScalpingBot):
+    """Identical to GoldScalpingBot in every respect except that check_new_day() and
+    get_current_session() read the connector's simulated bar clock instead of the real
+    datetime.now() - everything else (all signal detection, AI gating, order execution,
+    lot sizing, trailing) is inherited unmodified."""
+
+    def check_new_day(self):
+        sim_now = getattr(self.connector, "current_time", None)
+        today = sim_now.date() if sim_now is not None else datetime.now().date()
+        acc = self.connector.get_account_info()
+        equity = acc.get("equity", 10000.0)
+        balance = acc.get("balance", 10000.0)
+
+        if self.current_day != today or self.day_starting_equity == 0.0:
+            self.current_day = today
+            self.day_starting_equity = balance
+            self.daily_target_reached = False
+            self.daily_max_loss_reached = False
+            self.pause_until_time = 0
+
+        if self.day_starting_equity > 0 and (balance > (self.day_starting_equity * 1.20) or balance < (self.day_starting_equity * 0.80)):
+            self.day_starting_equity = balance
+            self.daily_target_reached = False
+            self.daily_max_loss_reached = False
+
+        if self.day_starting_equity > 0:
+            strat_cfg = self.config.get("strategy", {})
+            daily_target_pct = strat_cfg.get("daily_target_percent", 10.0)
+            daily_max_loss_pct = strat_cfg.get("daily_max_loss_percent", 5.0)
+            pnl_pct = ((equity - self.day_starting_equity) / self.day_starting_equity) * 100.0
+
+            if pnl_pct >= daily_target_pct and not self.daily_target_reached:
+                self.daily_target_reached = True
+            elif pnl_pct <= -daily_max_loss_pct and not self.daily_max_loss_reached:
+                self.daily_max_loss_reached = True
+
+    def get_current_session(self) -> str:
+        sim_now = getattr(self.connector, "current_time", None)
+        if sim_now is None:
+            return super().get_current_session()
+        now_hour = sim_now.hour % 24
+        if 7 <= now_hour < 14:
+            return "ASIAN SESSION"
+        elif 14 <= now_hour < 19:
+            return "LONDON SESSION"
+        elif now_hour >= 19 or now_hour < 4:
+            return "NEW YORK SESSION"
+        else:
+            return "LATE NIGHT ROLLOVER"
+
+
+# ---------------------------------------------------------------------------
+# Orchestrator
+# ---------------------------------------------------------------------------
 
 class HistoricalBacktester:
-    def __init__(
-        self,
-        symbol: str = "XAUUSDc",
-        initial_balance: float = 3000.0,
-        risk_percent: float = 1.0,
-        spread_usd: float = 0.25, # 25 points
-        max_concurrent_setups: int = 3
-    ):
+    def __init__(self, symbol: str = "XAUUSDc", initial_balance: float = 3000.0,
+                 spread_points: float = 20.0, config: Optional[dict] = None,
+                 scratch_dir: Optional[str] = None):
         self.symbol = symbol
         self.initial_balance = initial_balance
-        self.risk_percent = risk_percent
-        self.spread_usd = spread_usd
-        self.max_concurrent_setups = max_concurrent_setups
+        self.spread_points = spread_points
+        self.scratch_dir = scratch_dir or os.path.join(os.path.dirname(os.path.abspath(__file__)), ".backtest_scratch")
+        os.makedirs(self.scratch_dir, exist_ok=True)
 
-        self.active_setups = [
-            "FLASH_MICRO_SCALPER",
-            "CAPTAIN_SMC_DUAL",
-            "ASIAN_RANGE_SNIPER",
-            "EMA50_3CANDLES_H1",
-            "NEWS_MOMENTUM_EXPANSION"
-        ]
+        if config is not None:
+            self.config = copy.deepcopy(config)
+        else:
+            self.config = self._load_repo_config()
+        self.config.setdefault("mt5", {})["symbol"] = symbol
 
-    def fetch_historical_data(self, bars_count: int = 20000) -> pd.DataFrame:
-        """Fetches M5 data from MT5."""
+        self.m5_df: Optional[pd.DataFrame] = None
+        self.m15_df: Optional[pd.DataFrame] = None
+        self.h1_df: Optional[pd.DataFrame] = None
+
+        self.connector: Optional[BacktestConnector] = None
+        self.bot: Optional[BacktestBotEngine] = None
+
+    @staticmethod
+    def _load_repo_config() -> dict:
+        """Build a config dict shaped exactly like account_manager.py's bot_config
+        (mt5 + merged strategy settings) so backtested risk/session/spread parameters match
+        production 1:1: global top-level config['strategy'] merged with the live BOT
+        account's own strategy overrides, same precedence account_manager.py uses."""
+        cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+        try:
+            with open(cfg_path, "r", encoding="utf-8") as f:
+                full_cfg = json.load(f)
+            bot_acc = next((a for a in full_cfg.get("accounts", []) if a.get("type") == "BOT"), None)
+            strategy_cfg = dict(full_cfg.get("strategy", {}))
+            if bot_acc and isinstance(bot_acc.get("strategy"), dict):
+                strategy_cfg.update(bot_acc["strategy"])
+            return {
+                "mt5": {
+                    "symbol": (bot_acc or {}).get("symbol", "XAUUSDc"),
+                    "magic_number": (bot_acc or {}).get("magic_number", 555888),
+                },
+                "strategy": strategy_cfg,
+            }
+        except Exception as e:
+            logger.warning(f"Could not load config.json ({e}); using minimal defaults.")
+            return {"mt5": {"symbol": "XAUUSDc", "magic_number": 555888}, "strategy": {"strategy_mode": "ALL"}}
+
+    # --- data loading ---
+    def load_from_csv(self, m5_path: str, m15_path: Optional[str] = None, h1_path: Optional[str] = None):
+        self.m5_df = load_ohlc_csv(m5_path)
+        self.m15_df = load_ohlc_csv(m15_path) if m15_path else resample_ohlc(self.m5_df, "15min")
+        self.h1_df = load_ohlc_csv(h1_path) if h1_path else resample_ohlc(self.m5_df, "1h")
+        logger.info(f"Loaded {len(self.m5_df)} M5 / {len(self.m15_df)} M15 / {len(self.h1_df)} H1 bars from CSV.")
+        return self
+
+    def load_from_mt5(self, bars_count: int = 20000):
+        """Live MT5 terminal path - requires the MetaTrader5 python package AND a running,
+        logged-in MT5 terminal (VPS / local Windows machine only - not available in a cloud
+        sandbox). Antigravity should call this when running the backtest on the VPS."""
         if not MT5_AVAILABLE:
-            raise RuntimeError("MetaTrader5 python package not available.")
-
+            raise RuntimeError("MetaTrader5 python package not available in this environment.")
         if not mt5.terminal_info():
             if not mt5.initialize():
                 raise RuntimeError("Failed to initialize MetaTrader 5.")
 
-        rates_m5 = mt5.copy_rates_from_pos(self.symbol, mt5.TIMEFRAME_M5, 0, bars_count)
-        if rates_m5 is None or len(rates_m5) == 0:
-            alt_sym = "XAUUSD" if "c" in self.symbol else "XAUUSDc"
-            self.symbol = alt_sym
-            rates_m5 = mt5.copy_rates_from_pos(self.symbol, mt5.TIMEFRAME_M5, 0, bars_count)
-            if rates_m5 is None or len(rates_m5) == 0:
-                raise RuntimeError(f"Could not retrieve rates for {self.symbol}")
+        def _fetch(tf_const, count):
+            rates = mt5.copy_rates_from_pos(self.symbol, tf_const, 0, count)
+            if rates is None or len(rates) == 0:
+                alt_sym = "XAUUSD" if "c" in self.symbol else "XAUUSDc"
+                rates = mt5.copy_rates_from_pos(alt_sym, tf_const, 0, count)
+                if rates is None or len(rates) == 0:
+                    raise RuntimeError(f"Could not retrieve rates for {self.symbol}")
+            df = pd.DataFrame(rates)
+            df["time"] = pd.to_datetime(df["time"], unit="s")
+            return df[["time", "open", "high", "low", "close", "tick_volume"]]
 
-        df_m5 = pd.DataFrame(rates_m5)
-        df_m5['datetime'] = pd.to_datetime(df_m5['time'], unit='s')
-        return df_m5
+        self.m5_df = _fetch(mt5.TIMEFRAME_M5, bars_count)
+        self.m15_df = _fetch(mt5.TIMEFRAME_M15, bars_count // 3 + 100)
+        self.h1_df = _fetch(mt5.TIMEFRAME_H1, bars_count // 12 + 100)
+        logger.info(f"Loaded {len(self.m5_df)} M5 / {len(self.m15_df)} M15 / {len(self.h1_df)} H1 bars from live MT5.")
+        return self
 
-    def prepare_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Calculates indicators identically to bot_engine.py."""
-        df = df.copy()
+    # --- run ---
+    def run(self, warmup_bars: int = 800, progress_every: int = 2000) -> dict:
+        if self.m5_df is None or len(self.m5_df) < warmup_bars + 10:
+            raise RuntimeError(f"Not enough M5 data loaded (need > {warmup_bars + 10} bars, have {0 if self.m5_df is None else len(self.m5_df)}).")
 
-        # EMAs
-        df['ema9'] = df['close'].ewm(span=9, adjust=False).mean()
-        df['ema20'] = df['close'].ewm(span=20, adjust=False).mean()
-        df['ema21'] = df['close'].ewm(span=21, adjust=False).mean()
-        df['ema50'] = df['close'].ewm(span=50, adjust=False).mean()
-        df['ema100'] = df['close'].ewm(span=100, adjust=False).mean()
-        df['ema150'] = df['close'].ewm(span=150, adjust=False).mean()
-        df['ema200'] = df['close'].ewm(span=200, adjust=False).mean()
+        self.connector = BacktestConnector(
+            self.symbol, self.m5_df, self.m15_df, self.h1_df,
+            initial_balance=self.initial_balance, spread_points=self.spread_points
+        )
+        self.bot = BacktestBotEngine(self.connector, self.config)
+        self.bot.is_running = True
+        self.bot.current_day = None
+        self.bot.day_starting_equity = 0.0
 
-        # Bollinger Bands
-        df['sma20'] = df['close'].rolling(window=20).mean()
-        df['std20'] = df['close'].rolling(window=20).std()
-        df['bb_upper'] = df['sma20'] + (2.0 * df['std20'])
-        df['bb_lower'] = df['sma20'] - (2.0 * df['std20'])
-        df['bb_width'] = (df['bb_upper'] - df['bb_lower']) / (df['sma20'] + 1e-9)
+        # Isolate optimizer/scorer/benchmark-tracker state from the live production files,
+        # and no-op their per-trade disk writes during the hot loop for speed (persisted once
+        # at the end via _flush_learning_state()).
+        from strategy_optimizer import RealTimeStrategyOptimizer
+        from regime_liquidity_scorer import MarketRegimeScorer
+        from exit_benchmark_tracker import ExitBenchmarkTracker
+        self.bot.optimizer = RealTimeStrategyOptimizer(data_file_path=os.path.join(self.scratch_dir, "bt_strategy_learning.json"))
+        self.bot.scorer = MarketRegimeScorer(data_file_path=os.path.join(self.scratch_dir, "bt_regime_scorer_stats.json"))
+        self.bot.benchmark_tracker = ExitBenchmarkTracker(data_file_path=os.path.join(self.scratch_dir, "bt_exit_benchmark_history.json"))
+        self._optimizer_save_state = self.bot.optimizer.save_state
+        self._scorer_save_state = self.bot.scorer.save_state
+        self._benchmark_save_state = self.bot.benchmark_tracker.save_state
+        self.bot.optimizer.save_state = lambda: None
+        self.bot.scorer.save_state = lambda: None
+        self.bot.benchmark_tracker.save_state = lambda: None
 
-        # ATR 14
-        high_low = df['high'] - df['low']
-        high_close = (df['high'] - df['close'].shift()).abs()
-        low_close = (df['low'] - df['close'].shift()).abs()
-        tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-        df['atr14'] = tr.rolling(window=14).mean()
+        real_time_time = bot_engine_module.time.time
+        try:
+            bot_engine_module.time.time = lambda: self.connector.current_time.timestamp()
+            n = len(self.m5_df)
+            for i in range(warmup_bars, n):
+                self.connector.advance_to(i)
+                bar_i = self.m5_df.iloc[i]
+                self.connector.process_bar_exits(bar_i)
+                try:
+                    self.bot.run_iteration()
+                except Exception as e:
+                    logger.error(f"run_iteration() error at bar {i} ({bar_i['time']}): {e}")
+                if progress_every and (i - warmup_bars) % progress_every == 0:
+                    logger.info(f"...bar {i}/{n} ({bar_i['time']}) balance=${self.connector.balance:.2f}")
 
-        # Pina Colada Envelopes
-        df['pina_upper'] = df['ema20'] + (2.2 * df['atr14'])
-        df['pina_lower'] = df['ema20'] - (2.2 * df['atr14'])
+            # Close anything still open at the end of the dataset at the last bar's close
+            last_close = float(self.m5_df.iloc[-1]["close"])
+            self.connector.current_time = self.m5_df.iloc[-1]["time"]
+            for p in list(self.connector.positions):
+                self.connector._close(p, last_close, "End of Backtest")
+        finally:
+            bot_engine_module.time.time = real_time_time
+            self.bot.optimizer.save_state = self._optimizer_save_state
+            self.bot.scorer.save_state = self._scorer_save_state
+            self.bot.benchmark_tracker.save_state = self._benchmark_save_state
+            try:
+                self.bot.optimizer.save_state()
+                self.bot.scorer.save_state()
+                self.bot.benchmark_tracker.save_state()
+            except Exception:
+                pass
 
-        # RSIs (4, 7, 14)
-        delta = df['close'].diff()
-        gain4 = (delta.where(delta > 0, 0)).rolling(window=4).mean()
-        loss4 = (-delta.where(delta < 0, 0)).rolling(window=4).mean()
-        df['rsi4'] = 100 - (100 / (1 + (gain4 / (loss4 + 1e-9))))
+        return self.compute_results()
 
-        gain7 = (delta.where(delta > 0, 0)).rolling(window=7).mean()
-        loss7 = (-delta.where(delta < 0, 0)).rolling(window=7).mean()
-        df['rsi7'] = 100 - (100 / (1 + (gain7 / (loss7 + 1e-9))))
+    # --- results ---
+    def compute_results(self) -> dict:
+        trades = self.connector.closed_trades
+        strat_by_magic = {}
+        for strat_id, m_info in STRATEGY_MAGIC_MAP.items():
+            for mg in [m_info["base"], m_info["pos1"], m_info["pos2"], m_info["pos3"]]:
+                strat_by_magic[mg] = strat_id
 
-        gain14 = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-        loss14 = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-        df['rsi14'] = 100 - (100 / (1 + (gain14 / (loss14 + 1e-9))))
+        per_strategy: Dict[str, dict] = {sid: {"total_trades": 0, "wins": 0, "losses": 0,
+                                                "gross_profit_usd": 0.0, "gross_loss_usd": 0.0,
+                                                "net_profit_usd": 0.0} for sid in STRATEGY_MAGIC_MAP}
 
-        # Tick volume average
-        df['vol_sma20'] = df['tick_volume'].rolling(window=20).mean()
+        gross_profit = gross_loss = 0.0
+        wins = losses = 0
+        peak = self.initial_balance
+        max_dd = 0.0
+        running = self.initial_balance
+        for t in trades:
+            pnl = t["profit"]
+            running += pnl
+            peak = max(peak, running)
+            max_dd = max(max_dd, peak - running)
 
-        # Sessions in Thai Time (UTC+7)
-        df['thai_hour'] = (df['datetime'].dt.hour + 5) % 24
-        df['is_asia'] = df['thai_hour'].between(7, 13)
-        df['is_london'] = df['thai_hour'].between(14, 18)
-        df['is_ny'] = (df['thai_hour'] >= 19) | (df['thai_hour'] < 4)
-        df['is_rollover'] = df['thai_hour'].between(4, 6)
+            sid = strat_by_magic.get(t["magic"], "UNKNOWN")
+            if sid not in per_strategy:
+                per_strategy[sid] = {"total_trades": 0, "wins": 0, "losses": 0,
+                                      "gross_profit_usd": 0.0, "gross_loss_usd": 0.0, "net_profit_usd": 0.0}
+            per_strategy[sid]["total_trades"] += 1
+            per_strategy[sid]["net_profit_usd"] = round(per_strategy[sid]["net_profit_usd"] + pnl, 2)
+            if pnl > 0:
+                per_strategy[sid]["wins"] += 1
+                per_strategy[sid]["gross_profit_usd"] = round(per_strategy[sid]["gross_profit_usd"] + pnl, 2)
+                gross_profit += pnl
+                wins += 1
+            else:
+                per_strategy[sid]["losses"] += 1
+                per_strategy[sid]["gross_loss_usd"] = round(per_strategy[sid]["gross_loss_usd"] + pnl, 2)
+                gross_loss += pnl
+                losses += 1
 
-        return df
+        for sid, s in per_strategy.items():
+            s["winrate_pct"] = round(100.0 * s["wins"] / s["total_trades"], 1) if s["total_trades"] else 0.0
+            if s["gross_loss_usd"] < 0:
+                s["profit_factor"] = round(s["gross_profit_usd"] / abs(s["gross_loss_usd"]), 2)
+            elif s["gross_profit_usd"] > 0:
+                s["profit_factor"] = None  # undefined/infinite - no losing trades yet
+            else:
+                s["profit_factor"] = 0.0
 
-    def run_backtest(self, bars_count: int = 20000) -> dict:
-        """Executes full multi-setup backtest simulation."""
-        df_m5 = self.fetch_historical_data(bars_count)
-        df_m5 = self.prepare_indicators(df_m5)
-
-        balance = self.initial_balance
-        peak_balance = balance
-        max_drawdown_usd = 0.0
-        max_drawdown_pct = 0.0
-
-        open_trades: List[dict] = []
-        closed_trades: List[dict] = []
-        equity_curve: List[dict] = []
-
-        cooldowns = {s: 0 for s in self.active_setups}
-        start_idx = 60
-        total_bars = len(df_m5)
-
-        for i in range(start_idx, total_bars):
-            curr_bar = df_m5.iloc[i]
-            curr_time = curr_bar['datetime']
-
-            # -------------------------------------------------------------
-            # 1. Update Existing Open Trades
-            # -------------------------------------------------------------
-            still_open = []
-            for t in open_trades:
-                pos_type = t['type']
-                entry_p = t['entry_price']
-                sl = t['sl']
-                bar_high = curr_bar['high']
-                bar_low = curr_bar['low']
-
-                trade_closed = False
-
-                if pos_type == "BUY":
-                    # Check Pos 1 TP1 (1.0R)
-                    if not t['pos1_closed']:
-                        if bar_high >= t['tp1']:
-                            t['pos1_closed'] = True
-                            t['pos1_pnl'] = round((t['tp1'] - entry_p) * t['lot1'] * 100.0, 2)
-                            balance += t['pos1_pnl']
-                            t['sl'] = entry_p + 0.30 # Move Pos 2 SL to BE
-                            sl = t['sl']
-                            t['is_be'] = True
-
-                    # Check SL
-                    if bar_low <= sl:
-                        trade_closed = True
-                        t['exit_time'] = str(curr_time)
-                        t['exit_reason'] = "SL" if not t['is_be'] else "BREAK_EVEN"
-                        if not t['pos1_closed']:
-                            t['pos1_closed'] = True
-                            t['pos1_pnl'] = round((sl - entry_p) * t['lot1'] * 100.0, 2)
-                            balance += t['pos1_pnl']
-                        t['pos2_closed'] = True
-                        t['pos2_pnl'] = round((sl - entry_p) * t['lot2'] * 100.0, 2)
-                        balance += t['pos2_pnl']
-
-                    # Check Pos 2 TP2
-                    elif bar_high >= t['tp2']:
-                        trade_closed = True
-                        t['exit_time'] = str(curr_time)
-                        t['exit_reason'] = "TP2"
-                        if not t['pos1_closed']:
-                            t['pos1_closed'] = True
-                            t['pos1_pnl'] = round((t['tp1'] - entry_p) * t['lot1'] * 100.0, 2)
-                            balance += t['pos1_pnl']
-                        t['pos2_closed'] = True
-                        t['pos2_pnl'] = round((t['tp2'] - entry_p) * t['lot2'] * 100.0, 2)
-                        balance += t['pos2_pnl']
-
-                elif pos_type == "SELL":
-                    # Check Pos 1 TP1 (1.0R)
-                    if not t['pos1_closed']:
-                        if bar_low <= t['tp1']:
-                            t['pos1_closed'] = True
-                            t['pos1_pnl'] = round((entry_p - t['tp1']) * t['lot1'] * 100.0, 2)
-                            balance += t['pos1_pnl']
-                            t['sl'] = entry_p - 0.30 # Move Pos 2 SL to BE
-                            sl = t['sl']
-                            t['is_be'] = True
-
-                    # Check SL
-                    if bar_high >= sl:
-                        trade_closed = True
-                        t['exit_time'] = str(curr_time)
-                        t['exit_reason'] = "SL" if not t['is_be'] else "BREAK_EVEN"
-                        if not t['pos1_closed']:
-                            t['pos1_closed'] = True
-                            t['pos1_pnl'] = round((entry_p - sl) * t['lot1'] * 100.0, 2)
-                            balance += t['pos1_pnl']
-                        t['pos2_closed'] = True
-                        t['pos2_pnl'] = round((entry_p - sl) * t['lot2'] * 100.0, 2)
-                        balance += t['pos2_pnl']
-
-                    # Check Pos 2 TP2
-                    elif bar_low <= t['tp2']:
-                        trade_closed = True
-                        t['exit_time'] = str(curr_time)
-                        t['exit_reason'] = "TP2"
-                        if not t['pos1_closed']:
-                            t['pos1_closed'] = True
-                            t['pos1_pnl'] = round((entry_p - t['tp1']) * t['lot1'] * 100.0, 2)
-                            balance += t['pos1_pnl']
-                        t['pos2_closed'] = True
-                        t['pos2_pnl'] = round((entry_p - t['tp2']) * t['lot2'] * 100.0, 2)
-                        balance += t['pos2_pnl']
-
-                if trade_closed:
-                    t['total_pnl'] = round(t['pos1_pnl'] + t['pos2_pnl'], 2)
-                    t['status'] = "WIN" if t['total_pnl'] > 0 else ("BE" if t['total_pnl'] == 0 else "LOSS")
-                    closed_trades.append(t)
-                else:
-                    still_open.append(t)
-
-            open_trades = still_open
-
-            # Track Peak & Max Drawdown
-            if balance > peak_balance:
-                peak_balance = balance
-            dd_usd = peak_balance - balance
-            dd_pct = (dd_usd / peak_balance) * 100.0 if peak_balance > 0 else 0.0
-            if dd_usd > max_drawdown_usd:
-                max_drawdown_usd = dd_usd
-            if dd_pct > max_drawdown_pct:
-                max_drawdown_pct = dd_pct
-
-            if i % 12 == 0:
-                equity_curve.append({
-                    "datetime": str(curr_time),
-                    "balance": round(balance, 2),
-                    "drawdown_pct": round(dd_pct, 2)
-                })
-
-            # -------------------------------------------------------------
-            # 2. Check Signals for New Trades
-            # -------------------------------------------------------------
-            if curr_bar['is_rollover']:
-                continue
-
-            if len(open_trades) >= self.max_concurrent_setups:
-                continue
-
-            open_setup_ids = {t['setup_id'] for t in open_trades}
-            window_m5 = df_m5.iloc[i - 45 : i + 1]
-            b1 = window_m5.iloc[-2] # Last closed bar
-            b2 = window_m5.iloc[-3]
-            b3 = window_m5.iloc[-4]
-
-            # Pina Colada Caution Filter (Avoid Parabolic falling knives/pumps)
-            curr_atr = float(b1['atr14']) if not math.isnan(b1['atr14']) else 2.50
-            is_dumping = (b1['close'] < b1['open']) and (b2['close'] < b2['open']) and (b3['close'] < b3['open'])
-            wide_dump = abs(b1['close'] - b1['open']) > (1.2 * curr_atr) or abs(b2['close'] - b2['open']) > (1.2 * curr_atr)
-            caution_bear = is_dumping and wide_dump and (b1['low'] < b1['pina_lower'])
-
-            is_pumping = (b1['close'] > b1['open']) and (b2['close'] > b2['open']) and (b3['close'] > b3['open'])
-            wide_pump = abs(b1['close'] - b1['open']) > (1.2 * curr_atr) or abs(b2['close'] - b2['open']) > (1.2 * curr_atr)
-            caution_bull = is_pumping and wide_pump and (b1['high'] > b1['pina_upper'])
-            caution_active = caution_bear or caution_bull
-
-            # --- SETUP 1: FLASH_MICRO_SCALPER (1 Position, 1% Risk, Pure Trend Pullback) ---
-            if "FLASH_MICRO_SCALPER" in self.active_setups and "FLASH_MICRO_SCALPER" not in open_setup_ids:
-                if i > cooldowns["FLASH_MICRO_SCALPER"]:
-                    candle_range = b1['high'] - b1['low']
-                    candle_body = abs(b1['close'] - b1['open'])
-                    if candle_range > 0.25 and (candle_body / candle_range) >= 0.35:
-                        lower_wick = min(b1['open'], b1['close']) - b1['low']
-                        upper_wick = b1['high'] - max(b1['open'], b1['close'])
-                        rsi4 = b1['rsi4']
-                        is_uptrend = (b1['ema9'] > b1['ema21']) and (b1['ema21'] > b1['ema50'])
-                        is_downtrend = (b1['ema9'] < b1['ema21']) and (b1['ema21'] < b1['ema50'])
-
-                        # Buy Pullback
-                        if is_uptrend and b1['low'] <= (b1['ema9'] + 0.25) and b1['close'] > b1['ema9'] and b1['close'] > b1['open']:
-                            if (lower_wick / candle_range) >= 0.30 and 40 <= rsi4 <= 75:
-                                lowest_low = window_m5['low'].iloc[-7:-1].min()
-                                ask = curr_bar['open'] + self.spread_usd
-                                sl_dist = max(2.80, min(4.50, ask - (lowest_low - 0.40)))
-                                sl = ask - sl_dist
-                                tp = ask + (sl_dist * 1.50) # 1:1.5 RR Single Clean Trade
-                                lot = self._calc_lot(balance, sl_dist)
-                                open_trades.append(self._create_dual_trade("FLASH_MICRO_SCALPER", "BUY", ask, sl, tp, tp, sl_dist, lot, curr_time, is_single=True))
-                                cooldowns["FLASH_MICRO_SCALPER"] = i + 3
-
-                        # Sell Pullback
-                        elif is_downtrend and b1['high'] >= (b1['ema9'] - 0.25) and b1['close'] < b1['ema9'] and b1['close'] < b1['open']:
-                            if (upper_wick / candle_range) >= 0.30 and 25 <= rsi4 <= 60:
-                                highest_high = window_m5['high'].iloc[-7:-1].max()
-                                bid = curr_bar['open']
-                                sl_dist = max(2.80, min(4.50, (highest_high + 0.40) - bid))
-                                sl = bid + sl_dist
-                                tp = bid - (sl_dist * 1.50)
-                                lot = self._calc_lot(balance, sl_dist)
-                                open_trades.append(self._create_dual_trade("FLASH_MICRO_SCALPER", "SELL", bid, sl, tp, tp, sl_dist, lot, curr_time, is_single=True))
-                                cooldowns["FLASH_MICRO_SCALPER"] = i + 3
-
-            # --- SETUP 2: CAPTAIN_SMC_DUAL (London & NY Sessions Only) ---
-            if "CAPTAIN_SMC_DUAL" in self.active_setups and "CAPTAIN_SMC_DUAL" not in open_setup_ids:
-                if not curr_bar['is_asia'] and i > cooldowns["CAPTAIN_SMC_DUAL"]:
-                    lookback = window_m5.iloc[-32:-2]
-                    swing_high = lookback['high'].rolling(window=10).max().iloc[-1]
-                    swing_low = lookback['low'].rolling(window=10).min().iloc[-1]
-                    candle_range = b1['high'] - b1['low']
-
-                    if candle_range > 0.30:
-                        lower_wick = min(b1['open'], b1['close']) - b1['low']
-                        upper_wick = b1['high'] - max(b1['open'], b1['close'])
-                        is_uptrend = b1['ema50'] > b1['ema150']
-                        is_downtrend = b1['ema50'] < b1['ema150']
-                        rsi = b1['rsi14']
-                        is_vol_confirmed = b1['tick_volume'] >= (b1['vol_sma20'] * 0.95)
-
-                        # MODEL 1: Fast Wick Rejection Buy (Support Zone)
-                        fast_buy = (b1['low'] <= (swing_low + 0.60) and (lower_wick / candle_range) >= 0.35 and 
-                                    b1['close'] > b1['open'] and is_vol_confirmed and (not is_downtrend or rsi < 35))
-                        # MODEL 2: Confirmed CHoCH Breakout
-                        recent_high = window_m5['high'].iloc[-17:-2].max()
-                        confirmed_buy = (b1['close'] > recent_high and b1['close'] > b1['open'] and 
-                                         (is_uptrend or rsi > 52) and is_vol_confirmed)
-
-                        if fast_buy or confirmed_buy:
-                            lowest_low = window_m5['low'].iloc[-15:-1].min()
-                            ask = curr_bar['open'] + self.spread_usd
-                            sl_dist = max(3.80, min(6.50, ask - (lowest_low - 0.60)))
-                            sl = ask - sl_dist
-                            tp1 = ask + (sl_dist * 1.0)
-                            tp2 = ask + (sl_dist * 1.8)
-                            lot = self._calc_lot(balance, sl_dist)
-                            open_trades.append(self._create_dual_trade("CAPTAIN_SMC_DUAL", "BUY", ask, sl, tp1, tp2, sl_dist, lot, curr_time))
-                            cooldowns["CAPTAIN_SMC_DUAL"] = i + 5
-
-                        # MODEL 1: Fast Wick Rejection Sell (Resistance Zone)
-                        fast_sell = (b1['high'] >= (swing_high - 0.60) and (upper_wick / candle_range) >= 0.35 and 
-                                     b1['close'] < b1['open'] and is_vol_confirmed and (not is_uptrend or rsi > 65))
-                        # MODEL 2: Confirmed CHoCH Breakdown
-                        recent_low = window_m5['low'].iloc[-17:-2].min()
-                        confirmed_sell = (b1['close'] < recent_low and b1['close'] < b1['open'] and 
-                                          (is_downtrend or rsi < 48) and is_vol_confirmed)
-
-                        if fast_sell or confirmed_sell:
-                            highest_high = window_m5['high'].iloc[-15:-1].max()
-                            bid = curr_bar['open']
-                            sl_dist = max(3.80, min(6.50, (highest_high + 0.60) - bid))
-                            sl = bid + sl_dist
-                            tp1 = bid - (sl_dist * 1.0)
-                            tp2 = bid - (sl_dist * 1.8)
-                            lot = self._calc_lot(balance, sl_dist)
-                            open_trades.append(self._create_dual_trade("CAPTAIN_SMC_DUAL", "SELL", bid, sl, tp1, tp2, sl_dist, lot, curr_time))
-                            cooldowns["CAPTAIN_SMC_DUAL"] = i + 5
-
-            # --- SETUP 3: ASIAN_RANGE_SNIPER (Asian Session Only with Caution Filter) ---
-            if "ASIAN_RANGE_SNIPER" in self.active_setups and "ASIAN_RANGE_SNIPER" not in open_setup_ids:
-                if curr_bar['is_asia'] and not caution_active and i > cooldowns["ASIAN_RANGE_SNIPER"]:
-                    candle_range = b1['high'] - b1['low']
-                    if candle_range > 0.20:
-                        lower_wick = min(b1['open'], b1['close']) - b1['low']
-                        upper_wick = b1['high'] - max(b1['open'], b1['close'])
-
-                        # Buy Rebound: Price touched lower BB/Pina and bounced back inside
-                        if (b1['low'] <= b1['bb_lower'] or b1['low'] <= b1['pina_lower']) and b1['close'] > b1['open'] and (lower_wick / candle_range) >= 0.35:
-                            if b1['rsi7'] <= 35 and b1['rsi7'] > b2['rsi7']:
-                                lowest_low = window_m5['low'].iloc[-7:-1].min()
-                                ask = curr_bar['open'] + self.spread_usd
-                                sl_dist = max(2.80, min(5.00, ask - (lowest_low - 0.40)))
-                                sl = ask - sl_dist
-                                tp1 = ask + (sl_dist * 1.0)
-                                tp2 = ask + (sl_dist * 1.8)
-                                lot = self._calc_lot(balance, sl_dist)
-                                open_trades.append(self._create_dual_trade("ASIAN_RANGE_SNIPER", "BUY", ask, sl, tp1, tp2, sl_dist, lot, curr_time))
-                                cooldowns["ASIAN_RANGE_SNIPER"] = i + 4
-
-                        # Sell Rebound: Price touched upper BB/Pina and bounced back inside
-                        elif (b1['high'] >= b1['bb_upper'] or b1['high'] >= b1['pina_upper']) and b1['close'] < b1['open'] and (upper_wick / candle_range) >= 0.35:
-                            if b1['rsi7'] >= 65 and b1['rsi7'] < b2['rsi7']:
-                                highest_high = window_m5['high'].iloc[-7:-1].max()
-                                bid = curr_bar['open']
-                                sl_dist = max(2.80, min(5.00, (highest_high + 0.40) - bid))
-                                sl = bid + sl_dist
-                                tp1 = bid - (sl_dist * 1.0)
-                                tp2 = bid - (sl_dist * 1.8)
-                                lot = self._calc_lot(balance, sl_dist)
-                                open_trades.append(self._create_dual_trade("ASIAN_RANGE_SNIPER", "SELL", bid, sl, tp1, tp2, sl_dist, lot, curr_time))
-                                cooldowns["ASIAN_RANGE_SNIPER"] = i + 4
-
-            # --- SETUP 4: EMA50_3CANDLES_H1 (With Cooldown Lock) ---
-            if "EMA50_3CANDLES_H1" in self.active_setups and "EMA50_3CANDLES_H1" not in open_setup_ids:
-                if not curr_bar['is_asia'] and i > cooldowns["EMA50_3CANDLES_H1"]:
-                    b6 = window_m5.iloc[-7]
-                    slope = (b1['ema50'] - b6['ema50']) / 0.01
-
-                    # Bullish 3 Candles
-                    if (b1['close'] > b1['open'] and b1['close'] > b1['ema50'] and
-                        b2['close'] > b2['open'] and b2['close'] > b2['ema50'] and
-                        b3['close'] > b3['open'] and b3['close'] > b3['ema50'] and slope >= 30.0):
-                        lowest_low = window_m5['low'].iloc[-21:-1].min()
-                        ask = curr_bar['open'] + self.spread_usd
-                        sl_dist = max(4.50, min(8.00, ask - (lowest_low - 0.70)))
-                        sl = ask - sl_dist
-                        tp1 = ask + (sl_dist * 1.0)
-                        tp2 = ask + (sl_dist * 2.0)
-                        lot = self._calc_lot(balance, sl_dist)
-                        open_trades.append(self._create_dual_trade("EMA50_3CANDLES_H1", "BUY", ask, sl, tp1, tp2, sl_dist, lot, curr_time))
-                        cooldowns["EMA50_3CANDLES_H1"] = i + 12
-
-                    # Bearish 3 Candles
-                    elif (b1['close'] < b1['open'] and b1['close'] < b1['ema50'] and
-                          b2['close'] < b2['open'] and b2['close'] < b2['ema50'] and
-                          b3['close'] < b3['open'] and b3['close'] < b3['ema50'] and slope <= -30.0):
-                        highest_high = window_m5['high'].iloc[-21:-1].max()
-                        bid = curr_bar['open']
-                        sl_dist = max(4.50, min(8.00, (highest_high + 0.70) - bid))
-                        sl = bid + sl_dist
-                        tp1 = bid - (sl_dist * 1.0)
-                        tp2 = bid - (sl_dist * 2.0)
-                        lot = self._calc_lot(balance, sl_dist)
-                        open_trades.append(self._create_dual_trade("EMA50_3CANDLES_H1", "SELL", bid, sl, tp1, tp2, sl_dist, lot, curr_time))
-                        cooldowns["EMA50_3CANDLES_H1"] = i + 12
-
-            # --- SETUP 5: NEWS_MOMENTUM_EXPANSION (Breakout Engine) ---
-            if "NEWS_MOMENTUM_EXPANSION" in self.active_setups and "NEWS_MOMENTUM_EXPANSION" not in open_setup_ids:
-                if i > cooldowns["NEWS_MOMENTUM_EXPANSION"]:
-                    pre_swing_high = window_m5['high'].iloc[-16:-2].max()
-                    pre_swing_low = window_m5['low'].iloc[-16:-2].min()
-                    candle_body = abs(b1['close'] - b1['open'])
-                    candle_range = b1['high'] - b1['low'] + 1e-9
-                    body_pct = candle_body / candle_range
-
-                    is_solid_expansion = (body_pct >= 0.60) and (candle_range >= 1.20)
-
-                    # Breakout High
-                    if is_solid_expansion and b1['close'] > pre_swing_high and b1['close'] > b1['open'] and b1['rsi14'] >= 55:
-                        lowest_low = window_m5['low'].iloc[-11:-1].min()
-                        ask = curr_bar['open'] + self.spread_usd
-                        sl_dist = max(3.50, min(7.00, ask - (lowest_low - 0.50)))
-                        sl = ask - sl_dist
-                        tp1 = ask + (sl_dist * 1.0)
-                        tp2 = ask + (sl_dist * 1.8)
-                        lot = self._calc_lot(balance, sl_dist)
-                        open_trades.append(self._create_dual_trade("NEWS_MOMENTUM_EXPANSION", "BUY", ask, sl, tp1, tp2, sl_dist, lot, curr_time))
-                        cooldowns["NEWS_MOMENTUM_EXPANSION"] = i + 8
-
-                    # Breakdown Low
-                    elif is_solid_expansion and b1['close'] < pre_swing_low and b1['close'] < b1['open'] and b1['rsi14'] <= 45:
-                        highest_high = window_m5['high'].iloc[-11:-1].max()
-                        bid = curr_bar['open']
-                        sl_dist = max(3.50, min(7.00, (highest_high + 0.50) - bid))
-                        sl = bid + sl_dist
-                        tp1 = bid - (sl_dist * 1.0)
-                        tp2 = bid - (sl_dist * 1.8)
-                        lot = self._calc_lot(balance, sl_dist)
-                        open_trades.append(self._create_dual_trade("NEWS_MOMENTUM_EXPANSION", "SELL", bid, sl, tp1, tp2, sl_dist, lot, curr_time))
-                        cooldowns["NEWS_MOMENTUM_EXPANSION"] = i + 8
-
-        return self._generate_report(closed_trades, equity_curve, balance, peak_balance, max_drawdown_usd, max_drawdown_pct, df_m5)
-
-    def _calc_lot(self, balance: float, sl_dist: float) -> float:
-        risk_usd = balance * (self.risk_percent / 100.0)
-        lot = risk_usd / (sl_dist * 100.0 + 1e-9)
-        return max(0.01, min(10.0, round(lot, 2)))
-
-    def _create_dual_trade(self, setup_id: str, pos_type: str, entry_p: float, sl: float, tp1: float, tp2: float, sl_dist: float, total_lot: float, entry_time, is_single: bool = False) -> dict:
-        if is_single or total_lot <= 0.01:
-            lot1 = total_lot
-            lot2 = 0.0
-        else:
-            lot1 = max(0.01, round(total_lot * 0.50, 2))
-            lot2 = max(0.01, round(total_lot - lot1, 2))
+        final_balance = self.connector.balance
+        net_profit = final_balance - self.initial_balance
+        total_trades = len(trades)
 
         return {
-            "setup_id": setup_id,
-            "type": pos_type,
-            "entry_price": round(entry_p, 3),
-            "sl": round(sl, 3),
-            "tp1": round(tp1, 3),
-            "tp2": round(tp2, 3),
-            "sl_dist": round(sl_dist, 3),
-            "lot1": lot1,
-            "lot2": lot2,
-            "total_lot": total_lot,
-            "pos1_closed": False,
-            "pos2_closed": False,
-            "pos1_pnl": 0.0,
-            "pos2_pnl": 0.0,
-            "entry_time": str(entry_time),
-            "is_be": False
-        }
-
-    def _generate_report(self, trades: List[dict], equity_curve: List[dict], final_balance: float, peak_balance: float, max_dd_usd: float, max_dd_pct: float, df_m5: pd.DataFrame) -> dict:
-        total_trades = len(trades)
-        wins = [t for t in trades if t['total_pnl'] > 0]
-        losses = [t for t in trades if t['total_pnl'] < 0]
-        be_trades = [t for t in trades if t['total_pnl'] == 0]
-
-        win_count = len(wins)
-        loss_count = len(losses)
-        be_count = len(be_trades)
-
-        winrate = round((win_count / total_trades) * 100.0, 1) if total_trades > 0 else 0.0
-
-        gross_profit = round(sum(t['total_pnl'] for t in wins), 2)
-        gross_loss = round(abs(sum(t['total_pnl'] for t in losses)), 2)
-        net_profit = round(final_balance - self.initial_balance, 2)
-        net_profit_pct = round((net_profit / self.initial_balance) * 100.0, 2)
-
-        profit_factor = round(gross_profit / gross_loss, 2) if gross_loss > 0 else (gross_profit if gross_profit > 0 else 0.0)
-
-        strategy_stats = {}
-        for s_id in self.active_setups:
-            s_trades = [t for t in trades if t['setup_id'] == s_id]
-            s_total = len(s_trades)
-            s_wins = [t for t in s_trades if t['total_pnl'] > 0]
-            s_losses = [t for t in s_trades if t['total_pnl'] < 0]
-            s_gp = sum(t['total_pnl'] for t in s_wins)
-            s_gl = abs(sum(t['total_pnl'] for t in s_losses))
-            s_net = round(sum(t['total_pnl'] for t in s_trades), 2)
-            s_wr = round((len(s_wins) / s_total) * 100.0, 1) if s_total > 0 else 0.0
-            s_pf = round(s_gp / s_gl, 2) if s_gl > 0 else s_gp
-
-            strategy_stats[s_id] = {
-                "total_trades": s_total,
-                "wins": len(s_wins),
-                "losses": len(s_losses),
-                "winrate_pct": s_wr,
-                "net_profit_usd": s_net,
-                "gross_profit_usd": round(s_gp, 2),
-                "gross_loss_usd": round(s_gl, 2),
-                "profit_factor": s_pf
-            }
-
-        report = {
             "symbol": self.symbol,
-            "period_start": str(df_m5['datetime'].iloc[0]),
-            "period_end": str(df_m5['datetime'].iloc[-1]),
-            "total_bars_tested": len(df_m5),
-            "initial_balance": self.initial_balance,
+            "period_start": str(self.m5_df.iloc[0]["time"]) if self.m5_df is not None and len(self.m5_df) else None,
+            "period_end": str(self.m5_df.iloc[-1]["time"]) if self.m5_df is not None and len(self.m5_df) else None,
+            "total_m5_bars": int(len(self.m5_df)) if self.m5_df is not None else 0,
+            "initial_balance": round(self.initial_balance, 2),
             "final_balance": round(final_balance, 2),
-            "net_profit_usd": net_profit,
-            "net_profit_pct": net_profit_pct,
-            "profit_factor": profit_factor,
+            "net_profit_usd": round(net_profit, 2),
+            "net_profit_pct": round(100.0 * net_profit / self.initial_balance, 2) if self.initial_balance else 0.0,
+            "gross_profit_usd": round(gross_profit, 2),
+            "gross_loss_usd": round(gross_loss, 2),
+            "profit_factor": (round(gross_profit / abs(gross_loss), 2) if gross_loss < 0
+                               else (None if gross_profit > 0 else 0.0)),
             "total_trades": total_trades,
-            "win_trades": win_count,
-            "loss_trades": loss_count,
-            "break_even_trades": be_count,
-            "winrate_pct": winrate,
-            "max_drawdown_usd": round(max_dd_usd, 2),
-            "max_drawdown_pct": round(max_dd_pct, 2),
-            "strategy_breakdown": strategy_stats,
-            "equity_curve": equity_curve[-50:],
-            "recent_trades": trades[-20:]
+            "win_trades": wins,
+            "loss_trades": losses,
+            "winrate_pct": round(100.0 * wins / total_trades, 1) if total_trades else 0.0,
+            "max_drawdown_usd": round(max_dd, 2),
+            "max_drawdown_pct": round(100.0 * max_dd / peak, 2) if peak else 0.0,
+            "strategy_breakdown": per_strategy,
+            "assumptions": {
+                "spread_points_fixed": self.spread_points,
+                "same_bar_sl_tp_conflict": "SL assumed first (conservative)",
+                "trailing_and_be_lock_simulated": True,
+                "note": "Public/CSV-sourced or live-MT5-sourced historical data replayed through the real bot_engine.py signal, AI-gating, and execution logic (run_iteration()). Not a substitute for forward/paper testing."
+            }
         }
 
-        return report
+    def save_results(self, path: str, results: Optional[dict] = None):
+        results = results or self.compute_results()
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(results, f, indent=2, ensure_ascii=False, default=str)
+        return path
 
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    tester = HistoricalBacktester(initial_balance=3000.0, risk_percent=1.0)
-    # Test on recent 30-day window (~6000 bars) and full window (20000 bars)
-    for bars in [6000, 20000]:
-        res = tester.run_backtest(bars_count=bars)
-        period_label = "RECENT 30 DAYS (AUG - SEP 2026)" if bars == 6000 else "FULL 3.5 MONTHS (MAY - SEP 2026)"
-        print("\n" + "=" * 68)
-        print(f"[REPORT] XAUUSD BACKTEST: {period_label}")
-        print("=" * 68)
-        print(f"Symbol: {res['symbol']} | Bars: {res['total_bars_tested']} M5 | {res['period_start'][:10]} to {res['period_end'][:10]}")
-        print(f"Initial Balance: ${res['initial_balance']:.2f} -> Final Balance: ${res['final_balance']:.2f}")
-        print(f"Net Profit: {'+' if res['net_profit_usd']>=0 else ''}${res['net_profit_usd']:.2f} ({res['net_profit_pct']:+.2f}%) | Profit Factor: {res['profit_factor']:.2f}")
-        print(f"Winrate: {res['winrate_pct']}% ({res['win_trades']}W / {res['loss_trades']}L / {res['break_even_trades']}BE) | Max DD: ${res['max_drawdown_usd']:.2f} ({res['max_drawdown_pct']:.2f}%)")
-        print("-" * 68)
-        print(f"{'Strategy':<26} | {'Trades':<6} | {'Winrate':<7} | {'Net Profit':<11} | {'PF':<5}")
-        print("-" * 68)
-        for s_id, s in res['strategy_breakdown'].items():
-            print(f"{s_id:<26} | {s['total_trades']:<6} | {s['winrate_pct']:>5.1f}% | ${s['net_profit_usd']:>9.2f} | {s['profit_factor']:>4.2f}")
-        print("=" * 68)
+    import argparse
+    parser = argparse.ArgumentParser(description="Backtest the Elite 5 Pillars bot against historical XAUUSD data.")
+    parser.add_argument("m5_csv", nargs="?", help="Path to an M5 OHLC CSV (MT5 export or generic). Omit to use --mt5 instead.")
+    parser.add_argument("--m15", help="Optional separate M15 CSV (else derived by resampling M5).")
+    parser.add_argument("--h1", help="Optional separate H1 CSV (else derived by resampling M5).")
+    parser.add_argument("--mt5", action="store_true", help="Load data from a live, logged-in MT5 terminal instead of CSV.")
+    parser.add_argument("--bars", type=int, default=20000, help="Bar count to request when using --mt5.")
+    parser.add_argument("--symbol", default="XAUUSDc")
+    parser.add_argument("--balance", type=float, default=3000.0)
+    parser.add_argument("--spread", type=float, default=20.0, help="Fixed spread in points (1pt = $0.01).")
+    parser.add_argument("--warmup", type=int, default=800)
+    parser.add_argument("--out", default="backtest_results.json")
+    args = parser.parse_args()
 
-        if bars == 6000:
-            with open("backtest_results_30d.json", "w", encoding="utf-8") as f:
-                json.dump(res, f, indent=2, ensure_ascii=False)
-        else:
-            with open("backtest_results.json", "w", encoding="utf-8") as f:
-                json.dump(res, f, indent=2, ensure_ascii=False)
+    bt = HistoricalBacktester(symbol=args.symbol, initial_balance=args.balance, spread_points=args.spread)
+    if args.mt5:
+        bt.load_from_mt5(bars_count=args.bars)
+    elif args.m5_csv:
+        bt.load_from_csv(args.m5_csv, args.m15, args.h1)
+    else:
+        parser.error("Provide either an m5_csv path or --mt5.")
+
+    results = bt.run(warmup_bars=args.warmup)
+    bt.save_results(args.out, results)
+    print(json.dumps(results, indent=2, ensure_ascii=False, default=str))
+    print(f"\nSaved to {args.out}")

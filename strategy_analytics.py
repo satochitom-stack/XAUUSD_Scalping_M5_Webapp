@@ -79,6 +79,17 @@ class RealTradeAnalyticsManager:
             "avg_rr": "1:2.0",
             "description": "กลยุทธ์ Price Action Tug-of-War จาก KC Forex Trading: ดักจังหวะ Stop Hunt กวาด Liquidity High/Low 15-20 แท่ง แล้วปฏิเสธราคาด้วย Candle Dominance (เนื้อเทียนตัน >= 50%) วาง SL นอกปลายไส้ + ล็อคทุน BE ที่ 1.0R (ความเสี่ยง Step-Up 1.5% | TP 2.0R)"
         },
+        "CONFLUENCE_SQUEEZE_M15": {
+            "id": "CONFLUENCE_SQUEEZE_M15",
+            "name": "AI Confluence Squeeze Breakout (Self-Designed)",
+            "icon": "🧭",
+            "category": "VOLATILITY_PRO",
+            "timeframe": "M15 (H1 Filter)",
+            "best_session": "London & NY (14:00 - 04:00)",
+            "magic_numbers": [555950, 555951, 555952, 555953],
+            "avg_rr": "1:2.0",
+            "description": "เซตอัพที่ AI ออกแบบเองตามคำเชิญของผู้ใช้: รวม 5 หลักการเข้าด้วยกัน (Volatility Squeeze/Volatility Clustering + แท่งเบรกเอาท์ขยายตัว + ยืนยันโครงสร้างราคา + Volume + กรอง Session/เทรนด์ H1) เพื่อจับจังหวะเปลี่ยนโหมดความผันผวนที่ 5 เสาหลักเดิมไม่ครอบคลุม | ความเสี่ยงคงที่ 0.5% | กรองคุณภาพผ่าน AI เต็มรูปแบบ"
+        },
         "RETIRED_SETUPS": {
             "id": "RETIRED_SETUPS",
             "name": "เซตอัพที่เลิกใช้",
@@ -86,13 +97,13 @@ class RealTradeAnalyticsManager:
             "category": "ARCHIVED",
             "timeframe": "Multi-TF",
             "best_session": "ประวัติเดิม (Archived)",
-            "magic_numbers": [777005, 777015, 777025, 777035, 777007, 777017, 777027, 777037, 555820, 555821, 555822, 555823, 555890, 555891, 555892, 555893, 666888, 666889, 666890],
+            "magic_numbers": [777005, 777015, 777025, 777035, 777007, 777017, 777027, 777037, 555820, 555821, 555822, 555823, 555890, 555891, 555892, 555893, 666888, 666889, 666890, 555900, 555901, 555902, 555903],
             "avg_rr": "N/A",
             "description": "รวมประวัติและสถิติการเทรดของเซตอัพที่เลิกใช้งานแล้ว (News Momentum Expansion, Asian Range Sniper, RTM M5 All-Weather, RTM M7 Max Alpha, Captain SMC, TKT SMC, Flash Scalper ฯลฯ)"
         }
     }
 
-    # Allowed Magic Numbers for Elite 5 Pillars (8 active models)
+    # Allowed Magic Numbers for Elite 6 Pillars (active models + retired)
     ELITE_MAGIC_NUMBERS = {
         777004, 777014, 777024, 777034,  # RTM M4
         777005, 777015, 777025, 777035,  # RTM M5
@@ -101,7 +112,10 @@ class RealTradeAnalyticsManager:
         555770, 555771, 555772, 555773,  # SMC x STO H1
         555820, 555821, 555822, 555823,  # Asian Range Sniper
         555890, 555891, 555892, 555893, 666888, 666889, 666890,  # News Momentum Expansion
-        555860, 555861, 555862, 555863   # Signature Pullback Dr. Ekk
+        555860, 555861, 555862, 555863,  # Signature Pullback Dr. Ekk
+        555880, 555881, 555882, 555883,  # KC Liquidity Dominance M5
+        555900, 555901, 555902, 555903,  # Tug of War Volume Read M15
+        555950, 555951, 555952, 555953   # AI Confluence Squeeze Breakout M15
     }
     
     # System Epoch Cutoff: Start recording fresh from 2026-09-07 15:00:00 (Today's update)
@@ -231,12 +245,13 @@ class RealTradeAnalyticsManager:
                     positions[pid]["out"].append(d)
 
             strategy_name_map = {
-                # 🟢 5 เสาหลัก (Active Models) + เซตอัพที่เลิกใช้
+                # 🟢 6 เสาหลัก (Active Models) + เซตอัพที่เลิกใช้
                 "PULLBACK_DR_EKK": "Signature Pullback (#PullBack ร้อยล้าน)",
                 "RTM_M4_CONSERVATIVE": "RTM Quasimodo M4 (Conservative)",
                 "RTM_M6_ELITE_GROWTH": "RTM Quasimodo M6 (Elite Growth)",
                 "SMC_X_STO_H1": "SMC x STO Devil (H1 Devil System)",
                 "KC_LIQUIDITY_DOMINANCE": "KC Forex (Liquidity Sweep x Candle Dominance)",
+                "CONFLUENCE_SQUEEZE_M15": "AI Confluence Squeeze Breakout (M15)",
                 "RETIRED_SETUPS": "เซตอัพที่เลิกใช้"
             }
 
@@ -483,7 +498,11 @@ class RealTradeAnalyticsManager:
         if "kc" in comment or "dominance" in comment or (555880 <= magic <= 555883):
             return "KC_LIQUIDITY_DOMINANCE"
 
-        # 5. Decommissioned / Retired Setups (News Momentum, Asian Range Sniper, RTM M5, RTM M7, Captain SMC, etc.)
+        # 5. Active: AI Confluence Squeeze Breakout M15 (self-designed - Volatility Clustering)
+        if "conflue" in comment or "squeeze" in comment or (555950 <= magic <= 555953):
+            return "CONFLUENCE_SQUEEZE_M15"
+
+        # 6. Decommissioned / Retired Setups (News Momentum, Asian Range Sniper, RTM M5, RTM M7, Captain SMC, Tug of War M15, etc.)
         return "RETIRED_SETUPS"
 
     def get_real_stats_summary(self) -> dict:

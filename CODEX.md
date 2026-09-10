@@ -10,8 +10,8 @@
 ## 1. System Overview & Core Philosophy
 This codebase powers an automated algorithmic trading bot and FastAPI backend for Gold (`XAUUSD`) trading on MetaTrader 5 (MT5). The trading engine operates on a multi-timeframe confluence architecture with strict risk management, dynamic lot sizing, and multi-stage trailing profit locks.
 
-### 🌟 Active Trading Model: The Elite 5 Pillars
-Only **5 active setups** are permitted to scan the market and execute new trades. All other legacy models have been decommissioned and archived into `RETIRED_SETUPS`.
+### 🌟 Active Trading Model: The Elite 6 Pillars
+Only **6 active setups** are permitted to scan the market and execute new trades. All other legacy models have been decommissioned and archived into `RETIRED_SETUPS`.
 
 | Setup ID | Strategy Name | Timeframe | Trading Hours (UTC+7) | Risk Sizing | Target R:R | Exit Mechanism |
 |---|---|:---:|:---:|:---:|:---:|---|
@@ -20,6 +20,7 @@ Only **5 active setups** are permitted to scan the market and execute new trades
 | `RTM_M6_ELITE_GROWTH` | RTM Quasimodo M6 (Elite Growth) | M15 (H1 Filter) | 14:00 - 23:00 | 2.0% Step-Up Compounding | 1:2.0 | Retest Golden Pocket 50%-65% + Rejection Wick + BE lock at 1.0R |
 | `SMC_X_STO_H1` | SMC x STO Devil System (ระบบปีศาจ) | H1 | 14:00 - 04:00 | 1.0% Fixed Risk | 1:2.0 | EMA 50/200 Trend + Discount/Premium ATR + Single OB + Stoch 14,3,3 |
 | `KC_LIQUIDITY_DOMINANCE` | KC Forex (Sweep x Candle Dominance) | M5 | 14:00 - 02:00 | 1.5% Step-Up Compounding | 1:2.0 | Liquidity Sweep 15-20 Bars + Dominance Rejection (Body $\ge 50\%$) + BE at 1.0R |
+| `CONFLUENCE_SQUEEZE_M15` | AI Confluence Squeeze Breakout (Self-Designed) | M15 (H1 Filter) | 14:00 - 04:00 | 0.5% Fixed Risk | 1:2.0 (1.5-4.0R AI-bounded) | Volatility Squeeze (BB Width low-20%ile) + Expansion Breakout ($\ge$55% body, $\ge$1.3x ATR) + Structure Break + Volume $\ge$1.3x + London/NY + H1 Trend Filter; BE lock at 1.0R, +0.9R lock at 1.6R |
 | `RETIRED_SETUPS` | เซตอัพที่เลิกใช้ (Archived) | Multi-TF | Historical Archive | None (No new orders) | N/A | Preserves all historical trade records and closed PnL |
 
 ---
@@ -33,6 +34,7 @@ STRATEGY_MAGIC_MAP = {
     "RTM_M6_ELITE_GROWTH":    {"base": 777006, "pos1": 777016, "pos2": 777026, "pos3": 777036},
     "SMC_X_STO_H1":           {"base": 555770, "pos1": 555771, "pos2": 555772, "pos3": 555773},
     "KC_LIQUIDITY_DOMINANCE": {"base": 555880, "pos1": 555881, "pos2": 555882, "pos3": 555883},
+    "CONFLUENCE_SQUEEZE_M15": {"base": 555950, "pos1": 555951, "pos2": 555952, "pos3": 555953},
 }
 ```
 
@@ -42,6 +44,7 @@ The following Magic numbers represent decommissioned strategies whose historical
 - **Asian Range Sniper**: Magic `555820..555823`, comments containing `asian`
 - **RTM M5 (All-Weather)**: Magic `777005, 777015, 777025, 777035`
 - **RTM M7 (Max Alpha)**: Magic `777007, 777017, 777027, 777037`
+- **Tug of War Volume Read M15**: Magic `555900..555903`
 - **Legacy Models**: Flash Micro (`555801..555803`), EMA 50 Scalper (`555851..555852`)
 
 ---
@@ -51,12 +54,12 @@ The following Magic numbers represent decommissioned strategies whose historical
 1. **`bot_engine.py`**:
    - The main algorithmic execution engine (`ScalpingBotEngine`).
    - Handles candle bar close evaluation, technical indicators (EMA, ATR, Fibonacci, Stochastic), signal generation, order execution (`execute_buy`, `execute_sell`), and open position trailing (`manage_open_positions`).
-   - Enforces `max_concurrent_setups = 4`.
+   - Enforces `max_concurrent_setups = 6`.
 
 2. **`strategy_analytics.py`**:
    - `RealTradeAnalyticsManager`: Connects to MT5 history deals API.
    - Filters deals using `EPOCH_START_TIME = datetime(2026, 9, 7, 15, 0, 0)`.
-   - Classifies every deal into one of the 4 active pillars or `RETIRED_SETUPS`.
+   - Classifies every deal into one of the 6 active pillars or `RETIRED_SETUPS`.
    - Computes 100% verified real Winrate, Profit Factor, Realized R:R, and Max Drawdown from closed deals.
 
 3. **`strategy_optimizer.py`**:
@@ -79,18 +82,20 @@ The following Magic numbers represent decommissioned strategies whose historical
 
 ## 4. Ground Rules for AI Coding (Codex / Copilot Rules)
 
-1. **Active Setup Count is Strictly 4**:
-   - Never add a 5th active setup without explicit instruction.
-   - `max_concurrent_setups` in `config.json` must match `4`.
-   - `strategies_count` in `main.py` must return `4`.
+1. **Active Setup Count is Strictly 6**:
+   - Never add a 7th active setup without explicit instruction.
+   - `max_concurrent_setups` in `config.json` must match `6`.
+   - `strategies_count` in `main.py` must return `6`.
 
 2. **Preserve Real MT5 Historical Data**:
    - Never purge, delete, or mock closed deal history from MT5.
-   - Any trade that does not match the 4 active pillars must seamlessly fallback to `RETIRED_SETUPS`.
+   - Any trade that does not match the 6 active pillars must seamlessly fallback to `RETIRED_SETUPS`.
 
 3. **Risk Management & Compounding**:
    - `PULLBACK_DR_EKK`, `RTM_M4`, and `RTM_M6` utilize **2.0% Step-Up Compounding** (Tier base calculated against high-water equity).
+   - `KC_LIQUIDITY_DOMINANCE` uses **1.5% Step-Up Compounding**.
    - `SMC_X_STO_H1` uses **1.0% Fixed Risk**.
+   - `CONFLUENCE_SQUEEZE_M15` uses **0.5% Fixed Risk** (self-designed setup, no live track record yet; same Full AI Gating pipeline as every other pillar via `_process_single_setup_signal()`). Unlike Tug of War, it runs as an AI Trend Trail (trailing runner, not a fixed TP) since volatility-squeeze breakouts statistically tend to continue.
 
 4. **Testing is Mandatory Before Commit**:
    - Always run the test suite to verify no regressions:

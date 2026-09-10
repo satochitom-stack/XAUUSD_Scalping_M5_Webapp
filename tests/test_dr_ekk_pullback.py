@@ -129,6 +129,65 @@ class TestDrEkkPullbackStrategy(unittest.TestCase):
         b_sig, s_sig, reason = self.bot._check_pullback_dr_ekk(df)
         self.assertTrue(b_sig or not s_sig)
 
+    def test_manage_open_positions_buy_trail_no_df_crash(self):
+        """Regression test: manage_open_positions() must not crash with NameError on the Dr. Ekk
+        EMA60 trailing branch (BUY) when called with no `df` argument - matching how it is
+        actually invoked in production: run_iteration() calls self.manage_open_positions(symbol)
+        with no df. Previously this referenced an undefined `df` name, which raised NameError,
+        silently swallowed by account_manager's broad except and skipping trailing/BE-lock
+        updates for EVERY strategy that cycle."""
+        pos1_magic = bot_engine.STRATEGY_MAGIC_MAP["PULLBACK_DR_EKK"]["pos1"]
+        self.mock_connector.get_market_info.return_value = {"bid": 2406.5, "ask": 2406.7}
+        self.mock_connector.get_open_positions.return_value = [
+            {"ticket": 701, "magic": pos1_magic, "symbol": "XAUUSDc", "type": "BUY",
+             "price_open": 2400.0, "sl": 2399.7, "tp": 2410.0}
+        ]
+        self.bot.initial_risk_map[701] = 4.0  # r_profit = (2406.5-2400.0)/4.0 = 1.625R -> EMA60 trail branch
+
+        rising_closes = [2390.0 + i * 0.30 for i in range(120)]
+        self.mock_connector.get_rates.return_value = pd.DataFrame({
+            "time": pd.date_range("2026-09-01", periods=120, freq="5min"),
+            "open": rising_closes, "high": [c + 0.2 for c in rising_closes],
+            "low": [c - 0.2 for c in rising_closes], "close": rising_closes
+        })
+
+        # Must not raise (previously: NameError: name 'df' is not defined)
+        self.bot.manage_open_positions("XAUUSDc")
+
+        self.mock_connector.get_rates.assert_any_call("XAUUSDc", "M5", 200)
+        self.assertEqual(self.mock_connector.modify_position.call_count, 1)
+        called_ticket, called_sl, called_tp = self.mock_connector.modify_position.call_args[0]
+        self.assertEqual(called_ticket, 701)
+        self.assertGreaterEqual(called_sl, round(2400.0 + 4.0 * 0.8, 2))  # at least the +0.8R minimum lock
+        self.assertEqual(called_tp, 2410.0)
+
+    def test_manage_open_positions_sell_trail_no_df_crash(self):
+        """Regression test: same as above but for the SELL side of the Dr. Ekk EMA60 trail branch."""
+        pos1_magic = bot_engine.STRATEGY_MAGIC_MAP["PULLBACK_DR_EKK"]["pos1"]
+        self.mock_connector.get_market_info.return_value = {"bid": 2393.5, "ask": 2393.7}
+        self.mock_connector.get_open_positions.return_value = [
+            {"ticket": 702, "magic": pos1_magic, "symbol": "XAUUSDc", "type": "SELL",
+             "price_open": 2400.0, "sl": 2400.3, "tp": 2390.0}
+        ]
+        self.bot.initial_risk_map[702] = 4.0  # r_profit = (2400.0-2393.5)/4.0 = 1.625R -> EMA60 trail branch
+
+        falling_closes = [2410.0 - i * 0.30 for i in range(120)]
+        self.mock_connector.get_rates.return_value = pd.DataFrame({
+            "time": pd.date_range("2026-09-01", periods=120, freq="5min"),
+            "open": falling_closes, "high": [c + 0.2 for c in falling_closes],
+            "low": [c - 0.2 for c in falling_closes], "close": falling_closes
+        })
+
+        # Must not raise (previously: NameError: name 'df' is not defined)
+        self.bot.manage_open_positions("XAUUSDc")
+
+        self.mock_connector.get_rates.assert_any_call("XAUUSDc", "M5", 200)
+        self.assertEqual(self.mock_connector.modify_position.call_count, 1)
+        called_ticket, called_sl, called_tp = self.mock_connector.modify_position.call_args[0]
+        self.assertEqual(called_ticket, 702)
+        self.assertLessEqual(called_sl, round(2400.0 - 4.0 * 0.8, 2))  # at least the +0.8R minimum lock
+        self.assertEqual(called_tp, 2390.0)
+
 
 if __name__ == "__main__":
     unittest.main()
