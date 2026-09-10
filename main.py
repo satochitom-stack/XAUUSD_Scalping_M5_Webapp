@@ -489,12 +489,13 @@ async def get_system_version():
     return {
         "status": True,
         "latest_commit": commit_str,
-        "strategies_count": 4,
+        "strategies_count": 5,
         "strategies": [
             "PULLBACK_DR_EKK",
             "RTM_M4_CONSERVATIVE",
             "RTM_M6_ELITE_GROWTH",
-            "SMC_X_STO_H1"
+            "SMC_X_STO_H1",
+            "KC_LIQUIDITY_DOMINANCE"
         ]
     }
 

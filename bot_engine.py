@@ -1,10 +1,11 @@
 """
 Advanced Trading Bot Strategy Engine for XAUUSD (Gold)
-Streamlined to the "Elite 4 Active Pillars" across Market Sessions:
+Streamlined to the "Elite 5 Active Pillars" across Market Sessions:
 1. PULLBACK_DR_EKK - Signature Pullback (#PullBack ร้อยล้าน - Dr. Ekk / Trader Overseas)
 2. RTM_M4_CONSERVATIVE - RTM Quasimodo Conservative QML Retest (M15 + H1)
 3. RTM_M6_ELITE_GROWTH - RTM Quasimodo Elite Growth Institutional Retest (M15 + H1)
 4. SMC_X_STO_H1 - SMCxSTO ระบบปีศาจ H1 Swing Devil System (EMA 50/200 + Discount/Premium ATR + Single OB + Stoch)
+5. KC_LIQUIDITY_DOMINANCE - KC Forex Trading: Liquidity Sweep + Candle Dominance (M5)
 """
 
 import time
@@ -31,7 +32,8 @@ STRATEGY_MAGIC_MAP = {
     "PULLBACK_DR_EKK": {"base": 555860, "pos1": 555861, "pos2": 555862, "pos3": 555863},
     "RTM_M4_CONSERVATIVE": {"base": 777004, "pos1": 777014, "pos2": 777024, "pos3": 777034},
     "RTM_M6_ELITE_GROWTH": {"base": 777006, "pos1": 777016, "pos2": 777026, "pos3": 777036},
-    "SMC_X_STO_H1": {"base": 555770, "pos1": 555771, "pos2": 555772, "pos3": 555773}
+    "SMC_X_STO_H1": {"base": 555770, "pos1": 555771, "pos2": 555772, "pos3": 555773},
+    "KC_LIQUIDITY_DOMINANCE": {"base": 555880, "pos1": 555881, "pos2": 555882, "pos3": 555883}
 }
 
 class GoldScalpingBot:
@@ -361,6 +363,14 @@ class GoldScalpingBot:
                 b_sig, s_sig, reason = self._check_pullback_dr_ekk(df, symbol)
                 if b_sig or s_sig:
                     self._process_single_setup_signal(df, symbol, spread, "PULLBACK_DR_EKK", "BUY" if b_sig else "SELL", reason)
+
+        # --- PILLAR 6: KC Forex Trading (Liquidity Sweep + Candle Dominance) ---
+        kc_enabled = strat_cfg.get("kc_liquidity_dominance_enabled", True)
+        if kc_enabled and (strat_mode in ["ALL", "KC_LIQUIDITY_DOMINANCE", "KC_DOMINANCE"]):
+            if not self.has_open_positions_for_setup(symbol, "KC_LIQUIDITY_DOMINANCE"):
+                b_sig, s_sig, reason = self._check_kc_liquidity_dominance(df, symbol)
+                if b_sig or s_sig:
+                    self._process_single_setup_signal(df, symbol, spread, "KC_LIQUIDITY_DOMINANCE", "BUY" if b_sig else "SELL", reason)
 
         # Update Trend Badge with News Radar
         if news_status.get("is_news_active"):
@@ -717,6 +727,95 @@ class GoldScalpingBot:
                         grade = "A+" if conf_score == 3 else "A"
                         trig_type = "Pinbar" if bearish_pinbar else "Engulfing"
                         return False, True, f"🎯 Pullback Dr. Ekk: Bearish {trig_type} at 3-Confluence ({grade} | Fib {retrace_pct*100:.0f}% + EMA60)"
+
+        return False, False, ""
+
+    def _check_kc_liquidity_dominance(self, df: pd.DataFrame, symbol: str = "XAUUSD") -> Tuple[bool, bool, str]:
+        """
+        🕯️ KC Forex Trading: Liquidity Sweep + Candle Dominance (Pillar #5)
+        1. Context / Institutional Liquidity Hunt:
+           - Price sweeps past recent swing high or low of last 15-20 bars (Stop Hunt / Fakeout).
+           - Price fails to sustain breakout and rejects back inside the structural range.
+        2. Candle Dominance (Price Action Tug-of-War Confirmation):
+           - Strong reversal bar with solid body (Body Ratio >= 50% of candle range).
+           - 1-Bar Dominance: Engulfs the previous opposite candle body/open.
+           - OR 2-Bar Dominance: Current bar closes beyond the opening of 2 bars ago.
+        3. Session Timing:
+           - Active European & US Trading Sessions (14:00 - 02:00 Thai Time / London & NY Liquidity).
+        4. Target Risk-Reward:
+           - SL placed safely beyond the sweep wick (+0.40 USD buffer).
+           - Target TP = 2.0R (with Break-Even locked at +1.0R).
+        """
+        if len(df) < 30:
+            return False, False, ""
+
+        # Time/Session check: Active institutional session (14:00 - 02:00 Thai Time)
+        th_tz = timezone(timedelta(hours=7))
+        now_time = datetime.now(th_tz).time()
+        in_session = (now_time >= dtime(14, 0)) or (now_time <= dtime(2, 0))
+        if not in_session:
+            return False, False, ""
+
+        b1 = df.iloc[-2]  # Trigger bar (last completed bar)
+        b2 = df.iloc[-3]  # Previous bar
+        b3 = df.iloc[-4]  # Bar 2 steps ago
+
+        curr_o = float(b1['open'])
+        curr_c = float(b1['close'])
+        curr_h = float(b1['high'])
+        curr_l = float(b1['low'])
+        curr_range = curr_h - curr_l
+
+        if curr_range < 0.60:  # Avoid dead flat candles
+            return False, False, ""
+
+        curr_body = abs(curr_c - curr_o)
+        curr_body_ratio = curr_body / curr_range
+
+        # Require solid body (>= 50% of range)
+        if curr_body_ratio < 0.50:
+            return False, False, ""
+
+        prev_o = float(b2['open'])
+        prev_c = float(b2['close'])
+        prev_h = float(b2['high'])
+        prev_l = float(b2['low'])
+
+        # Swing Lookback window (15-20 bars prior to b1/b2)
+        lookback_df = df.iloc[-22:-3]
+        if len(lookback_df) < 10:
+            return False, False, ""
+
+        prior_swing_high = float(lookback_df['high'].max())
+        prior_swing_low = float(lookback_df['low'].min())
+
+        # 1. BULLISH SWEEP + CANDLE DOMINANCE (BUY)
+        # Price swept prior swing low (either trigger bar or previous bar pierced it) and closed back above
+        swept_low = (curr_l < prior_swing_low or prev_l < prior_swing_low) and (curr_c > prior_swing_low)
+        if swept_low and curr_c > curr_o:
+            # 1-Bar Dominance: Engulfs prev candle open
+            is_1bar_bull = (prev_c < prev_o) and (curr_c > prev_o)
+            # 2-Bar Dominance: Combined with prev candle engulfs b3
+            prev2_o = float(b3['open'])
+            prev2_c = float(b3['close'])
+            is_2bar_bull = (prev2_c < prev2_o) and (curr_c > prev2_o) and (prev_c >= prev_o)
+
+            if is_1bar_bull or is_2bar_bull:
+                dom_type = "1-Bar Engulfing" if is_1bar_bull else "2-Bar Combined"
+                return True, False, f"🕯️ KC Dominance: Bullish Liquidity Sweep ({dom_type} | Body {curr_body_ratio*100:.0f}% | Swept {prior_swing_low:.2f})"
+
+        # 2. BEARISH SWEEP + CANDLE DOMINANCE (SELL)
+        # Price swept prior swing high and closed back below
+        swept_high = (curr_h > prior_swing_high or prev_h > prior_swing_high) and (curr_c < prior_swing_high)
+        if swept_high and curr_c < curr_o:
+            is_1bar_bear = (prev_c > prev_o) and (curr_c < prev_o)
+            prev2_o = float(b3['open'])
+            prev2_c = float(b3['close'])
+            is_2bar_bear = (prev2_c > prev2_o) and (curr_c < prev2_o) and (prev_c <= prev_o)
+
+            if is_1bar_bear or is_2bar_bear:
+                dom_type = "1-Bar Engulfing" if is_1bar_bear else "2-Bar Combined"
+                return False, True, f"🕯️ KC Dominance: Bearish Liquidity Sweep ({dom_type} | Body {curr_body_ratio*100:.0f}% | Swept {prior_swing_high:.2f})"
 
         return False, False, ""
 
@@ -1342,6 +1441,15 @@ class GoldScalpingBot:
             if sl_dist > 12.00: sl = ask - 12.00; sl_dist = 12.00
             target_rr = opt.get("tp_ratio", 2.5)
             tp2 = ask + (sl_dist * target_rr)
+        elif strat_id == "KC_LIQUIDITY_DOMINANCE":
+            lowest_low = float(df['low'].iloc[-22:-1].min())
+            sl_buffer = 0.40 * sl_mult
+            sl = lowest_low - sl_buffer
+            sl_dist = ask - sl
+            if sl_dist < 2.00: sl = ask - 2.00; sl_dist = 2.00
+            if sl_dist > 12.00: sl = ask - 12.00; sl_dist = 12.00
+            target_rr = opt.get("tp_ratio", 2.0)
+            tp2 = ask + (sl_dist * target_rr)
         else:
             # News Momentum Expansion / Default (EarthETC Structural SL)
             if len(df) >= 15:
@@ -1363,8 +1471,8 @@ class GoldScalpingBot:
             if sl_dist > 18.00: sl = ask - 18.00; sl_dist = 18.00  # EarthETC: wide structural room, no arbitrary 7.00 choke
             tp2 = ask + (sl_dist * 1.8)
 
-        if strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH", "PULLBACK_DR_EKK"]:
-            risk_label = "Step-Up 2% Risk" if self.config.get("strategy", {}).get("enable_step_up_compounding", True) else "2.0% Risk"
+        if strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH", "PULLBACK_DR_EKK", "KC_LIQUIDITY_DOMINANCE"]:
+            risk_label = "Step-Up 1.5% Risk" if strat_id == "KC_LIQUIDITY_DOMINANCE" else ("Step-Up 2% Risk" if self.config.get("strategy", {}).get("enable_step_up_compounding", True) else "2.0% Risk")
         elif strat_id in ["NEWS_MOMENTUM_EXPANSION", "ASIAN_RANGE_SNIPER"]:
             lot_mult = 0.5  # Fixed 0.5% risk per user instruction
             risk_label = "0.5% Risk"
@@ -1442,6 +1550,15 @@ class GoldScalpingBot:
             if sl_dist > 12.00: sl = bid + 12.00; sl_dist = 12.00
             target_rr = opt.get("tp_ratio", 2.5)
             tp2 = bid - (sl_dist * target_rr)
+        elif strat_id == "KC_LIQUIDITY_DOMINANCE":
+            highest_high = float(df['high'].iloc[-22:-1].max())
+            sl_buffer = 0.40 * sl_mult
+            sl = highest_high + sl_buffer
+            sl_dist = sl - bid
+            if sl_dist < 2.00: sl = bid + 2.00; sl_dist = 2.00
+            if sl_dist > 12.00: sl = bid + 12.00; sl_dist = 12.00
+            target_rr = opt.get("tp_ratio", 2.0)
+            tp2 = bid - (sl_dist * target_rr)
         else:
             # News Momentum Expansion / Default (EarthETC Structural SL)
             if len(df) >= 15:
@@ -1463,8 +1580,8 @@ class GoldScalpingBot:
             if sl_dist > 18.00: sl = bid + 18.00; sl_dist = 18.00  # EarthETC: wide structural room, no arbitrary 7.00 choke
             tp2 = bid - (sl_dist * 1.8)
 
-        if strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH", "PULLBACK_DR_EKK"]:
-            risk_label = "Step-Up 2% Risk" if self.config.get("strategy", {}).get("enable_step_up_compounding", True) else "2.0% Risk"
+        if strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH", "PULLBACK_DR_EKK", "KC_LIQUIDITY_DOMINANCE"]:
+            risk_label = "Step-Up 1.5% Risk" if strat_id == "KC_LIQUIDITY_DOMINANCE" else ("Step-Up 2% Risk" if self.config.get("strategy", {}).get("enable_step_up_compounding", True) else "2.0% Risk")
         elif strat_id in ["NEWS_MOMENTUM_EXPANSION", "ASIAN_RANGE_SNIPER"]:
             lot_mult = 0.5  # Fixed 0.5% risk per user instruction
             risk_label = "0.5% Risk"
@@ -1487,9 +1604,9 @@ class GoldScalpingBot:
         balance = float(acc.get("balance", 10000.0))
         equity = float(acc.get("equity", balance))
 
-        # RTM M4, M6, and PULLBACK_DR_EKK receive 2.0% Risk with Step-Up Compounding!
-        if strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH", "PULLBACK_DR_EKK"]:
-            risk_pct = 2.0
+        # RTM M4, M6, PULLBACK_DR_EKK, and KC_LIQUIDITY_DOMINANCE receive Step-Up Compounding!
+        if strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH", "PULLBACK_DR_EKK", "KC_LIQUIDITY_DOMINANCE"]:
+            risk_pct = 1.5 if strat_id == "KC_LIQUIDITY_DOMINANCE" else 2.0
             use_step_up = strat_cfg.get("enable_step_up_compounding", True)
             if use_step_up:
                 eval_equity = max(balance, equity)
@@ -1581,6 +1698,8 @@ class GoldScalpingBot:
                             initial_r = abs(open_p - tp) / 2.2
                         elif strat_id == "PULLBACK_DR_EKK":
                             initial_r = abs(open_p - tp) / 1.5
+                        elif strat_id == "KC_LIQUIDITY_DOMINANCE":
+                            initial_r = abs(open_p - tp) / 2.0
                         else:
                             initial_r = abs(open_p - tp) / 1.8
                         self.initial_risk_map[t_id] = initial_r
@@ -1595,6 +1714,7 @@ class GoldScalpingBot:
                 is_news_momentum = strat_id == "NEWS_MOMENTUM_EXPANSION"
                 is_smc_devil = strat_id == "SMC_X_STO_H1"
                 is_pullback_dr_ekk = strat_id == "PULLBACK_DR_EKK"
+                is_kc_dominance = strat_id == "KC_LIQUIDITY_DOMINANCE"
 
                 if ptype == "BUY":
                     profit_dist = bid - open_p
@@ -1681,6 +1801,21 @@ class GoldScalpingBot:
                             if sl < target_sl - 0.10:
                                 self.connector.modify_position(t_id, target_sl, tp)
                                 self.add_log(f"🛡️ [DR EKK BREAK-EVEN] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
+
+                    elif is_kc_dominance:
+                        # KC Forex Liquidity Dominance (Target 2.0R)
+                        # Step 2: At >= 1.4R -> Lock +0.8R Profit
+                        if r_profit >= 1.4:
+                            target_sl = round(open_p + (initial_r * 0.8), 2)
+                            if sl < target_sl - 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🎯 [KC DOMINANCE +0.8R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +0.8R ({target_sl:.2f})", "SUCCESS")
+                        # Step 1: At >= 1.0R -> Lock Break-Even (+0.30 USD)
+                        elif r_profit >= 1.0:
+                            target_sl = round(open_p + 0.30, 2)
+                            if sl < target_sl - 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🛡️ [KC DOMINANCE BREAK-EVEN] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
 
                     else:
                         if r_profit >= 1.0:
@@ -1774,6 +1909,21 @@ class GoldScalpingBot:
                             if sl == 0 or sl > target_sl + 0.10:
                                 self.connector.modify_position(t_id, target_sl, tp)
                                 self.add_log(f"🛡️ [DR EKK BREAK-EVEN] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
+
+                    elif is_kc_dominance:
+                        # KC Forex Liquidity Dominance (Target 2.0R)
+                        # Step 2: At >= 1.4R -> Lock +0.8R Profit
+                        if r_profit >= 1.4:
+                            target_sl = round(open_p - (initial_r * 0.8), 2)
+                            if sl == 0 or sl > target_sl + 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🎯 [KC DOMINANCE +0.8R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +0.8R ({target_sl:.2f})", "SUCCESS")
+                        # Step 1: At >= 1.0R -> Lock Break-Even (+0.30 USD)
+                        elif r_profit >= 1.0:
+                            target_sl = round(open_p - 0.30, 2)
+                            if sl == 0 or sl > target_sl + 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🛡️ [KC DOMINANCE BREAK-EVEN] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
 
                     else:
                         if r_profit >= 1.0:

@@ -68,6 +68,17 @@ class RealTradeAnalyticsManager:
             "avg_rr": "1:2.0",
             "description": "ระบบ SMCxSTO กฎข้อเดียว: เทรนด์ EMA 50/200 + โซน Discount/Premium (ATR) + Order Block + Stochastic Oversold/Overbought"
         },
+        "KC_LIQUIDITY_DOMINANCE": {
+            "id": "KC_LIQUIDITY_DOMINANCE",
+            "name": "KC Forex: Liquidity Sweep x Candle Dominance",
+            "icon": "🕯️",
+            "category": "PRICE_ACTION_PRO",
+            "timeframe": "M5",
+            "best_session": "London & NY (14:00 - 02:00)",
+            "magic_numbers": [555880, 555881, 555882, 555883],
+            "avg_rr": "1:2.0",
+            "description": "กลยุทธ์ Price Action Tug-of-War จาก KC Forex Trading: ดักจังหวะ Stop Hunt กวาด Liquidity High/Low 15-20 แท่ง แล้วปฏิเสธราคาด้วย Candle Dominance (เนื้อเทียนตัน >= 50%) วาง SL นอกปลายไส้ + ล็อคทุน BE ที่ 1.0R (ความเสี่ยง Step-Up 1.5% | TP 2.0R)"
+        },
         "RETIRED_SETUPS": {
             "id": "RETIRED_SETUPS",
             "name": "เซตอัพที่เลิกใช้",
@@ -220,11 +231,12 @@ class RealTradeAnalyticsManager:
                     positions[pid]["out"].append(d)
 
             strategy_name_map = {
-                # 🟢 4 เสาหลัก (Active Models) + เซตอัพที่เลิกใช้
+                # 🟢 5 เสาหลัก (Active Models) + เซตอัพที่เลิกใช้
                 "PULLBACK_DR_EKK": "Signature Pullback (#PullBack ร้อยล้าน)",
                 "RTM_M4_CONSERVATIVE": "RTM Quasimodo M4 (Conservative)",
                 "RTM_M6_ELITE_GROWTH": "RTM Quasimodo M6 (Elite Growth)",
                 "SMC_X_STO_H1": "SMC x STO Devil (H1 Devil System)",
+                "KC_LIQUIDITY_DOMINANCE": "KC Forex (Liquidity Sweep x Candle Dominance)",
                 "RETIRED_SETUPS": "เซตอัพที่เลิกใช้"
             }
 
@@ -467,7 +479,11 @@ class RealTradeAnalyticsManager:
         if "sto" in comment or "devil" in comment or "smcxsto" in comment or (555770 <= magic <= 555773):
             return "SMC_X_STO_H1"
 
-        # 4. Decommissioned / Retired Setups (News Momentum, Asian Range Sniper, RTM M5, RTM M7, Captain SMC, etc.)
+        # 4. Active: KC Forex Liquidity Sweep x Candle Dominance
+        if "kc" in comment or "dominance" in comment or (555880 <= magic <= 555883):
+            return "KC_LIQUIDITY_DOMINANCE"
+
+        # 5. Decommissioned / Retired Setups (News Momentum, Asian Range Sniper, RTM M5, RTM M7, Captain SMC, etc.)
         return "RETIRED_SETUPS"
 
     def get_real_stats_summary(self) -> dict:
@@ -640,6 +656,8 @@ class RealTradeAnalyticsManager:
             setups_data["RTM_M6_ELITE_GROWTH"]["status"] = "🟢 ACTIVE (Elite Growth Step-Up 2.0%)"
         if "SMC_X_STO_H1" in setups_data:
             setups_data["SMC_X_STO_H1"]["status"] = "🟢 ACTIVE (Devil H1 OB+STO)"
+        if "KC_LIQUIDITY_DOMINANCE" in setups_data:
+            setups_data["KC_LIQUIDITY_DOMINANCE"]["status"] = "🟢 ACTIVE (KC Candle Dominance Step-Up 1.5%)"
         if "RETIRED_SETUPS" in setups_data:
             setups_data["RETIRED_SETUPS"]["status"] = "📦 ARCHIVED (บันทึกประวัติเดิม)"
 

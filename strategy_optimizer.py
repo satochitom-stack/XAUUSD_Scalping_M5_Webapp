@@ -22,10 +22,24 @@ DEFAULT_STRATEGIES = [
     "PULLBACK_DR_EKK",
     "RTM_M4_CONSERVATIVE",
     "RTM_M6_ELITE_GROWTH",
-    "SMC_X_STO_H1"
+    "SMC_X_STO_H1",
+    "KC_LIQUIDITY_DOMINANCE"
 ]
 
 SETUP_PROFILES = {
+    "KC_LIQUIDITY_DOMINANCE": {
+        "id": "KC_LIQUIDITY_DOMINANCE",
+        "name": "KC Forex: Liquidity Sweep x Candle Dominance",
+        "icon": "🕯️",
+        "win_prob": 72.0,
+        "base_rr": 2.00,
+        "min_rr": 1.50,
+        "max_rr": 3.00,
+        "trailing_type": "CONFLUENCE_STAGE",
+        "trail_points": 200.0,
+        "trail_step_points": 30.0,
+        "description": "Liquidity Sweep 15-20 Bars + Candle Dominance Rejection + Step-Up Recovery 1.5% Risk"
+    },
     "RTM_M4_CONSERVATIVE": {
         "id": "RTM_M4_CONSERVATIVE",
         "name": "RTM Quasimodo M4 (Conservative)",
@@ -593,6 +607,7 @@ class RealTimeStrategyOptimizer:
             elif "rtm_m4" in comment or "m4_cons" in comment: strat = "RTM_M4_CONSERVATIVE"
             elif "rtm_m6" in comment or "m6_elite" in comment: strat = "RTM_M6_ELITE_GROWTH"
             elif "sto" in comment or "devil" in comment or "smcxsto" in comment: strat = "SMC_X_STO_H1"
+            elif "kc" in comment or "dominance" in comment: strat = "KC_LIQUIDITY_DOMINANCE"
             elif "news" in comment or "momentum" in comment or "asian" in comment or "rtm_m5" in comment or "m5_allw" in comment or "rtm_m7" in comment or "m7_alpha" in comment: strat = "RETIRED_SETUPS"
 
             self.record_trade_outcome(strat, profit, 0.0, comment, ticket=deal.get("ticket"))
