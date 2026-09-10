@@ -563,30 +563,33 @@ class GoldScalpingBot:
         if candle_range > (2.5 * atr):
             return False, False, ""
 
-        # Filter 2: Bollinger Band expansion blowout check
+        # Filter 2: Volatility Squeeze Gate (Block counter-trend knife during trending expansion)
         bb_width = float(b1['bb_upper']) - float(b1['bb_lower'])
-        if bb_width > (4.0 * atr):
+        if bb_width > (2.8 * atr):
             return False, False, ""
 
-        # Trend Filter: EMA50 vs EMA150 directional alignment
+        # Micro-Trend Directional Gate (Trend-Aligned Asian Scalp)
+        ema20 = float(b1.get('ema20', b1['close']))
         ema50 = float(b1.get('ema50', b1['close']))
         ema150 = float(b1.get('ema150', b1['close']))
+        is_asian_bullish = ema20 >= ema50
+        is_asian_bearish = ema20 < ema50
         is_strong_uptrend = ema50 > (ema150 + 1.2 * atr)
         is_strong_downtrend = ema50 < (ema150 - 1.2 * atr)
 
         upper_wick = b1['high'] - max(b1['open'], b1['close'])
         lower_wick = min(b1['open'], b1['close']) - b1['low']
 
-        # Bullish Rebound (At Range Low / BB Lower) - Blocked if market is in strong downtrend
-        if not is_strong_downtrend:
+        # Bullish Rebound (At Range Low / BB Lower) - Only when Micro-Trend is Bullish/Neutral and not in strong downtrend
+        if is_asian_bullish and not is_strong_downtrend:
             touched_lower = (b1['low'] <= b1['bb_lower'] or b1['low'] <= (range_low + 0.30) or pina.get("coming_back_bull"))
             closed_inside_lower = b1['close'] > b1['bb_lower'] or pina.get("coming_back_bull")
             if touched_lower and closed_inside_lower and b1['close'] > b1['open'] and (lower_wick / candle_range) >= 0.35:
                 if b1['rsi7'] <= 38 and b1['rsi7'] > b2['rsi7']:
                     return True, False, "⛩️ Sideway Range Sniper: Support Rebound + Trend Filter (0.5% Risk)"
 
-        # Bearish Rebound (At Range High / BB Upper) - Blocked if market is in strong uptrend
-        if not is_strong_uptrend:
+        # Bearish Rebound (At Range High / BB Upper) - Only when Micro-Trend is Bearish/Neutral and not in strong uptrend
+        if is_asian_bearish and not is_strong_uptrend:
             touched_upper = (b1['high'] >= b1['bb_upper'] or b1['high'] >= (range_high - 0.30) or pina.get("coming_back_bear"))
             closed_inside_upper = b1['close'] < b1['bb_upper'] or pina.get("coming_back_bear")
             if touched_upper and closed_inside_upper and b1['close'] < b1['open'] and (upper_wick / candle_range) >= 0.35:
@@ -1162,20 +1165,24 @@ class GoldScalpingBot:
             if not self.has_open_positions_for_setup(symbol, "RTM_M4_CONSERVATIVE"):
                 is_m4_pullback = False
                 dist_saved = 0.0
+                b1 = rates_m5.iloc[-1]
+                b_closed = rates_m5.iloc[-2] if len(rates_m5) >= 2 else b1
+                c_rng = max(float(b_closed['high']) - float(b_closed['low']), 0.1)
+
                 if action == "BUY":
                     dist_saved = signal_close - bid
                     near_qml = abs(bid - qml_price) <= (0.75 * curr_atr) or bid <= qml_price + 0.80
                     retrace_ok = near_qml or (bid <= signal_close - (0.25 * curr_atr)) or (abs(bid - signal_close) <= 1.0)
-                    b1 = rates_m5.iloc[-1]
-                    candle_low = float(b1['low'])
-                    is_m4_pullback = retrace_ok and (bid >= candle_low)
+                    lower_wick = min(float(b_closed['open']), float(b_closed['close'])) - float(b_closed['low'])
+                    rejection_ok = ((lower_wick / c_rng) >= 0.28) or (float(b_closed['close']) > float(b_closed['open'])) or (bid > float(b_closed['high']))
+                    is_m4_pullback = retrace_ok and rejection_ok and (bid >= float(b1['low']))
                 elif action == "SELL":
                     dist_saved = ask - signal_close
                     near_qml = abs(ask - qml_price) <= (0.75 * curr_atr) or ask >= qml_price - 0.80
                     retrace_ok = near_qml or (ask >= signal_close + (0.25 * curr_atr)) or (abs(ask - signal_close) <= 1.0)
-                    b1 = rates_m5.iloc[-1]
-                    candle_high = float(b1['high'])
-                    is_m4_pullback = retrace_ok and (ask <= candle_high)
+                    upper_wick = float(b_closed['high']) - max(float(b_closed['open']), float(b_closed['close']))
+                    rejection_ok = ((upper_wick / c_rng) >= 0.28) or (float(b_closed['close']) < float(b_closed['open'])) or (ask < float(b_closed['low']))
+                    is_m4_pullback = retrace_ok and rejection_ok and (ask <= float(b1['high']))
 
                 if is_m4_pullback and self._check_rtm_clustering(symbol, curr_price, min_gap=1.50):
                     # Grade B trades at conservative 1.0% risk, Grade A/A+ at 2.0% risk
@@ -1192,44 +1199,51 @@ class GoldScalpingBot:
                     setup["m4_filled"] = True
                     self.add_log(f"🛡️ [RTM M4 FILLED] Conservative QML Pullback executed @ {curr_price:.2f} (Grade {grade})", "SUCCESS")
 
-        # --- MODEL 6 (Elite Growth): Deep Retest OTE Zone (Fib 61.8% - 78.6%) ---
-        if rtm_mode in ["ALL", "MODEL_6", "PULLBACK_DUO"] and grade in ["A+", "A"] and not setup["m6_filled"]:
+        # --- MODEL 6 (Elite Growth): Institutional Sweet Spot (Fib 50.0% - 65.0%) ---
+        if rtm_mode in ["ALL", "MODEL_6", "PULLBACK_DUO"] and grade in ["A+", "A", "B"] and not setup["m6_filled"]:
             if not self.has_open_positions_for_setup(symbol, "RTM_M6_ELITE_GROWTH"):
                 is_m6_ote = False
                 break_level = setup.get("break_level", 0.0)
                 if break_level > 0 and head_extreme > 0:
                     impulse_range = abs(break_level - head_extreme)
                     if impulse_range >= (1.0 * curr_atr):
+                        b_closed = rates_m5.iloc[-2] if len(rates_m5) >= 2 else rates_m5.iloc[-1]
+                        c_rng = max(float(b_closed['high']) - float(b_closed['low']), 0.1)
                         if action == "BUY":
-                            ote_high = break_level - (0.618 * impulse_range)
-                            ote_low = break_level - (0.786 * impulse_range)
-                            if (ote_low - 0.50) <= bid <= (ote_high + 0.50) and bid >= sl + 1.0:
-                                is_m6_ote = True
+                            # Institutional Golden Pocket Sweet Spot: 50.0% - 65.0%
+                            ote_high = break_level - (0.50 * impulse_range)
+                            ote_low = break_level - (0.65 * impulse_range)
+                            in_zone = (ote_low - 0.50) <= bid <= (ote_high + 0.50) and bid >= sl + 1.0
+                            lower_wick = min(float(b_closed['open']), float(b_closed['close'])) - float(b_closed['low'])
+                            rejection_ok = ((lower_wick / c_rng) >= 0.28) or (float(b_closed['close']) > float(b_closed['open'])) or (bid > float(b_closed['high']))
+                            is_m6_ote = in_zone and rejection_ok
                         elif action == "SELL":
-                            ote_low = break_level + (0.618 * impulse_range)
-                            ote_high = break_level + (0.786 * impulse_range)
-                            if (ote_low - 0.50) <= ask <= (ote_high + 0.50) and ask <= sl - 1.0:
-                                is_m6_ote = True
+                            ote_low = break_level + (0.50 * impulse_range)
+                            ote_high = break_level + (0.65 * impulse_range)
+                            in_zone = (ote_low - 0.50) <= ask <= (ote_high + 0.50) and ask <= sl - 1.0
+                            upper_wick = float(b_closed['high']) - max(float(b_closed['open']), float(b_closed['close']))
+                            rejection_ok = ((upper_wick / c_rng) >= 0.28) or (float(b_closed['close']) < float(b_closed['open'])) or (ask < float(b_closed['low']))
+                            is_m6_ote = in_zone and rejection_ok
 
                 if is_m6_ote and self._check_rtm_clustering(symbol, curr_price, min_gap=1.50):
-                    lot_m = 1.5 if grade == "A+" else 1.0
+                    lot_m = 0.5 if grade == "B" else (1.5 if grade == "A+" else 1.0)
                     opt = {
                         "custom_sl": sl,
                         "tp_ratio": 2.0,
                         "lot_multiplier": lot_m
                     }
                     if action == "BUY":
-                        self.execute_buy(rates_m5, symbol, f"👑 RTM M6 (Deep OTE Retest Fib 61.8-78.6% [{grade}] @ {curr_price:.2f})", opt_params=opt, strat_id="RTM_M6_ELITE_GROWTH")
+                        self.execute_buy(rates_m5, symbol, f"👑 RTM M6 (Golden Pocket Retest Fib 50-65% [{grade}] @ {curr_price:.2f})", opt_params=opt, strat_id="RTM_M6_ELITE_GROWTH")
                     else:
-                        self.execute_sell(rates_m5, symbol, f"👑 RTM M6 (Deep OTE Retest Fib 61.8-78.6% [{grade}] @ {curr_price:.2f})", opt_params=opt, strat_id="RTM_M6_ELITE_GROWTH")
+                        self.execute_sell(rates_m5, symbol, f"👑 RTM M6 (Golden Pocket Retest Fib 50-65% [{grade}] @ {curr_price:.2f})", opt_params=opt, strat_id="RTM_M6_ELITE_GROWTH")
                     setup["m6_filled"] = True
-                    self.add_log(f"👑 [RTM M6 FILLED] Elite Growth OTE Golden Zone executed @ {curr_price:.2f} (Grade {grade})", "SUCCESS")
+                    self.add_log(f"👑 [RTM M6 FILLED] Elite Growth OTE Golden Pocket executed @ {curr_price:.2f} (Grade {grade})", "SUCCESS")
 
         # If all eligible models (M4 and M6) are filled, clear active setup
         all_done = True
         if rtm_mode in ["ALL", "MODEL_4", "PULLBACK_DUO"] and grade in ["A+", "A", "B"] and not setup.get("m4_filled", False):
             all_done = False
-        if rtm_mode in ["ALL", "MODEL_6", "PULLBACK_DUO"] and grade in ["A+", "A"] and not setup.get("m6_filled", False):
+        if rtm_mode in ["ALL", "MODEL_6", "PULLBACK_DUO"] and grade in ["A+", "A", "B"] and not setup.get("m6_filled", False):
             all_done = False
 
         if all_done:
@@ -1282,7 +1296,7 @@ class GoldScalpingBot:
             sl_dist = ask - sl
             if sl_dist < 2.80: sl = ask - 2.80; sl_dist = 2.80
             if sl_dist > 5.00: sl = ask - 5.00; sl_dist = 5.00
-            tp2 = ask + (sl_dist * 1.8)
+            tp2 = ask + (sl_dist * 1.2)
         elif strat_id == "SMC_X_STO_H1" or "SMCxSTO" in reason or "STO" in reason:
             df_h1 = self.connector.get_rates(symbol, "H1", 25)
             if not df_h1.empty and len(df_h1) >= 15:
@@ -1382,7 +1396,7 @@ class GoldScalpingBot:
             sl_dist = sl - bid
             if sl_dist < 2.80: sl = bid + 2.80; sl_dist = 2.80
             if sl_dist > 5.00: sl = bid + 5.00; sl_dist = 5.00
-            tp2 = bid - (sl_dist * 1.8)
+            tp2 = bid - (sl_dist * 1.2)
         elif strat_id == "SMC_X_STO_H1" or "SMCxSTO" in reason or "STO" in reason:
             df_h1 = self.connector.get_rates(symbol, "H1", 25)
             if not df_h1.empty and len(df_h1) >= 15:
