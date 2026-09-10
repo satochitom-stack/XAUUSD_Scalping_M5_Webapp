@@ -380,7 +380,7 @@ class GoldScalpingBot:
         # --- PILLAR 5: Signature Pullback Engine (#PullBack ร้อยล้าน - Dr. Ekk / Trader Overseas) ---
         if strat_mode in ["ALL", "PULLBACK_DR_EKK", "DR_EKK_PULLBACK"]:
             if not self.has_open_positions_for_setup(symbol, "PULLBACK_DR_EKK"):
-                b_sig, s_sig, reason = self._check_pullback_dr_ekk(df)
+                b_sig, s_sig, reason = self._check_pullback_dr_ekk(df, symbol)
                 if b_sig or s_sig:
                     self._process_single_setup_signal(df, symbol, spread, "PULLBACK_DR_EKK", "BUY" if b_sig else "SELL", reason)
 
@@ -443,17 +443,19 @@ class GoldScalpingBot:
         rsi14 = b1.get('rsi14', 50.0)
         is_news_spike = news_status.get("is_news_active", False) or news_status.get("state") in ["NEWS_RELEASE_IMPACT", "POST_NEWS_DIGEST"]
 
-        # Expansion validation: Solid body >= 58% and meaningful range >= 0.80 USD
-        is_solid_expansion = (body_pct >= 0.58) and (candle_range >= 0.80)
+        atr = float(b1.get('atr14', b1.get('atr', 2.50)))
+        # Expansion validation: Require significant expansion candle (>= 1.8x ATR or >= 4.50 USD / 450 pts)
+        min_expansion_range = max(1.2 * atr, 3.00) if is_news_spike else max(1.8 * atr, 4.50)
+        is_solid_expansion = (body_pct >= 0.60) and (candle_range >= min_expansion_range)
 
         # Institutional Volume Confirmation:
-        # If not during high-impact news, require tick_volume >= 1.3x 20-bar volume MA
+        # If not during high-impact news, require tick_volume >= 1.5x 20-bar volume MA
         # to filter out low-liquidity fakeouts/traps during dead hours.
         vol_series = df.get('tick_volume')
         if vol_series is not None and len(vol_series) >= 22:
             vol_ma20 = float(vol_series.iloc[-22:-2].mean())
             curr_vol = float(b1.get('tick_volume', 0))
-            is_volume_spike = (curr_vol >= vol_ma20 * 1.3)
+            is_volume_spike = (curr_vol >= vol_ma20 * 1.5)
         else:
             is_volume_spike = True
 
@@ -593,22 +595,23 @@ class GoldScalpingBot:
 
         return False, False, ""
 
-    def _check_pullback_dr_ekk(self, df: pd.DataFrame) -> Tuple[bool, bool, str]:
+    def _check_pullback_dr_ekk(self, df: pd.DataFrame, symbol: str = "XAUUSD") -> Tuple[bool, bool, str]:
         """
         🎯 Signature Pullback Strategy (#PullBack ร้อยล้าน - Dr. Ekk / Trader Overseas):
         - Books: บทที่ 20 (Trade Checklist), บทที่ 8 (Breakout & Pullback 3-Confluence), บทที่ 5 (Chart Patterns), บทที่ 12 (SL/TP & Trailing)
-        - Core Rules:
+        - Core Rules & Safeguards:
           1. Trend Context: M5 EMA 60 > EMA 150 (Buy) or EMA 60 < EMA 150 (Sell).
-          2. Impulse Leg: Recent breakout of swing high/low structure with range >= 1.2 * ATR.
-          3. 3-Confluence Zone:
+          2. H1 Macro Trend & Dump Protection: Check H1 EMA 50 to prevent buying into a dumping market.
+          3. Break of Structure (BOS): Ensure impulse wave broke prior significant S/R.
+          4. 3-Confluence Zone:
              - Dynamic Level: Pullback touches or approaches EMA 60 (within 0.35 * ATR).
              - Fibonacci Retracement: 0.35 <= Retracement <= 0.68 (Golden pocket 50.0% - 61.8%).
              - S/R Flip: Broken prior resistance/support retested as new support/resistance (within 0.75 * ATR).
-          4. Trigger Candlestick:
+          5. Trigger Candlestick:
              - Rejection Pinbar (wick >= 45% of range) bouncing off the zone
              - OR Engulfing candle closing decisively in trend direction.
-          5. Confluence Score >= 2 (EMA 60 / S/R Flip + Fib Retracement).
-          6. Risk: Strictly 1.0% per trade.
+          6. Confluence Score >= 2 (EMA 60 / S/R Flip + Fib Retracement).
+          7. Risk: Strictly 2.0% per trade (capped at max 0.25 lot).
         """
         if len(df) < 35:
             return False, False, ""
@@ -626,8 +629,29 @@ class GoldScalpingBot:
         is_downtrend = (ema60 < ema150) and (close_p < ema60 + 0.25 * atr)
 
         candle_range = high_p - low_p
-        if candle_range <= 0.20:
+        if candle_range < 0.60:
             return False, False, ""
+
+        # H1 Macro Trend & Dump/Pump Shield
+        h1_bull_allowed = True
+        h1_bear_allowed = True
+        if self.connector:
+            try:
+                df_h1 = self.connector.get_rates(symbol, "H1", 50)
+                if df_h1 is not None and not df_h1.empty and len(df_h1) >= 25:
+                    df_h1['ema50'] = df_h1['close'].ewm(span=50, adjust=False).mean()
+                    h1_c = float(df_h1['close'].iloc[-2])
+                    h1_ema50 = float(df_h1['ema50'].iloc[-2])
+                    h1_b1 = df_h1.iloc[-2]
+                    h1_range = float(h1_b1['high']) - float(h1_b1['low'])
+                    h1_body = abs(float(h1_b1['close']) - float(h1_b1['open']))
+                    is_h1_bear_dump = (float(h1_b1['close']) < float(h1_b1['open'])) and (h1_body >= 0.55 * h1_range) and (h1_range >= 12.0)
+                    is_h1_bull_pump = (float(h1_b1['close']) > float(h1_b1['open'])) and (h1_body >= 0.55 * h1_range) and (h1_range >= 12.0)
+                    
+                    h1_bull_allowed = (h1_c >= h1_ema50 - 2.00) and not is_h1_bear_dump
+                    h1_bear_allowed = (h1_c <= h1_ema50 + 2.00) and not is_h1_bull_pump
+            except Exception:
+                pass
 
         upper_wick = high_p - max(open_p, close_p)
         lower_wick = min(open_p, close_p) - low_p
@@ -645,8 +669,10 @@ class GoldScalpingBot:
         if len(window) < 20:
             return False, False, ""
 
+        prev_window = df.iloc[-65:max(0, len(df)-20)]
+
         # Bullish Pullback Evaluation
-        if is_uptrend and (bullish_pinbar or bullish_engulfing):
+        if is_uptrend and h1_bull_allowed and (bullish_pinbar or bullish_engulfing):
             swing_high_val = float(window['high'].max())
             swing_high_idx = window['high'].idxmax()
             window_prior = df.loc[window.index[0]:swing_high_idx]
@@ -654,14 +680,19 @@ class GoldScalpingBot:
                 swing_low_val = float(window_prior['low'].min())
                 impulse_range = swing_high_val - swing_low_val
 
-                if impulse_range >= 1.2 * atr:
+                # Break of Structure (BOS): Ensure the swing high broke a prior resistance level
+                has_bos = True
+                if len(prev_window) > 8:
+                    prev_res = float(prev_window['high'].max())
+                    has_bos = swing_high_val >= (prev_res - 0.20 * atr)
+
+                if impulse_range >= 1.2 * atr and has_bos:
                     pullback_low = float(df.loc[swing_high_idx:df.index[-2], 'low'].min())
                     retrace_pct = (swing_high_val - pullback_low) / (impulse_range + 1e-9)
 
                     fib_conf = 0.35 <= retrace_pct <= 0.68
                     ema_conf = (low_p <= ema60 + 0.35 * atr) and (high_p >= ema60 - 0.40 * atr)
 
-                    prev_window = df.iloc[-65:max(0, len(df)-20)]
                     sr_flip_conf = False
                     if len(prev_window) > 8:
                         prev_res = float(prev_window['high'].max())
@@ -674,7 +705,7 @@ class GoldScalpingBot:
                         return True, False, f"🎯 Pullback Dr. Ekk: Bullish {trig_type} at 3-Confluence ({grade} | Fib {retrace_pct*100:.0f}% + EMA60)"
 
         # Bearish Pullback Evaluation
-        if is_downtrend and (bearish_pinbar or bearish_engulfing):
+        if is_downtrend and h1_bear_allowed and (bearish_pinbar or bearish_engulfing):
             swing_low_val = float(window['low'].min())
             swing_low_idx = window['low'].idxmin()
             window_prior = df.loc[window.index[0]:swing_low_idx]
@@ -682,14 +713,19 @@ class GoldScalpingBot:
                 swing_high_val = float(window_prior['high'].max())
                 impulse_range_down = swing_high_val - swing_low_val
 
-                if impulse_range_down >= 1.2 * atr:
+                # Break of Structure (BOS): Ensure the swing low broke a prior support level
+                has_bos = True
+                if len(prev_window) > 8:
+                    prev_sup = float(prev_window['low'].min())
+                    has_bos = swing_low_val <= (prev_sup + 0.20 * atr)
+
+                if impulse_range_down >= 1.2 * atr and has_bos:
                     pullback_high = float(df.loc[swing_low_idx:df.index[-2], 'high'].max())
                     retrace_pct = (pullback_high - swing_low_val) / (impulse_range_down + 1e-9)
 
                     fib_conf = 0.35 <= retrace_pct <= 0.68
                     ema_conf = (high_p >= ema60 - 0.35 * atr) and (low_p <= ema60 + 0.40 * atr)
 
-                    prev_window = df.iloc[-65:max(0, len(df)-20)]
                     sr_flip_conf = False
                     if len(prev_window) > 8:
                         prev_sup = float(prev_window['low'].min())
@@ -1122,54 +1158,58 @@ class GoldScalpingBot:
             return
 
         # --- MODEL 4 (Conservative): Genuine Pullback / QML Retest ---
-        if rtm_mode in ["ALL", "MODEL_4", "PULLBACK_DUO"] and grade in ["A+", "A"] and not setup["m4_filled"]:
+        if rtm_mode in ["ALL", "MODEL_4", "PULLBACK_DUO"] and grade in ["A+", "A", "B"] and not setup["m4_filled"]:
             if not self.has_open_positions_for_setup(symbol, "RTM_M4_CONSERVATIVE"):
                 is_m4_pullback = False
                 dist_saved = 0.0
                 if action == "BUY":
                     dist_saved = signal_close - bid
-                    near_qml = abs(bid - qml_price) <= (0.5 * curr_atr) or bid <= qml_price + 0.50
-                    if dist_saved >= 1.50 and (near_qml or bid <= signal_close - (0.382 * curr_atr)):
-                        b1 = rates_m5.iloc[-1]
-                        candle_low = float(b1['low'])
-                        is_m4_pullback = (bid > candle_low + 0.20)
+                    near_qml = abs(bid - qml_price) <= (0.75 * curr_atr) or bid <= qml_price + 0.80
+                    retrace_ok = near_qml or (bid <= signal_close - (0.25 * curr_atr)) or (abs(bid - signal_close) <= 1.0)
+                    b1 = rates_m5.iloc[-1]
+                    candle_low = float(b1['low'])
+                    is_m4_pullback = retrace_ok and (bid >= candle_low)
                 elif action == "SELL":
                     dist_saved = ask - signal_close
-                    near_qml = abs(ask - qml_price) <= (0.5 * curr_atr) or ask >= qml_price - 0.50
-                    if dist_saved >= 1.50 and (near_qml or ask >= signal_close + (0.382 * curr_atr)):
-                        b1 = rates_m5.iloc[-1]
-                        candle_high = float(b1['high'])
-                        is_m4_pullback = (ask < candle_high - 0.20)
+                    near_qml = abs(ask - qml_price) <= (0.75 * curr_atr) or ask >= qml_price - 0.80
+                    retrace_ok = near_qml or (ask >= signal_close + (0.25 * curr_atr)) or (abs(ask - signal_close) <= 1.0)
+                    b1 = rates_m5.iloc[-1]
+                    candle_high = float(b1['high'])
+                    is_m4_pullback = retrace_ok and (ask <= candle_high)
 
                 if is_m4_pullback and self._check_rtm_clustering(symbol, curr_price, min_gap=1.50):
+                    # Grade B trades at conservative 1.0% risk, Grade A/A+ at 2.0% risk
+                    lot_m = 0.5 if grade == "B" else 1.0
                     opt = {
                         "custom_sl": sl,
                         "tp_ratio": 2.0,
-                        "lot_multiplier": 1.0
+                        "lot_multiplier": lot_m
                     }
                     if action == "BUY":
-                        self.execute_buy(rates_m5, symbol, f"🛡️ RTM M4 (Conservative Pullback Retest @ {curr_price:.2f})", opt_params=opt, strat_id="RTM_M4_CONSERVATIVE")
+                        self.execute_buy(rates_m5, symbol, f"🛡️ RTM M4 (Conservative Pullback Retest [{grade}] @ {curr_price:.2f})", opt_params=opt, strat_id="RTM_M4_CONSERVATIVE")
                     else:
-                        self.execute_sell(rates_m5, symbol, f"🛡️ RTM M4 (Conservative Pullback Retest @ {curr_price:.2f})", opt_params=opt, strat_id="RTM_M4_CONSERVATIVE")
+                        self.execute_sell(rates_m5, symbol, f"🛡️ RTM M4 (Conservative Pullback Retest [{grade}] @ {curr_price:.2f})", opt_params=opt, strat_id="RTM_M4_CONSERVATIVE")
                     setup["m4_filled"] = True
-                    self.add_log(f"🛡️ [RTM M4 FILLED] Conservative QML Pullback executed @ {curr_price:.2f} (Saved {dist_saved:.2f} USD vs breakout)", "SUCCESS")
+                    self.add_log(f"🛡️ [RTM M4 FILLED] Conservative QML Pullback executed @ {curr_price:.2f} (Grade {grade})", "SUCCESS")
 
         # --- MODEL 6 (Elite Growth): Deep Retest OTE Zone (Fib 61.8% - 78.6%) ---
         if rtm_mode in ["ALL", "MODEL_6", "PULLBACK_DUO"] and grade in ["A+", "A"] and not setup["m6_filled"]:
             if not self.has_open_positions_for_setup(symbol, "RTM_M6_ELITE_GROWTH"):
                 is_m6_ote = False
-                impulse_range = abs(signal_close - head_extreme)
-                if impulse_range >= (1.0 * curr_atr):
-                    if action == "BUY":
-                        ote_high = signal_close - (0.618 * impulse_range)
-                        ote_low = signal_close - (0.786 * impulse_range)
-                        if ote_low <= bid <= ote_high and bid >= sl + 1.0:
-                            is_m6_ote = True
-                    elif action == "SELL":
-                        ote_low = signal_close + (0.618 * impulse_range)
-                        ote_high = signal_close + (0.786 * impulse_range)
-                        if ote_low <= ask <= ote_high and ask <= sl - 1.0:
-                            is_m6_ote = True
+                break_level = setup.get("break_level", 0.0)
+                if break_level > 0 and head_extreme > 0:
+                    impulse_range = abs(break_level - head_extreme)
+                    if impulse_range >= (1.0 * curr_atr):
+                        if action == "BUY":
+                            ote_high = break_level - (0.618 * impulse_range)
+                            ote_low = break_level - (0.786 * impulse_range)
+                            if (ote_low - 0.50) <= bid <= (ote_high + 0.50) and bid >= sl + 1.0:
+                                is_m6_ote = True
+                        elif action == "SELL":
+                            ote_low = break_level + (0.618 * impulse_range)
+                            ote_high = break_level + (0.786 * impulse_range)
+                            if (ote_low - 0.50) <= ask <= (ote_high + 0.50) and ask <= sl - 1.0:
+                                is_m6_ote = True
 
                 if is_m6_ote and self._check_rtm_clustering(symbol, curr_price, min_gap=1.50):
                     lot_m = 1.5 if grade == "A+" else 1.0
@@ -1179,15 +1219,15 @@ class GoldScalpingBot:
                         "lot_multiplier": lot_m
                     }
                     if action == "BUY":
-                        self.execute_buy(rates_m5, symbol, f"👑 RTM M6 (Deep OTE Retest Fib 61.8-78.6% @ {curr_price:.2f})", opt_params=opt, strat_id="RTM_M6_ELITE_GROWTH")
+                        self.execute_buy(rates_m5, symbol, f"👑 RTM M6 (Deep OTE Retest Fib 61.8-78.6% [{grade}] @ {curr_price:.2f})", opt_params=opt, strat_id="RTM_M6_ELITE_GROWTH")
                     else:
-                        self.execute_sell(rates_m5, symbol, f"👑 RTM M6 (Deep OTE Retest Fib 61.8-78.6% @ {curr_price:.2f})", opt_params=opt, strat_id="RTM_M6_ELITE_GROWTH")
+                        self.execute_sell(rates_m5, symbol, f"👑 RTM M6 (Deep OTE Retest Fib 61.8-78.6% [{grade}] @ {curr_price:.2f})", opt_params=opt, strat_id="RTM_M6_ELITE_GROWTH")
                     setup["m6_filled"] = True
-                    self.add_log(f"👑 [RTM M6 FILLED] Elite Growth OTE Golden Zone executed @ {curr_price:.2f}", "SUCCESS")
+                    self.add_log(f"👑 [RTM M6 FILLED] Elite Growth OTE Golden Zone executed @ {curr_price:.2f} (Grade {grade})", "SUCCESS")
 
         # If all eligible models (M4 and M6) are filled, clear active setup
         all_done = True
-        if rtm_mode in ["ALL", "MODEL_4", "PULLBACK_DUO"] and grade in ["A+", "A"] and not setup.get("m4_filled", False):
+        if rtm_mode in ["ALL", "MODEL_4", "PULLBACK_DUO"] and grade in ["A+", "A", "B"] and not setup.get("m4_filled", False):
             all_done = False
         if rtm_mode in ["ALL", "MODEL_6", "PULLBACK_DUO"] and grade in ["A+", "A"] and not setup.get("m6_filled", False):
             all_done = False
@@ -1461,9 +1501,9 @@ class GoldScalpingBot:
 
         lot = (risk_money / (sl_dist * 100.0 + 1e-9)) * lot_mult
 
-        # Additional safety cap for Asian Range Scalp (max 0.20 lot on 10k account)
+        # Safety cap for Asian Range Scalp (prevent runaway lot on ultra-tight SL)
         if strat_id == "ASIAN_RANGE_SNIPER":
-            lot = min(lot, 0.20)
+            lot = min(lot, 0.25)
 
         # Dynamic Lot Reduction (Only if enabled in config, default false)
         dynamic_reduction = strat_cfg.get("dynamic_lot_reduction", False)
