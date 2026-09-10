@@ -23,24 +23,10 @@ DEFAULT_STRATEGIES = [
     "RTM_M4_CONSERVATIVE",
     "RTM_M6_ELITE_GROWTH",
     "SMC_X_STO_H1",
-    "ASIAN_RANGE_SNIPER",
     "NEWS_MOMENTUM_EXPANSION"
 ]
 
 SETUP_PROFILES = {
-    "ASIAN_RANGE_SNIPER": {
-        "id": "ASIAN_RANGE_SNIPER",
-        "name": "Asian Range Sniper Reversion",
-        "icon": "⛩️",
-        "win_prob": 80.0,
-        "base_rr": 1.40,
-        "min_rr": 1.20,
-        "max_rr": 2.20,
-        "trailing_type": "TIGHT_LOCK",
-        "trail_points": 180.0,
-        "trail_step_points": 30.0,
-        "description": "Asian session mean-reversion at Bollinger bands with Fast RSI 7 bounce (07:00-14:00 Thai)"
-    },
     "RTM_M4_CONSERVATIVE": {
         "id": "RTM_M4_CONSERVATIVE",
         "name": "RTM Quasimodo M4 (Conservative)",
@@ -91,7 +77,7 @@ SETUP_PROFILES = {
         "trailing_type": "CONFLUENCE_STAGE",
         "trail_points": 250.0,
         "trail_step_points": 40.0,
-        "description": "รวมประวัติเซตอัพเดิมที่เลิกใช้งานแล้ว (RTM M5, RTM M7, Captain SMC ฯลฯ)"
+        "description": "รวมประวัติเซตอัพเดิมที่เลิกใช้งานแล้ว (Asian Range Sniper, RTM M5, RTM M7, Captain SMC ฯลฯ)"
     },
     "SMC_X_STO_H1": {
         "id": "SMC_X_STO_H1",
@@ -246,27 +232,27 @@ class RealTimeStrategyOptimizer:
             regime = "RANGING_CHOPPY"
             label = "⚠️ Choppy / Consolidation Noise"
             trend_direction = "SIDEWAY"
-            recommended = ["SMC_SWEEP", "ASIAN_RANGE_SNIPER"]
+            recommended = ["SMC_X_STO_H1"]
         elif volatility_ratio > 1.6:
             regime = "HIGH_VOLATILITY"
             label = "⚡ High Volatility / Expansion"
             trend_direction = "BULLISH" if b1_close > b1_e50 else "BEARISH"
-            recommended = ["NEWS_MOMENTUM_EXPANSION", "SMC_SWEEP", "BB_SQUEEZE", "ALL_CONFLUENCE"]
+            recommended = ["NEWS_MOMENTUM_EXPANSION", "SMC_X_STO_H1"]
         elif bullish_alignment and fast_slope > 25.0:
             regime = "STRONG_BULLISH_TREND"
             label = "🟢 Strong Bullish Trend"
             trend_direction = "BULLISH"
-            recommended = ["EMA50_3CANDLES_H1", "EMA_RIBBON", "SECRET_EMA_PULLBACK", "ALL_CONFLUENCE"]
+            recommended = ["PULLBACK_DR_EKK", "RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH"]
         elif bearish_alignment and fast_slope < -25.0:
             regime = "STRONG_BEARISH_TREND"
             label = "🔴 Strong Bearish Trend"
             trend_direction = "BEARISH"
-            recommended = ["EMA50_3CANDLES_H1", "EMA_RIBBON", "SECRET_EMA_PULLBACK", "ALL_CONFLUENCE"]
+            recommended = ["PULLBACK_DR_EKK", "RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH"]
         elif curr_bb_width < (avg_bb_width * 0.75):
             regime = "RANGING_SIDEWAY"
             label = "🟡 Squeeze / Ranging Sideway"
             trend_direction = "SIDEWAY"
-            recommended = ["SMC_SWEEP", "BB_SQUEEZE", "ASIAN_RANGE_SNIPER"]
+            recommended = ["SMC_X_STO_H1"]
         else:
             regime = "MODERATE_TREND"
             label = "🔵 Moderate Trend"
@@ -629,8 +615,7 @@ class RealTimeStrategyOptimizer:
             elif "rtm_m6" in comment or "m6_elite" in comment: strat = "RTM_M6_ELITE_GROWTH"
             elif "sto" in comment or "devil" in comment or "smcxsto" in comment: strat = "SMC_X_STO_H1"
             elif "news" in comment or "momentum" in comment: strat = "NEWS_MOMENTUM_EXPANSION"
-            elif "asian" in comment: strat = "ASIAN_RANGE_SNIPER"
-            elif "rtm_m5" in comment or "m5_allw" in comment or "rtm_m7" in comment or "m7_alpha" in comment: strat = "RETIRED_SETUPS"
+            elif "asian" in comment or "rtm_m5" in comment or "m5_allw" in comment or "rtm_m7" in comment or "m7_alpha" in comment: strat = "RETIRED_SETUPS"
 
             self.record_trade_outcome(strat, profit, 0.0, comment, ticket=deal.get("ticket"))
 

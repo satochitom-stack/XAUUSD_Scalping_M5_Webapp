@@ -1,10 +1,11 @@
 """
 Advanced Trading Bot Strategy Engine for XAUUSD (Gold)
-Streamlined to the "Elite 4 Pillars" across Market Sessions:
-1. ASIAN_RANGE_SNIPER - Asian Session Mean-Reversion Scalper (07:00 - 14:00 Thai / 66.7% Win Rate)
-2. RTM Quasimodo Multi-Model Engine (M4 - M7) - London & NY Institutional Confluence (M15 + H1)
-3. SMC_X_STO_H1 - SMCxSTO ระบบปีศาจ H1 Swing Devil System (EMA 50/200 + Discount/Premium ATR + Single OB + Stoch)
-4. NEWS_MOMENTUM_EXPANSION - High-Impact US Economic News Spike & Momentum Expansion (CPI, NFP, FOMC)
+Streamlined to the "Elite 5 Active Pillars" across Market Sessions:
+1. PULLBACK_DR_EKK - Signature Pullback (#PullBack ร้อยล้าน - Dr. Ekk / Trader Overseas)
+2. RTM_M4_CONSERVATIVE - RTM Quasimodo Conservative QML Retest (M15 + H1)
+3. RTM_M6_ELITE_GROWTH - RTM Quasimodo Elite Growth Institutional Retest (M15 + H1)
+4. SMC_X_STO_H1 - SMCxSTO ระบบปีศาจ H1 Swing Devil System (EMA 50/200 + Discount/Premium ATR + Single OB + Stoch)
+5. NEWS_MOMENTUM_EXPANSION - High-Impact US Economic News Spike & Momentum Expansion (CPI, NFP, FOMC)
 """
 
 import time
@@ -32,7 +33,6 @@ STRATEGY_MAGIC_MAP = {
     "RTM_M4_CONSERVATIVE": {"base": 777004, "pos1": 777014, "pos2": 777024, "pos3": 777034},
     "RTM_M6_ELITE_GROWTH": {"base": 777006, "pos1": 777016, "pos2": 777026, "pos3": 777036},
     "SMC_X_STO_H1": {"base": 555770, "pos1": 555771, "pos2": 555772, "pos3": 555773},
-    "ASIAN_RANGE_SNIPER": {"base": 555820, "pos1": 555821, "pos2": 555822, "pos3": 555823},
     "NEWS_MOMENTUM_EXPANSION": {"base": 555890, "pos1": 555891, "pos2": 555892, "pos3": 555893}
 }
 
@@ -351,20 +351,7 @@ class GoldScalpingBot:
                 if b_sig or s_sig:
                     self._process_single_setup_signal(df, symbol, spread, "NEWS_MOMENTUM_EXPANSION", "BUY" if b_sig else "SELL", reason)
 
-        # --- PILLAR 2: All-Weather Sideway Range Sniper (Mean-Reversion Across All Sessions) ---
-        is_sideway_regime = (
-            session == "ASIAN SESSION" or
-            (getattr(self.optimizer, "last_regime", "") in ["RANGING_SIDEWAY", "RANGING_CHOPPY"]) or
-            (self.latest_trend in ["SIDEWAY", "ASIAN RANGE (MEAN REVERSION)"]) or
-            (abs(float(b1.get('ema50', 0)) - float(b1.get('ema150', 0))) <= max(1.5 * float(b1.get('atr', 2.5)), 4.00))
-        )
-        if (is_sideway_regime or strat_mode == "ASIAN_RANGE_SNIPER") and strat_mode in ["ALL", "ASIAN_RANGE_SNIPER"]:
-            if not self.has_open_positions_for_setup(symbol, "ASIAN_RANGE_SNIPER"):
-                b_sig, s_sig, reason = self._check_asian_range_sniper(df)
-                if b_sig or s_sig:
-                    self._process_single_setup_signal(df, symbol, spread, "ASIAN_RANGE_SNIPER", "BUY" if b_sig else "SELL", reason, is_asian_scalp=True)
-
-        # --- PILLAR 3: SMCxSTO ระบบปีศาจ H1 Devil System (Macro Trend & Single-Rule OB) ---
+        # --- PILLAR 2: SMCxSTO ระบบปีศาจ H1 Devil System (Macro Trend & Single-Rule OB) ---
         if strat_mode in ["ALL", "SMC_X_STO_H1", "SMCXSTO"]:
             if not self.has_open_positions_for_setup(symbol, "SMC_X_STO_H1"):
                 b_sig, s_sig, reason = self._check_smc_x_sto_h1(symbol)

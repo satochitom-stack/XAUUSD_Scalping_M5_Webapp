@@ -39,16 +39,21 @@ class TestAsianRangeSniper(unittest.TestCase):
         df['rsi7'] = 50.0
         return df
 
-    def test_asian_sniper_profile_exists(self):
-        self.assertIn('ASIAN_RANGE_SNIPER', SETUP_PROFILES)
-        profile = SETUP_PROFILES['ASIAN_RANGE_SNIPER']
-        self.assertEqual(profile['base_rr'], 1.40)
+    def test_asian_sniper_archived_into_retired(self):
+        self.assertNotIn('ASIAN_RANGE_SNIPER', SETUP_PROFILES)
+        self.assertIn('RETIRED_SETUPS', SETUP_PROFILES)
+        self.assertIn('Asian Range Sniper', SETUP_PROFILES['RETIRED_SETUPS']['description'])
 
-    def test_analytics_registry_contains_asian(self):
+    def test_analytics_registry_asian_classified_as_retired(self):
         manager = RealTradeAnalyticsManager()
-        self.assertIn('ASIAN_RANGE_SNIPER', manager.STRATEGY_REGISTRY)
-        setup = manager.STRATEGY_REGISTRY['ASIAN_RANGE_SNIPER']
-        self.assertEqual(setup['category'], 'MEAN_REVERSION')
+        self.assertNotIn('ASIAN_RANGE_SNIPER', manager.STRATEGY_REGISTRY)
+        self.assertIn('RETIRED_SETUPS', manager.STRATEGY_REGISTRY)
+        self.assertIn(555820, manager.STRATEGY_REGISTRY['RETIRED_SETUPS']['magic_numbers'])
+        
+        mock_deal1 = MagicMock(magic=555821, comment="asian scalp")
+        mock_deal2 = MagicMock(magic=555820, comment="")
+        self.assertEqual(manager._classify_deal_strategy(mock_deal1), "RETIRED_SETUPS")
+        self.assertEqual(manager._classify_deal_strategy(mock_deal2), "RETIRED_SETUPS")
 
     def test_should_not_run_trend_for_asian_sniper(self):
         df_m5 = self._create_mock_m5_df()

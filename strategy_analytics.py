@@ -22,19 +22,8 @@ except ImportError:
 class RealTradeAnalyticsManager:
     """Parses live MT5 deal history and generates verified trade statistics for BOT trades only."""
     
-    # Strategy Catalog Definition (Bot Strategies Only - Elite 4 Pillars)
+    # Strategy Catalog Definition (Bot Strategies Only - Elite 5 Active Pillars)
     STRATEGY_REGISTRY = {
-        "ASIAN_RANGE_SNIPER": {
-            "id": "ASIAN_RANGE_SNIPER",
-            "name": "Asian Range Sniper: Mean Reversion",
-            "icon": "⛩️",
-            "category": "MEAN_REVERSION",
-            "timeframe": "M5",
-            "best_session": "Asian Session (07:00 - 14:00)",
-            "magic_numbers": [555820, 555821, 555822, 555823, 555888, 555889, 555890],
-            "avg_rr": "1:1.8",
-            "description": "สไนเปอร์กรอบตลาดเอเชีย แตะขอบ Bollinger Band + Fast RSI 7 ดีดกลับเข้าหา SMA 20 (Win Rate 66.7% / DD 2.9%)"
-        },
         "PULLBACK_DR_EKK": {
             "id": "PULLBACK_DR_EKK",
             "name": "Signature Pullback (#PullBack ร้อยล้าน)",
@@ -97,9 +86,9 @@ class RealTradeAnalyticsManager:
             "category": "ARCHIVED",
             "timeframe": "Multi-TF",
             "best_session": "ประวัติเดิม (Archived)",
-            "magic_numbers": [777005, 777015, 777025, 777035, 777007, 777017, 777027, 777037],
+            "magic_numbers": [777005, 777015, 777025, 777035, 777007, 777017, 777027, 777037, 555820, 555821, 555822, 555823],
             "avg_rr": "N/A",
-            "description": "รวมประวัติและสถิติการเทรดของเซตอัพที่เลิกใช้งานแล้ว (RTM M5 All-Weather, RTM M7 Max Alpha, Captain SMC, TKT SMC, Flash Scalper ฯลฯ)"
+            "description": "รวมประวัติและสถิติการเทรดของเซตอัพที่เลิกใช้งานแล้ว (Asian Range Sniper, RTM M5 All-Weather, RTM M7 Max Alpha, Captain SMC, TKT SMC, Flash Scalper ฯลฯ)"
         }
     }
 
@@ -242,12 +231,11 @@ class RealTradeAnalyticsManager:
                     positions[pid]["out"].append(d)
 
             strategy_name_map = {
-                # 🟢 6 เสาหลัก (Active Models) + เซตอัพที่เลิกใช้
+                # 🟢 5 เสาหลัก (Active Models) + เซตอัพที่เลิกใช้
                 "PULLBACK_DR_EKK": "Signature Pullback (#PullBack ร้อยล้าน)",
                 "RTM_M4_CONSERVATIVE": "RTM Quasimodo M4 (Conservative)",
                 "RTM_M6_ELITE_GROWTH": "RTM Quasimodo M6 (Elite Growth)",
                 "SMC_X_STO_H1": "SMC x STO Devil (H1 Devil System)",
-                "ASIAN_RANGE_SNIPER": "Asian Range Sniper: Mean Reversion",
                 "NEWS_MOMENTUM_EXPANSION": "News Momentum Expansion (Spikes)",
                 "RETIRED_SETUPS": "เซตอัพที่เลิกใช้"
             }
@@ -491,15 +479,11 @@ class RealTradeAnalyticsManager:
         if "sto" in comment or "devil" in comment or "smcxsto" in comment or (555770 <= magic <= 555773):
             return "SMC_X_STO_H1"
 
-        # 4. Active: Asian Range Sniper
-        if "asian" in comment or "⛩" in comment or "gold_asian" in comment or (555820 <= magic <= 555823):
-            return "ASIAN_RANGE_SNIPER"
-
-        # 5. Active: High-Impact News Momentum Expansion (News Spike)
+        # 4. Active: High-Impact News Momentum Expansion (News Spike)
         if "news" in comment or "goldm5_pro" in comment or (555889 <= magic <= 555893) or magic in [666888, 666889, 666890]:
             return "NEWS_MOMENTUM_EXPANSION"
 
-        # 6. Decommissioned / Retired Setups (RTM M5, RTM M7, Captain SMC, etc.)
+        # 5. Decommissioned / Retired Setups (Asian Range Sniper, RTM M5, RTM M7, Captain SMC, etc.)
         return "RETIRED_SETUPS"
 
     def get_real_stats_summary(self) -> dict:
@@ -584,8 +568,8 @@ class RealTradeAnalyticsManager:
                 st["status"] = f"บอทเทรดแล้ว ({st['total_trades']} ไม้)"
 
                 # Realized RR and Exit Stages Breakdown
-                target_rr = 2.5 if k == "PULLBACK_DR_EKK" else (2.0 if ("RTM_" in k or k == "SMC_X_STO_H1") else (1.8 if k in ["NEWS_MOMENTUM_EXPANSION", "ASIAN_RANGE_SNIPER"] else 2.0))
-                risk_per_lot = 850.0 if ("RTM_" in k or k == "PULLBACK_DR_EKK") else (900.0 if k == "SMC_X_STO_H1" else (500.0 if k == "ASIAN_RANGE_SNIPER" else 700.0))
+                target_rr = 2.5 if k == "PULLBACK_DR_EKK" else (2.0 if ("RTM_" in k or k == "SMC_X_STO_H1") else (1.8 if k == "NEWS_MOMENTUM_EXPANSION" else 2.0))
+                risk_per_lot = 850.0 if ("RTM_" in k or k == "PULLBACK_DR_EKK") else (900.0 if k == "SMC_X_STO_H1" else 700.0)
                 
                 stages = {
                     "full_tp": 0,
@@ -654,7 +638,7 @@ class RealTradeAnalyticsManager:
                 st["winrate_pct"] = 0.0
                 st["profit_factor"] = 0.0
                 st["avg_realized_rr"] = 0.0
-                st["target_rr"] = 2.5 if k == "PULLBACK_DR_EKK" else (2.0 if ("RTM_" in k or k == "SMC_X_STO_H1") else (1.8 if k in ["NEWS_MOMENTUM_EXPANSION", "ASIAN_RANGE_SNIPER"] else 2.0))
+                st["target_rr"] = 2.5 if k == "PULLBACK_DR_EKK" else (2.0 if ("RTM_" in k or k == "SMC_X_STO_H1") else (1.8 if k == "NEWS_MOMENTUM_EXPANSION" else 2.0))
                 st["exit_stages"] = {
                     "full_tp": 0, "full_alpha_35": 0, "target_tp_20": 0, "trailing_lock_08": 0,
                     "trailing_lock": 0, "mid_profit": 0, "break_even": 0, "full_sl": 0, "early_cut": 0
@@ -664,8 +648,6 @@ class RealTradeAnalyticsManager:
                 st["status"] = "🟢 บอทรันพร้อมเทรด (0 ไม้)"
 
         # Set active status tags based on session
-        now_hour = datetime.now().hour
-        is_asian = (7 <= now_hour < 14)
         if "PULLBACK_DR_EKK" in setups_data:
             setups_data["PULLBACK_DR_EKK"]["status"] = "🟢 ACTIVE (Signature Pullback Step-Up 2.0%)"
         if "RTM_M4_CONSERVATIVE" in setups_data:
@@ -674,8 +656,6 @@ class RealTradeAnalyticsManager:
             setups_data["RTM_M6_ELITE_GROWTH"]["status"] = "🟢 ACTIVE (Elite Growth Step-Up 2.0%)"
         if "SMC_X_STO_H1" in setups_data:
             setups_data["SMC_X_STO_H1"]["status"] = "🟢 ACTIVE (Devil H1 OB+STO)"
-        if "ASIAN_RANGE_SNIPER" in setups_data:
-            setups_data["ASIAN_RANGE_SNIPER"]["status"] = "🟢 ACTIVE (ตลาดเอเชีย 07-14)" if is_asian else "⚪ STANDBY (เอเชีย 07-14)"
         if "NEWS_MOMENTUM_EXPANSION" in setups_data:
             setups_data["NEWS_MOMENTUM_EXPANSION"]["status"] = "⚪ STANDBY (รอจังหวะข่าว USD)"
         if "RETIRED_SETUPS" in setups_data:

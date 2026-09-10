@@ -154,19 +154,18 @@ class TestRTMEngine(unittest.TestCase):
 
     def test_concurrent_setups_isolation(self):
         """Test that having an open position in Setup A does not block Setup B, C, or D."""
-        asian_pos1_magic = STRATEGY_MAGIC_MAP["ASIAN_RANGE_SNIPER"]["pos1"]
+        dr_ekk_pos1_magic = STRATEGY_MAGIC_MAP["PULLBACK_DR_EKK"]["pos1"]
         self.mock_connector.get_open_positions.return_value = [
-            {"ticket": 111, "magic": asian_pos1_magic, "symbol": "XAUUSDc", "type": "BUY"}
+            {"ticket": 111, "magic": dr_ekk_pos1_magic, "symbol": "XAUUSDc", "type": "BUY"}
         ]
         
-        # ASIAN_RANGE_SNIPER has open position
-        self.assertTrue(self.bot.has_open_positions_for_setup("XAUUSDc", "ASIAN_RANGE_SNIPER"))
+        # PULLBACK_DR_EKK has open position
+        self.assertTrue(self.bot.has_open_positions_for_setup("XAUUSDc", "PULLBACK_DR_EKK"))
         
-        # All other setups must NOT be blocked and report False
+        # All other active setups must NOT be blocked and report False
         self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "SMC_X_STO_H1"))
         self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "RTM_M4_CONSERVATIVE"))
         self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "RTM_M6_ELITE_GROWTH"))
-        self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "PULLBACK_DR_EKK"))
         self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "NEWS_MOMENTUM_EXPANSION"))
 
     def test_execute_sell_single_order(self):
@@ -180,20 +179,19 @@ class TestRTMEngine(unittest.TestCase):
         self.assertEqual(self.mock_connector.open_order.call_count, 1)
 
     def test_max_concurrent_setups_allows_all_models(self):
-        """Test that max_concurrent_setups defaults to 6 and permits concurrent positions."""
+        """Test that max_concurrent_setups defaults to 5 and permits concurrent positions."""
         self.mock_connector.get_market_info.return_value = {"ask": 2700.0, "bid": 2699.8, "spread": 20.0}
         self.mock_connector.get_account_info.return_value = {"balance": 10000.0, "equity": 10000.0, "margin_level": 500.0}
         
         # Simulate 3 active setups already running
         self.mock_connector.get_open_positions.return_value = [
-            {"ticket": 1, "magic": STRATEGY_MAGIC_MAP["ASIAN_RANGE_SNIPER"]["pos1"], "symbol": "XAUUSDc", "type": "BUY"},
+            {"ticket": 1, "magic": STRATEGY_MAGIC_MAP["PULLBACK_DR_EKK"]["pos1"], "symbol": "XAUUSDc", "type": "BUY"},
             {"ticket": 2, "magic": STRATEGY_MAGIC_MAP["SMC_X_STO_H1"]["pos1"], "symbol": "XAUUSDc", "type": "BUY"},
             {"ticket": 3, "magic": STRATEGY_MAGIC_MAP["RTM_M4_CONSERVATIVE"]["pos1"], "symbol": "XAUUSDc", "type": "BUY"}
         ]
         
         # Verify other setups are NOT blocked by has_open_positions_for_setup
         self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "RTM_M6_ELITE_GROWTH"))
-        self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "PULLBACK_DR_EKK"))
         self.assertFalse(self.bot.has_open_positions_for_setup("XAUUSDc", "NEWS_MOMENTUM_EXPANSION"))
 
     def test_rtm_trailing_stop_dual_style(self):
@@ -225,17 +223,10 @@ class TestRTMEngine(unittest.TestCase):
         # Target SL should be open + 0.8 * 10 = 2708.0
         self.mock_connector.modify_position.assert_called_with(801, 2708.0, 2718.0)
 
-    def test_asian_sniper_breakeven_breathing_room(self):
-        """Test Asian Range Sniper locks Break-Even at 1.0R and maintains breathing room without 1.4R choke."""
-        self.mock_connector.get_market_info.return_value = {"bid": 2710.5, "ask": 2710.7}
-        asian_magic = STRATEGY_MAGIC_MAP["ASIAN_RANGE_SNIPER"]["pos1"]
-        self.mock_connector.get_open_positions.return_value = [
-            {"ticket": 802, "magic": asian_magic, "symbol": "XAUUSDc", "type": "BUY", "price_open": 2700.0, "sl": 2695.0, "tp": 2718.0}
-        ]
-        self.bot.initial_risk_map[802] = 5.0
-        self.bot.manage_open_positions("XAUUSDc")
-        # Target SL should be open + 0.30 = 2700.30
-        self.mock_connector.modify_position.assert_called_with(802, 2700.30, 2718.0)
+    def test_asian_sniper_retired_from_active_magics(self):
+        """Test Asian Range Sniper is retired and not present in STRATEGY_MAGIC_MAP."""
+        self.assertNotIn("ASIAN_RANGE_SNIPER", STRATEGY_MAGIC_MAP)
+        self.assertEqual(len(STRATEGY_MAGIC_MAP), 5)
 
     def test_smc_devil_trailing_lock(self):
         """Test SMC x STO Devil locks +0.8R at 1.4R and +1.2R at 1.8R."""
