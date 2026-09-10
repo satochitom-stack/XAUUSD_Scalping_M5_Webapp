@@ -315,6 +315,45 @@ class TestRTMEngine(unittest.TestCase):
         sl_placed = call_args[3]
         self.assertEqual(sl_placed, 2688.50)
 
+    def test_rtm_m4_blocked_when_regime_scorer_disallows(self):
+        """Test RTM M4 is blocked by _pass_rtm_ai_quality_gate when MarketRegimeScorer disallows."""
+        dummy_df = pd.DataFrame({'close': [2700.0]*20, 'low': [2685.0]*20, 'high': [2705.0]*20})
+        self.mock_connector.get_market_info.return_value = {"spread": 25.0}
+        
+        # Scorer disallows signal (low volume / junk trade)
+        self.bot.scorer.evaluate_market_confluence = MagicMock(return_value={
+            "is_allowed": False,
+            "score": 40,
+            "grade": "D",
+            "pillars": {"volume": {"desc": "Low Volume Filter"}}
+        })
+        
+        passed, opt = self.bot._pass_rtm_ai_quality_gate(dummy_df, "XAUUSDc", "RTM_M4_CONSERVATIVE", "BUY", 1.0)
+        self.assertFalse(passed)
+        self.assertEqual(opt, {})
+
+    def test_rtm_m6_blocked_when_optimizer_ultra_strict(self):
+        """Test RTM M6 is blocked when RealTimeStrategyOptimizer signals should_execute=False (cooldown)."""
+        dummy_df = pd.DataFrame({'close': [2700.0]*20, 'low': [2685.0]*20, 'high': [2705.0]*20})
+        self.mock_connector.get_market_info.return_value = {"spread": 20.0}
+        
+        # Scorer allows
+        self.bot.scorer.evaluate_market_confluence = MagicMock(return_value={
+            "is_allowed": True,
+            "score": 85,
+            "grade": "A+",
+            "lot_recommendation": 1.15
+        })
+        # Optimizer blocks due to consecutive losses cooldown
+        self.bot.optimizer.get_dynamic_rr_and_parameters = MagicMock(return_value={
+            "should_execute": False,
+            "reason": "AI Loss Cooldown: Consecutive Losses"
+        })
+        
+        passed, opt = self.bot._pass_rtm_ai_quality_gate(dummy_df, "XAUUSDc", "RTM_M6_ELITE_GROWTH", "BUY", 1.0)
+        self.assertFalse(passed)
+        self.assertEqual(opt, {})
+
 if __name__ == "__main__":
     unittest.main()
 

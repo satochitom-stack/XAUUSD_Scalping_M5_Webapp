@@ -1,9 +1,16 @@
 {
   "threshold": 55,
   "is_enabled": true,
-  "saved_junk_trades": 17,
-  "last_updated": "2026-09-03T08:31:32.608312",
+  "saved_junk_trades": 18,
+  "last_updated": "2026-09-10T14:00:38.409210",
   "recent_evaluations": [
+    {
+      "time": "14:00:38",
+      "setup": "RTM_M4_CONSERVATIVE",
+      "score": 40,
+      "grade": "D",
+      "reason": "Score 40 < 55 | Low Volume Filter"
+    },
     {
       "time": "08:31:32",
       "setup": "M1_SNIPER_CONFIRMATION",

@@ -1076,6 +1076,33 @@ class GoldScalpingBot:
 
         self.add_log(f"⏳ [RTM PULLBACK DUO QUEUE] Staggered monitoring active for M4 (QML Retest) & M6 (OTE Zone) | Target QML: {sig.get('qml_price', 0.0):.2f}", "INFO")
 
+    def _pass_rtm_ai_quality_gate(self, rates_m5: pd.DataFrame, symbol: str, strat_id: str, action: str, base_lot_m: float) -> Tuple[bool, dict]:
+        """
+        AI Quality Gate for RTM M4 and M6:
+        1. Evaluates MarketRegimeScorer confluence (volume, spread, trend alignment).
+        2. Evaluates RealTimeStrategyOptimizer dynamic parameters (streak, cooldown).
+        3. Returns (is_allowed, opt_params) with combined lot_multiplier and dynamic tp_ratio.
+        """
+        spread = self.connector.get_market_info(symbol).get("spread", 20.0)
+        score_res = self.scorer.evaluate_market_confluence(rates_m5, spread, strat_id)
+        if not score_res.get("is_allowed", True):
+            self.scorer.record_filtered_trade(strat_id, score_res)
+            self.add_log(f"🛡️ [QUALITY FILTERED] {strat_id} ({action}) Skipped | Score: {score_res['score']}/100 ({score_res['grade']}) | {score_res.get('pillars', {}).get('volume', {}).get('desc', '')}", "WARNING")
+            self.latest_trend = f"FILTERED ({strat_id}: Score {score_res['score']}/100)"
+            return False, {}
+
+        opt_params = self.optimizer.get_dynamic_rr_and_parameters(strat_id, rates_m5)
+        if not opt_params.get("should_execute", True):
+            self.latest_trend = f"AI PAUSED ({strat_id}: {opt_params.get('reason', 'Blocked')})"
+            return False, {}
+
+        # Combine base lot multiplier with AI lot multiplier and signal grade bonus
+        ai_lot_m = opt_params.get("lot_multiplier", 1.0)
+        grade_bonus = score_res.get("lot_recommendation", 1.0) if score_res.get("grade") == "A+" else 1.0
+        combined_lot_m = max(0.25, round(base_lot_m * ai_lot_m * grade_bonus, 2))
+        opt_params["lot_multiplier"] = combined_lot_m
+        return True, opt_params
+
     def _check_and_execute_pending_rtm_pullbacks(self, symbol: str, rates: Optional[pd.DataFrame] = None):
         """
         Staggered Deep-Pullback & Anti-Clustering Execution Engine:
@@ -1165,17 +1192,16 @@ class GoldScalpingBot:
                 if is_m4_pullback and self._check_rtm_clustering(symbol, curr_price, min_gap=1.50):
                     # Grade B trades at conservative 1.0% risk, Grade A/A+ at 2.0% risk
                     lot_m = 0.5 if grade == "B" else 1.0
-                    opt = {
-                        "custom_sl": sl,
-                        "tp_ratio": 2.0,
-                        "lot_multiplier": lot_m
-                    }
-                    if action == "BUY":
-                        self.execute_buy(rates_m5, symbol, f"🛡️ RTM M4 (Conservative Pullback Retest [{grade}] @ {curr_price:.2f})", opt_params=opt, strat_id="RTM_M4_CONSERVATIVE")
-                    else:
-                        self.execute_sell(rates_m5, symbol, f"🛡️ RTM M4 (Conservative Pullback Retest [{grade}] @ {curr_price:.2f})", opt_params=opt, strat_id="RTM_M4_CONSERVATIVE")
-                    setup["m4_filled"] = True
-                    self.add_log(f"🛡️ [RTM M4 FILLED] Conservative QML Pullback executed @ {curr_price:.2f} (Grade {grade})", "SUCCESS")
+                    passed, opt = self._pass_rtm_ai_quality_gate(rates_m5, symbol, "RTM_M4_CONSERVATIVE", action, lot_m)
+                    if passed:
+                        opt["custom_sl"] = sl
+                        dynamic_tp = opt.get("tp_ratio", 2.0)
+                        if action == "BUY":
+                            self.execute_buy(rates_m5, symbol, f"🛡️ RTM M4 (Conservative Pullback Retest [{grade}] @ {curr_price:.2f} | Dynamic {dynamic_tp}R)", opt_params=opt, strat_id="RTM_M4_CONSERVATIVE")
+                        else:
+                            self.execute_sell(rates_m5, symbol, f"🛡️ RTM M4 (Conservative Pullback Retest [{grade}] @ {curr_price:.2f} | Dynamic {dynamic_tp}R)", opt_params=opt, strat_id="RTM_M4_CONSERVATIVE")
+                        setup["m4_filled"] = True
+                        self.add_log(f"🛡️ [RTM M4 FILLED] Conservative QML Pullback executed @ {curr_price:.2f} (Grade {grade} | TP: {dynamic_tp}R | LotMult: {opt.get('lot_multiplier', 1.0):.2f}x)", "SUCCESS")
 
         # --- MODEL 6 (Elite Growth): Institutional Sweet Spot (Fib 50.0% - 65.0%) ---
         if rtm_mode in ["ALL", "MODEL_6", "PULLBACK_DUO"] and grade in ["A+", "A", "B"] and not setup["m6_filled"]:
@@ -1205,17 +1231,16 @@ class GoldScalpingBot:
 
                 if is_m6_ote and self._check_rtm_clustering(symbol, curr_price, min_gap=1.50):
                     lot_m = 0.5 if grade == "B" else (1.5 if grade == "A+" else 1.0)
-                    opt = {
-                        "custom_sl": sl,
-                        "tp_ratio": 2.0,
-                        "lot_multiplier": lot_m
-                    }
-                    if action == "BUY":
-                        self.execute_buy(rates_m5, symbol, f"👑 RTM M6 (Golden Pocket Retest Fib 50-65% [{grade}] @ {curr_price:.2f})", opt_params=opt, strat_id="RTM_M6_ELITE_GROWTH")
-                    else:
-                        self.execute_sell(rates_m5, symbol, f"👑 RTM M6 (Golden Pocket Retest Fib 50-65% [{grade}] @ {curr_price:.2f})", opt_params=opt, strat_id="RTM_M6_ELITE_GROWTH")
-                    setup["m6_filled"] = True
-                    self.add_log(f"👑 [RTM M6 FILLED] Elite Growth OTE Golden Pocket executed @ {curr_price:.2f} (Grade {grade})", "SUCCESS")
+                    passed, opt = self._pass_rtm_ai_quality_gate(rates_m5, symbol, "RTM_M6_ELITE_GROWTH", action, lot_m)
+                    if passed:
+                        opt["custom_sl"] = sl
+                        dynamic_tp = opt.get("tp_ratio", 2.0)
+                        if action == "BUY":
+                            self.execute_buy(rates_m5, symbol, f"👑 RTM M6 (Golden Pocket Retest Fib 50-65% [{grade}] @ {curr_price:.2f} | Dynamic {dynamic_tp}R)", opt_params=opt, strat_id="RTM_M6_ELITE_GROWTH")
+                        else:
+                            self.execute_sell(rates_m5, symbol, f"👑 RTM M6 (Golden Pocket Retest Fib 50-65% [{grade}] @ {curr_price:.2f} | Dynamic {dynamic_tp}R)", opt_params=opt, strat_id="RTM_M6_ELITE_GROWTH")
+                        setup["m6_filled"] = True
+                        self.add_log(f"👑 [RTM M6 FILLED] Elite Growth OTE Golden Pocket executed @ {curr_price:.2f} (Grade {grade} | TP: {dynamic_tp}R | LotMult: {opt.get('lot_multiplier', 1.0):.2f}x)", "SUCCESS")
 
         # If all eligible models (M4 and M6) are filled, clear active setup
         all_done = True
