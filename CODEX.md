@@ -1,0 +1,113 @@
+# CODEX.md - Project Architecture & AI Collaboration Guide
+> **Repository**: `XAUUSD_Scalping_M5_Webapp` (Backend Engine & Trading API)  
+> **GitHub**: `https://github.com/satochitom-stack/XAUUSD_Scalping_M5_Webapp`  
+> **Target Symbol**: `XAUUSDc` (Gold Cent) / `XAUUSD`  
+> **System Status**: Active Trading on Exness MT5 (VPS Host)  
+> **Last Synchronized**: 2026-09-10
+
+---
+
+## 1. System Overview & Core Philosophy
+This codebase powers an automated algorithmic trading bot and FastAPI backend for Gold (`XAUUSD`) trading on MetaTrader 5 (MT5). The trading engine operates on a multi-timeframe confluence architecture with strict risk management, dynamic lot sizing, and multi-stage trailing profit locks.
+
+### 🌟 Active Trading Model: The Elite 4 Pillars
+Only **4 active setups** are permitted to scan the market and execute new trades. All other legacy models have been decommissioned and archived into `RETIRED_SETUPS`.
+
+| Setup ID | Strategy Name | Timeframe | Trading Hours (UTC+7) | Risk Sizing | Target R:R | Exit Mechanism |
+|---|---|:---:|:---:|:---:|:---:|---|
+| `PULLBACK_DR_EKK` | Signature Pullback (#PullBack ร้อยล้าน) | M5 (H1 Filter) | 14:00 - 02:00 | 2.0% Step-Up Compounding | 1:2.5 (TP1 1.5R) | EMA 60 Pullback + Fib 38.2%-61.8% + S/R Flip + Runner |
+| `RTM_M4_CONSERVATIVE` | RTM Quasimodo M4 (Conservative) | M15 (H1 Filter) | 14:00 - 23:00 | 2.0% Step-Up Compounding | 1:2.0 | Retest QML + M5 Rejection Wick $\ge 28\%$ + BE lock at 1.0R |
+| `RTM_M6_ELITE_GROWTH` | RTM Quasimodo M6 (Elite Growth) | M15 (H1 Filter) | 14:00 - 23:00 | 2.0% Step-Up Compounding | 1:2.0 | Retest Golden Pocket 50%-65% + Rejection Wick + BE lock at 1.0R |
+| `SMC_X_STO_H1` | SMC x STO Devil System (ระบบปีศาจ) | H1 | 14:00 - 04:00 | 1.0% Fixed Risk | 1:2.0 | EMA 50/200 Trend + Discount/Premium ATR + Single OB + Stoch 14,3,3 |
+| `RETIRED_SETUPS` | เซตอัพที่เลิกใช้ (Archived) | Multi-TF | Historical Archive | None (No new orders) | N/A | Preserves all historical trade records and closed PnL |
+
+---
+
+## 2. Magic Numbers & Strategy Mapping
+
+```python
+STRATEGY_MAGIC_MAP = {
+    "PULLBACK_DR_EKK":     {"pos1": 555861, "pos2": 555862, "pos3": 555863},
+    "RTM_M4_CONSERVATIVE": {"pos1": 777004, "pos2": 777014, "pos3": 777024},
+    "RTM_M6_ELITE_GROWTH": {"pos1": 777006, "pos2": 777016, "pos3": 777026},
+    "SMC_X_STO_H1":        {"pos1": 555771, "pos2": 555772, "pos3": 555773},
+}
+```
+
+### 📦 Archived / Retired Setups (DO NOT RE-ENABLE OR DELETE DATA)
+The following Magic numbers represent decommissioned strategies whose historical PnL **must always be classified into `RETIRED_SETUPS`**:
+- **News Momentum Expansion**: Magic `555889..555893`, `666888..666890`, comments containing `news`, `momentum`, `goldm5_pro`
+- **Asian Range Sniper**: Magic `555820..555823`, comments containing `asian`
+- **RTM M5 (All-Weather)**: Magic `777005, 777015, 777025, 777035`
+- **RTM M7 (Max Alpha)**: Magic `777007, 777017, 777027, 777037`
+- **Legacy Models**: Captain SMC (`555881..555883`), Flash Micro (`555801..555803`), EMA 50 Scalper (`555851..555852`)
+
+---
+
+## 3. Key Source Files & Responsibilities
+
+1. **`bot_engine.py`**:
+   - The main algorithmic execution engine (`ScalpingBotEngine`).
+   - Handles candle bar close evaluation, technical indicators (EMA, ATR, Fibonacci, Stochastic), signal generation, order execution (`execute_buy`, `execute_sell`), and open position trailing (`manage_open_positions`).
+   - Enforces `max_concurrent_setups = 4`.
+
+2. **`strategy_analytics.py`**:
+   - `RealTradeAnalyticsManager`: Connects to MT5 history deals API.
+   - Filters deals using `EPOCH_START_TIME = datetime(2026, 9, 7, 15, 0, 0)`.
+   - Classifies every deal into one of the 4 active pillars or `RETIRED_SETUPS`.
+   - Computes 100% verified real Winrate, Profit Factor, Realized R:R, and Max Drawdown from closed deals.
+
+3. **`strategy_optimizer.py`**:
+   - `RealTimeStrategyOptimizer`: Real-time market regime classifier (`STRONG_BULLISH_TREND`, `HIGH_VOLATILITY`, `RANGING_CHOPPY`, etc.).
+   - Dynamically calculates SL buffer, streak multipliers, and session heat adjustments.
+
+4. **`main.py`**:
+   - FastAPI REST API application server.
+   - Provides endpoints for web dashboard integration:
+     - `GET /api/system/status`
+     - `GET /api/strategy-analytics/summary`
+     - `GET /api/trades`
+     - `GET /api/positions`
+     - `POST /api/system/reload`
+
+5. **`config.json`**:
+   - Holds account logins, MT5 path, risk parameters, API tokens, and system flags.
+
+---
+
+## 4. Ground Rules for AI Coding (Codex / Copilot Rules)
+
+1. **Active Setup Count is Strictly 4**:
+   - Never add a 5th active setup without explicit instruction.
+   - `max_concurrent_setups` in `config.json` must match `4`.
+   - `strategies_count` in `main.py` must return `4`.
+
+2. **Preserve Real MT5 Historical Data**:
+   - Never purge, delete, or mock closed deal history from MT5.
+   - Any trade that does not match the 4 active pillars must seamlessly fallback to `RETIRED_SETUPS`.
+
+3. **Risk Management & Compounding**:
+   - `PULLBACK_DR_EKK`, `RTM_M4`, and `RTM_M6` utilize **2.0% Step-Up Compounding** (Tier base calculated against high-water equity).
+   - `SMC_X_STO_H1` uses **1.0% Fixed Risk**.
+
+4. **Testing is Mandatory Before Commit**:
+   - Always run the test suite to verify no regressions:
+     ```bash
+     python -m unittest discover tests
+     ```
+   - All tests must pass (37+ tests).
+
+5. **Broker SL/TP Safety**:
+   - When orders are placed, SL and TP are immediately submitted to the broker server.
+   - Any legacy open positions awaiting closure must be left to resolve via their broker SL/TP.
+
+---
+
+## 5. REST API & Integration Reference
+- **Local API Base**: `http://localhost:8000`
+- **VPS API Base**: `http://139.180.157.124:12308`
+- **Swagger Documentation**: `/docs`
+- **Auth Header**:
+  ```http
+  X-Token: GOLD_VIP_2026
+  ```
