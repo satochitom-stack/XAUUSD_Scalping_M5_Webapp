@@ -7,6 +7,7 @@ import os
 import json
 import logging
 import uuid
+from typing import Optional
 from datetime import datetime
 from mt5_connector import MT5Connector
 from bot_engine import GoldScalpingBot
@@ -169,6 +170,30 @@ class MultiAccountManager:
         self._save_to_config()
         logger.info(f"Added Account #{inst.id} ({inst.name}) Type={inst.type}")
         return inst
+
+    def get_account(self, acc_id: Optional[str] = None) -> Optional[AccountInstance]:
+        """Look up an account instance by id, or the currently selected account if acc_id is
+        omitted/None. Returns None if not found (or no account is selected yet)."""
+        if acc_id:
+            return self.accounts.get(acc_id)
+        if self.selected_account_id:
+            return self.accounts.get(self.selected_account_id)
+        return None
+
+    def update_strategy_settings(self, acc_id: str, strategy_updates: dict) -> bool:
+        """Merge a partial strategy-config update into an account's live strategy_cfg and apply
+        it to the running bot immediately - WITHOUT tearing down and re-creating the MT5
+        connector (unlike update_account() below, which always re-inits the connector since it
+        may also touch login/server/path). Used for lightweight, frequent settings changes such
+        as per-setup risk % overrides (see /api/strategy/risk_config in main.py) so the bot keeps
+        running continuously with no reconnect/restart needed."""
+        inst = self.get_account(acc_id)
+        if inst is None:
+            return False
+        inst.strategy_cfg.update(strategy_updates)
+        inst.bot.update_config({"strategy": inst.strategy_cfg})
+        self._save_to_config()
+        return True
 
     def update_account(self, acc_id: str, updates: dict) -> bool:
         """Update existing account settings."""

@@ -74,6 +74,7 @@ The following Magic numbers represent decommissioned strategies whose historical
      - `GET /api/trades`
      - `GET /api/positions`
      - `POST /api/system/reload`
+     - `GET /api/strategy/risk_config` / `POST /api/strategy/risk_config` - per-setup risk % override (see section 6 below)
 
 5. **`config.json`**:
    - Holds account logins, MT5 path, risk parameters, API tokens, and system flags.
@@ -96,6 +97,7 @@ The following Magic numbers represent decommissioned strategies whose historical
    - `KC_LIQUIDITY_DOMINANCE` uses **1.5% Step-Up Compounding**.
    - `SMC_X_STO_H1` uses **1.0% Fixed Risk**.
    - `CONFLUENCE_SQUEEZE_M15` uses **0.5% Fixed Risk** (self-designed setup, no live track record yet; same Full AI Gating pipeline as every other pillar via `_process_single_setup_signal()`). Unlike Tug of War, it runs as an AI Trend Trail (trailing runner, not a fixed TP) since volatility-squeeze breakouts statistically tend to continue.
+   - All 6 percentages above are **defaults only** - the user can override any of them per-setup, per-account, live from the Web Dashboard (see section 6, `/api/strategy/risk_config`). Never remove `RISK_PROFILE_DEFAULTS` in `bot_engine.py` or hardcode a risk % back into `calculate_lot_size()` - it must always resolve through that table + the `risk_overrides` lookup.
 
 4. **Testing is Mandatory Before Commit**:
    - Always run the test suite to verify no regressions:
@@ -118,3 +120,33 @@ The following Magic numbers represent decommissioned strategies whose historical
   ```http
   X-Token: GOLD_VIP_2026
   ```
+
+---
+
+## 6. Per-Setup Risk Configuration API (Web Dashboard)
+Lets the user set a custom risk % for any of the 6 active pillars independently, per account, from the web dashboard - **no bot restart and no MT5 reconnect required**. The change is applied to the live running bot on the very next iteration.
+
+- **Single source of truth**: `RISK_PROFILE_DEFAULTS` in `bot_engine.py` - maps each active `strat_id` to its `default_pct` and sizing `mode` (`STEP_UP_COMPOUNDING` or `FIXED`). `calculate_lot_size()` always resolves risk % through this table plus any override, never a hardcoded literal.
+- **Allowed range**: `RISK_OVERRIDE_MIN_PCT` (0.10%) to `RISK_OVERRIDE_MAX_PCT` (5.00%), enforced both at the API layer (rejects out-of-range writes with HTTP 400) and defensively inside `calculate_lot_size()` itself (clamps silently) in case a bad value ever reaches `config.json` through another path.
+- **Storage**: `config["accounts"][i]["strategy"]["risk_overrides"]` - a `{strat_id: risk_pct}` dict, only containing the setups the user has actually overridden. Missing a key means "use the default".
+- **Live-apply mechanism**: `MultiAccountManager.update_strategy_settings(acc_id, {"risk_overrides": {...}})` merges into `AccountInstance.strategy_cfg` (the *same dict object* `bot.config["strategy"]` already points to) and calls `bot.update_config(...)`, then persists to `config.json`. It deliberately does **not** call the heavier `update_account()` path, which always tears down and recreates the MT5 connector (`MT5Connector.__init__` re-runs `mt5.initialize()`) - unnecessary and disruptive for a risk-only tweak.
+
+**`GET /api/strategy/risk_config?acc_id=<optional>`** (defaults to the currently selected account):
+```json
+{
+  "status": true, "acc_id": "acc_c354ec", "acc_name": "Auto1",
+  "step_up_compounding_enabled": true,
+  "setups": [
+    {"id": "PULLBACK_DR_EKK", "name": "...", "icon": "🎯", "sizing_mode": "STEP_UP_COMPOUNDING",
+     "default_risk_pct": 2.0, "current_risk_pct": 2.0, "is_overridden": false,
+     "min_risk_pct": 0.1, "max_risk_pct": 5.0},
+    "... (one entry per active pillar, in STRATEGY_MAGIC_MAP order)"
+  ]
+}
+```
+
+**`POST /api/strategy/risk_config`** - partial update, only the setups being changed:
+```json
+{"acc_id": "acc_c354ec", "risk_overrides": {"KC_LIQUIDITY_DOMINANCE": 2.0, "PULLBACK_DR_EKK": null}}
+```
+`null` resets that one setup back to its factory default. Returns the same shape as the GET above (post-update state). A value outside `[0.10, 5.00]` or an unknown `strat_id` returns HTTP 400 with a message naming the offending setup(s) - no partial writes on error.

@@ -38,6 +38,24 @@ STRATEGY_MAGIC_MAP = {
     "CONFLUENCE_SQUEEZE_M15": {"base": 555950, "pos1": 555951, "pos2": 555952, "pos3": 555953}
 }
 
+# Per-pillar risk sizing profile: default risk %, sizing MODE (whether Step-Up Compounding
+# tiering applies), and the safe [min, max] bounds a user-configurable override is clamped to.
+# This is the single source of truth for calculate_lot_size()'s default behavior below AND for
+# the /api/strategy/risk_config Web Dashboard endpoint (main.py) that lets the user set a custom
+# risk % per setup without touching code or restarting the bot - see RISK_OVERRIDE_MIN/MAX_PCT
+# and the "risk_overrides" key inside config["strategy"] read below.
+RISK_PROFILE_DEFAULTS = {
+    "PULLBACK_DR_EKK":        {"default_pct": 2.0, "mode": "STEP_UP_COMPOUNDING"},
+    "RTM_M4_CONSERVATIVE":    {"default_pct": 2.0, "mode": "STEP_UP_COMPOUNDING"},
+    "RTM_M6_ELITE_GROWTH":    {"default_pct": 2.0, "mode": "STEP_UP_COMPOUNDING"},
+    "SMC_X_STO_H1":           {"default_pct": 1.0, "mode": "FIXED"},
+    "KC_LIQUIDITY_DOMINANCE": {"default_pct": 1.5, "mode": "STEP_UP_COMPOUNDING"},
+    "CONFLUENCE_SQUEEZE_M15": {"default_pct": 0.5, "mode": "FIXED"},
+    "TUG_OF_WAR_M15":         {"default_pct": 0.5, "mode": "FIXED"},
+}
+RISK_OVERRIDE_MIN_PCT = 0.10
+RISK_OVERRIDE_MAX_PCT = 5.00
+
 class GoldScalpingBot:
     """Scalping Strategy Execution Engine with Multi-Setup Concurrent Risk Guard."""
     def __init__(self, connector, config: dict):
@@ -1796,36 +1814,47 @@ class GoldScalpingBot:
         balance = float(acc.get("balance", 10000.0))
         equity = float(acc.get("equity", balance))
 
-        # RTM M4, M6, PULLBACK_DR_EKK, and KC_LIQUIDITY_DOMINANCE receive Step-Up Compounding!
-        if strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH", "PULLBACK_DR_EKK", "KC_LIQUIDITY_DOMINANCE"]:
-            risk_pct = 1.5 if strat_id == "KC_LIQUIDITY_DOMINANCE" else 2.0
-            use_step_up = strat_cfg.get("enable_step_up_compounding", True)
-            if use_step_up:
-                eval_equity = max(balance, equity)
-                if eval_equity >= 45000.0:
-                    tier_base = 45000.0
-                elif eval_equity >= 30000.0:
-                    tier_base = 30000.0
-                elif eval_equity >= 20000.0:
-                    tier_base = 20000.0
-                elif eval_equity >= 15000.0:
-                    tier_base = 15000.0
-                elif eval_equity >= 10000.0:
-                    tier_base = 10000.0
+        profile = RISK_PROFILE_DEFAULTS.get(strat_id)
+        if profile is not None:
+            # Any of the active pillars: start from its default risk %, then apply a
+            # user-configured override from the Web Dashboard if one is set for this setup
+            # (config["strategy"]["risk_overrides"][strat_id], written live via
+            # /api/strategy/risk_config - no bot restart required, see main.py). Defensively
+            # re-clamped here too, even though the API layer already validates on write, so a
+            # value that somehow reached config.json through another path can never push risk
+            # outside the safe [RISK_OVERRIDE_MIN_PCT, RISK_OVERRIDE_MAX_PCT] band.
+            risk_pct = profile["default_pct"]
+            risk_overrides = strat_cfg.get("risk_overrides") or {}
+            override_val = risk_overrides.get(strat_id)
+            if isinstance(override_val, (int, float)) and not isinstance(override_val, bool) and override_val > 0:
+                risk_pct = max(RISK_OVERRIDE_MIN_PCT, min(RISK_OVERRIDE_MAX_PCT, float(override_val)))
+
+            if profile["mode"] == "STEP_UP_COMPOUNDING":
+                use_step_up = strat_cfg.get("enable_step_up_compounding", True)
+                if use_step_up:
+                    eval_equity = max(balance, equity)
+                    if eval_equity >= 45000.0:
+                        tier_base = 45000.0
+                    elif eval_equity >= 30000.0:
+                        tier_base = 30000.0
+                    elif eval_equity >= 20000.0:
+                        tier_base = 20000.0
+                    elif eval_equity >= 15000.0:
+                        tier_base = 15000.0
+                    elif eval_equity >= 10000.0:
+                        tier_base = 10000.0
+                    else:
+                        tier_base = max(1000.0, balance)
+                    risk_money = tier_base * (risk_pct / 100.0)
                 else:
-                    tier_base = max(1000.0, balance)
-                risk_money = tier_base * (risk_pct / 100.0)
-            else:
+                    risk_money = balance * (risk_pct / 100.0)
+            else:  # FIXED
                 risk_money = balance * (risk_pct / 100.0)
         elif strat_id in ["NEWS_MOMENTUM_EXPANSION", "ASIAN_RANGE_SNIPER"]:
-            risk_pct = 0.5  # Fixed 0.5% risk
-            risk_money = balance * (risk_pct / 100.0)
-        elif strat_id == "CONFLUENCE_SQUEEZE_M15":
-            # Fixed 0.5% risk (conservative sizing - new self-designed setup, no live track record yet)
-            risk_pct = 0.5
+            risk_pct = 0.5  # Fixed 0.5% risk (retired setups - no override support)
             risk_money = balance * (risk_pct / 100.0)
         else:
-            # ALL OTHER SETUPS (SMCxSTO H1, M5, M7, etc.) STRICTLY 1.0% RISK
+            # ALL OTHER/UNKNOWN SETUPS (retired legacy models, etc.) STRICTLY 1.0% RISK
             risk_pct = 1.0
             risk_money = balance * (risk_pct / 100.0)
 
