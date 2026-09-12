@@ -750,6 +750,17 @@ def _sync_routes_to_app():
                 logger.warning(f"Could not reload {mod_name}: {e}")
             if hasattr(mod, 'get_strategy_risk_config'):
                 app_obj = orig_app
+                if am := getattr(mod, 'account_manager', None):
+                    try:
+                        import account_manager as am_mod
+                        am_mod = importlib.reload(am_mod)
+                        if not hasattr(am, 'get_account'):
+                            am.get_account = am_mod.MultiAccountManager.get_account.__get__(am)
+                        if not hasattr(am, 'update_strategy_settings'):
+                            am.update_strategy_settings = am_mod.MultiAccountManager.update_strategy_settings.__get__(am)
+                    except Exception as am_err:
+                        logger.warning(f"AccountManager bind error: {am_err}")
+
                 existing = {getattr(r, 'path', None) for r in getattr(app_obj, 'routes', [])}
                 if '/api/strategy/risk_config' not in existing:
                     try:
@@ -774,6 +785,17 @@ def _sync_routes_to_app():
                         logger.info("✅ Successfully injected /api/strategy/risk_config into live FastAPI app!")
                     except Exception as e:
                         logger.warning(f"Route injection error: {e}")
+                else:
+                    # Refresh existing route references to the new reloaded functions
+                    for r in app_obj.routes:
+                        if getattr(r, 'path', None) == '/api/strategy/risk_config':
+                            methods = getattr(r, 'methods', [])
+                            if 'GET' in methods:
+                                r.endpoint = getattr(mod, 'get_strategy_risk_config')
+                            elif 'POST' in methods:
+                                r.endpoint = getattr(mod, 'update_strategy_risk_config')
+                    app_obj.openapi_schema = None
+                    logger.info("✅ Successfully updated existing /api/strategy/risk_config endpoints!")
 
 try:
     _sync_routes_to_app()

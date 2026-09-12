@@ -349,9 +349,22 @@ async def toggle_strategy_learning(_: bool = Depends(verify_token)):
 # config.json so they survive a real restart too. See RISK_PROFILE_DEFAULTS in bot_engine.py
 # for the single source of truth on default %, sizing mode, and the allowed [min, max] band.
 
+def _resolve_account_instance(acc_id: Optional[str] = None):
+    if hasattr(account_manager, "get_account"):
+        inst = account_manager.get_account(acc_id)
+        if inst is not None:
+            return inst
+    if acc_id and acc_id in account_manager.accounts:
+        return account_manager.accounts[acc_id]
+    if hasattr(account_manager, "selected_account_id") and account_manager.selected_account_id in account_manager.accounts:
+        return account_manager.accounts[account_manager.selected_account_id]
+    if account_manager.accounts:
+        return list(account_manager.accounts.values())[0]
+    return None
+
 def _build_risk_config_response(inst) -> dict:
     overrides = inst.strategy_cfg.get("risk_overrides") or {}
-    registry = account_manager.analytics.STRATEGY_REGISTRY
+    registry = getattr(account_manager.analytics, "STRATEGY_REGISTRY", {})
     setups = []
     for strat_id in STRATEGY_MAGIC_MAP.keys():
         profile = RISK_PROFILE_DEFAULTS.get(strat_id)
@@ -381,39 +394,59 @@ def _build_risk_config_response(inst) -> dict:
 async def get_strategy_risk_config(acc_id: Optional[str] = Query(None), _: bool = Depends(verify_token)):
     """Fetch the current (and default/allowed-range) risk % for every active pillar on an
     account - the currently selected account if acc_id is omitted."""
-    inst = account_manager.get_account(acc_id)
-    if inst is None:
-        raise HTTPException(status_code=404, detail="Account not found (and no account is currently selected)")
-    return _build_risk_config_response(inst)
+    try:
+        inst = _resolve_account_instance(acc_id)
+        if inst is None:
+            raise HTTPException(status_code=404, detail="Account not found (and no account is currently selected)")
+        return _build_risk_config_response(inst)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in get_strategy_risk_config: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/strategy/risk_config")
 async def update_strategy_risk_config(payload: RiskOverrideRequest, _: bool = Depends(verify_token)):
     """Set (or reset with null) a custom risk % for one or more active pillars. Applies to the
     live running bot immediately - no restart required - and persists to config.json."""
-    inst = account_manager.get_account(payload.acc_id)
-    if inst is None:
-        raise HTTPException(status_code=404, detail="Account not found (and no account is currently selected)")
+    try:
+        inst = _resolve_account_instance(payload.acc_id)
+        if inst is None:
+            raise HTTPException(status_code=404, detail="Account not found (and no account is currently selected)")
 
-    current_overrides = dict(inst.strategy_cfg.get("risk_overrides") or {})
-    errors = []
-    for strat_id, val in payload.risk_overrides.items():
-        if strat_id not in RISK_PROFILE_DEFAULTS and strat_id not in STRATEGY_MAGIC_MAP:
-            errors.append(f"Unknown or inactive strategy id: {strat_id}")
-            continue
-        if val is None:
-            current_overrides.pop(strat_id, None)  # Reset to factory default
-            continue
-        if not (RISK_OVERRIDE_MIN_PCT <= val <= RISK_OVERRIDE_MAX_PCT):
-            errors.append(f"{strat_id}: risk must be between {RISK_OVERRIDE_MIN_PCT}% and {RISK_OVERRIDE_MAX_PCT}% (got {val}%)")
-            continue
-        current_overrides[strat_id] = round(float(val), 2)
+        current_overrides = dict(inst.strategy_cfg.get("risk_overrides") or {})
+        errors = []
+        for strat_id, val in payload.risk_overrides.items():
+            if strat_id not in RISK_PROFILE_DEFAULTS and strat_id not in STRATEGY_MAGIC_MAP:
+                errors.append(f"Unknown or inactive strategy id: {strat_id}")
+                continue
+            if val is None:
+                current_overrides.pop(strat_id, None)  # Reset to factory default
+                continue
+            if not (RISK_OVERRIDE_MIN_PCT <= val <= RISK_OVERRIDE_MAX_PCT):
+                errors.append(f"{strat_id}: risk must be between {RISK_OVERRIDE_MIN_PCT}% and {RISK_OVERRIDE_MAX_PCT}% (got {val}%)")
+                continue
+            current_overrides[strat_id] = round(float(val), 2)
 
-    if errors:
-        raise HTTPException(status_code=400, detail="; ".join(errors))
+        if errors:
+            raise HTTPException(status_code=400, detail="; ".join(errors))
 
-    account_manager.update_strategy_settings(inst.id, {"risk_overrides": current_overrides})
-    logger.info(f"⚙️ [RISK CONFIG UPDATED] Account {inst.id} ({inst.name}): {current_overrides}")
-    return _build_risk_config_response(inst)
+        if hasattr(account_manager, "update_strategy_settings"):
+            account_manager.update_strategy_settings(inst.id, {"risk_overrides": current_overrides})
+        else:
+            inst.strategy_cfg["risk_overrides"] = current_overrides
+            if hasattr(inst, "bot"):
+                inst.bot.update_config({"strategy": inst.strategy_cfg})
+            if hasattr(account_manager, "_save_to_config"):
+                account_manager._save_to_config()
+
+        logger.info(f"⚙️ [RISK CONFIG UPDATED] Account {inst.id} ({inst.name}): {current_overrides}")
+        return _build_risk_config_response(inst)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in update_strategy_risk_config: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 # --- ECONOMIC NEWS RADAR API ---
 @app.get("/api/news/calendar")
