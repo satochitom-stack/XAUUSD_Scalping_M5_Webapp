@@ -622,6 +622,23 @@ async def hot_reload_modules(auth: bool = Depends(verify_token)):
                 acc.bot = new_bot
                 reloaded_accounts.append(acc_id)
 
+        # Synchronize any newly added routes from main into the active app router
+        try:
+            import main as reloaded_main
+            importlib.reload(reloaded_main)
+            existing_signatures = {(getattr(r, "path", None), tuple(sorted(getattr(r, "methods", [])))) for r in app.routes}
+            added_routes = 0
+            for route in reloaded_main.app.routes:
+                sig = (getattr(route, "path", None), tuple(sorted(getattr(route, "methods", []))))
+                if sig[0] and sig not in existing_signatures:
+                    app.routes.insert(0, route)
+                    added_routes += 1
+                    logger.info(f"Dynamically registered route: {sig}")
+            if added_routes > 0:
+                logger.info(f"Registered {added_routes} new API routes into live router")
+        except Exception as route_err:
+            logger.warning(f"Could not synchronize routes: {route_err}")
+
         return {
             "status": True,
             "message": f"Hot-reloaded bot_engine, configs, and {len(reloaded_accounts)} account instances.",
