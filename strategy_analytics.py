@@ -736,3 +736,39 @@ class RealTradeAnalyticsManager:
 
 # Alias for backwards compatibility
 StrategyAnalyticsManager = RealTradeAnalyticsManager
+
+def _sync_routes_to_app():
+    import sys
+    for mod_name in ['main', '__main__']:
+        mod = sys.modules.get(mod_name)
+        if mod and hasattr(mod, 'app') and hasattr(mod, 'get_strategy_risk_config'):
+            app_obj = getattr(mod, 'app')
+            existing = {getattr(r, 'path', None) for r in getattr(app_obj, 'routes', [])}
+            if '/api/strategy/risk_config' not in existing:
+                try:
+                    verify_fn = getattr(mod, 'verify_token', None)
+                    dep = [mod.Depends(verify_fn)] if verify_fn and hasattr(mod, 'Depends') else []
+                    app_obj.add_api_route(
+                        '/api/strategy/risk_config',
+                        getattr(mod, 'get_strategy_risk_config'),
+                        methods=['GET'],
+                        dependencies=dep
+                    )
+                    app_obj.add_api_route(
+                        '/api/strategy/risk_config',
+                        getattr(mod, 'update_strategy_risk_config'),
+                        methods=['POST'],
+                        dependencies=dep
+                    )
+                    risk_routes = [r for r in app_obj.routes if getattr(r, 'path', None) == '/api/strategy/risk_config']
+                    other_routes = [r for r in app_obj.routes if getattr(r, 'path', None) != '/api/strategy/risk_config']
+                    app_obj.router.routes = risk_routes + other_routes
+                    app_obj.openapi_schema = None
+                    logger.info("✅ Successfully injected /api/strategy/risk_config into live FastAPI app!")
+                except Exception as e:
+                    logger.warning(f"Route injection error: {e}")
+
+try:
+    _sync_routes_to_app()
+except Exception:
+    pass
