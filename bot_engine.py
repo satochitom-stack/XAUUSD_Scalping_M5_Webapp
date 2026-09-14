@@ -910,12 +910,13 @@ class GoldScalpingBot:
     def _check_confluence_squeeze_m15(self, symbol: str) -> Tuple[bool, bool, str]:
         """
         🧭 AI Confluence Squeeze Breakout M15 (self-designed 6th pillar):
-        Volatility-REGIME TRANSITION setup combining five independent principles:
+        Volatility-REGIME TRANSITION setup combining six independent principles:
           1. Volatility Squeeze (Bollinger Band width compressed into lowest ~20% of 50-bar range)
           2. Expansion Breakout Candle (>= 55% body, range >= 1.3x ATR14)
           3. Market Structure Confirmation (closes beyond coil range AND 20-bar swing high/low)
           4. Liquidity/Volume Confirmation (tick volume >= 1.3x 20-bar average)
-          5. Session + H1 Trend Filter (London/NY only, aligned with H1 EMA50 trend)
+          5. RSI 14 Momentum Alignment (RSI >= 50 for BUY, RSI <= 50 for SELL)
+          6. Session + H1 Trend Filter (London/NY only, aligned with H1 EMA50 trend)
         """
         try:
             df_m15 = self.connector.get_rates(symbol, "M15", 80)
@@ -1754,7 +1755,7 @@ class GoldScalpingBot:
             # EarthETC Structural SL: respect true Swing Head extreme + buffer without artificial 8.50 clamp
             if sl_dist < 2.50: sl = ask - 2.50; sl_dist = 2.50
             if sl_dist > 18.00: sl = ask - 18.00; sl_dist = 18.00
-            target_rr = opt.get("tp_ratio", 2.0)
+            target_rr = opt.get("tp_ratio", 3.0)
             if custom_tp and custom_tp > ask:
                 tp2 = float(custom_tp)
             else:
@@ -1882,7 +1883,7 @@ class GoldScalpingBot:
             # EarthETC Structural SL: respect true Swing Head extreme + buffer without arbitrary 8.50 clamp
             if sl_dist < 2.50: sl = bid + 2.50; sl_dist = 2.50
             if sl_dist > 18.00: sl = bid + 18.00; sl_dist = 18.00
-            target_rr = opt.get("tp_ratio", 2.0)
+            target_rr = opt.get("tp_ratio", 3.0)
             if custom_tp and custom_tp < bid:
                 tp2 = float(custom_tp)
             else:
@@ -2121,18 +2122,22 @@ class GoldScalpingBot:
                     profit_dist = bid - open_p
                     r_profit = profit_dist / initial_r
 
-                    # Sync TP to 2.0R for Quick Harvest models if needed
-                    if is_quick_harvest and tp > 0:
-                        desired_tp = round(open_p + (initial_r * 2.0), 2)
-                        if abs(tp - desired_tp) > 0.50:
-                            tp = desired_tp
-                            self.connector.modify_position(t_id, sl, tp)
-                            self.add_log(f"🎯 [TP RECALIBRATED 2.0R] [{strat_id}] Ticket #{t_id} TP adjusted to {tp:.2f}", "INFO")
-
                     if is_quick_harvest:
-                        # Quick Harvest Trailing (Target 2.0R)
+                        # RTM Quasimodo Multi-Stage Profit Lock (Target 3.0R - 4.5R Runner):
+                        # Step 4: At >= 2.8R -> Lock +2.0R Profit
+                        if r_profit >= 2.8:
+                            target_sl = round(open_p + (initial_r * 2.0), 2)
+                            if sl < target_sl - 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"💰 [PROFIT LOCKED +2.0R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +2.0R ({target_sl:.2f})", "SUCCESS")
+                        # Step 3: At >= 2.0R -> Lock +1.2R Profit
+                        elif r_profit >= 2.0:
+                            target_sl = round(open_p + (initial_r * 1.2), 2)
+                            if sl < target_sl - 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🎯 [PROFIT LOCKED +1.2R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.2R ({target_sl:.2f})", "SUCCESS")
                         # Step 2: At >= 1.5R -> Lock +0.8R Profit
-                        if r_profit >= 1.5:
+                        elif r_profit >= 1.5:
                             target_sl = round(open_p + (initial_r * 0.8), 2)
                             if sl < target_sl - 0.10:
                                 self.connector.modify_position(t_id, target_sl, tp)
@@ -2244,18 +2249,22 @@ class GoldScalpingBot:
                     profit_dist = open_p - ask
                     r_profit = profit_dist / initial_r
 
-                    # Sync TP to 2.0R for Quick Harvest models if needed
-                    if is_quick_harvest and tp > 0:
-                        desired_tp = round(open_p - (initial_r * 2.0), 2)
-                        if abs(tp - desired_tp) > 0.50:
-                            tp = desired_tp
-                            self.connector.modify_position(t_id, sl, tp)
-                            self.add_log(f"🎯 [TP RECALIBRATED 2.0R] [{strat_id}] Ticket #{t_id} TP adjusted to {tp:.2f}", "INFO")
-
                     if is_quick_harvest:
-                        # Quick Harvest Trailing (Target 2.0R)
+                        # RTM Quasimodo Multi-Stage Profit Lock (Target 3.0R - 4.5R Runner):
+                        # Step 4: At >= 2.8R -> Lock +2.0R Profit
+                        if r_profit >= 2.8:
+                            target_sl = round(open_p - (initial_r * 2.0), 2)
+                            if sl == 0 or sl > target_sl + 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"💰 [PROFIT LOCKED +2.0R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +2.0R ({target_sl:.2f})", "SUCCESS")
+                        # Step 3: At >= 2.0R -> Lock +1.2R Profit
+                        elif r_profit >= 2.0:
+                            target_sl = round(open_p - (initial_r * 1.2), 2)
+                            if sl == 0 or sl > target_sl + 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🎯 [PROFIT LOCKED +1.2R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.2R ({target_sl:.2f})", "SUCCESS")
                         # Step 2: At >= 1.5R -> Lock +0.8R Profit
-                        if r_profit >= 1.5:
+                        elif r_profit >= 1.5:
                             target_sl = round(open_p - (initial_r * 0.8), 2)
                             if sl == 0 or sl > target_sl + 0.10:
                                 self.connector.modify_position(t_id, target_sl, tp)

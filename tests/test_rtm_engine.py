@@ -354,6 +354,21 @@ class TestRTMEngine(unittest.TestCase):
         self.assertFalse(passed)
         self.assertEqual(opt, {})
 
+    def test_rtm_dynamic_tp_preserved_without_2r_overwrite(self):
+        """Verify dynamic TP (e.g. 3.0R or 3.5R) is preserved in manage_open_positions and not reset to 2.0R."""
+        # BUY opened at 2700.0, SL at 2690.0 (initial_r = 10.0), dynamic TP set at 3.0R = 2730.0
+        self.mock_connector.get_market_info.return_value = {"bid": 2716.0, "ask": 2716.2}
+        m4_magic = STRATEGY_MAGIC_MAP["RTM_M4_CONSERVATIVE"]["pos1"]
+        self.mock_connector.get_open_positions.return_value = [
+            {"ticket": 501, "magic": m4_magic, "symbol": "XAUUSDc", "type": "BUY", "price_open": 2700.0, "sl": 2700.3, "tp": 2730.0}
+        ]
+        self.bot.initial_risk_map[501] = 10.0
+        self.bot.manage_open_positions("XAUUSDc")
+
+        # modify_position should update SL to +0.8R (2708.0) but keep TP at 2730.0 (NOT 2720.0!)
+        self.mock_connector.modify_position.assert_called_with(501, 2708.0, 2730.0)
+
 if __name__ == "__main__":
     unittest.main()
+
 
