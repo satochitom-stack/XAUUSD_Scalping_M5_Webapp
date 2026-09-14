@@ -761,6 +761,7 @@ class GoldScalpingBot:
     def _check_kc_liquidity_dominance(self, df: pd.DataFrame, symbol: str = "XAUUSD") -> Tuple[bool, bool, str]:
         """
         🕯️ KC Forex Trading: Liquidity Sweep + Candle Dominance (Pillar #5)
+        Upgraded with Multi-Methodology Confluence (Alchemist Trading principles):
         1. Context / Institutional Liquidity Hunt:
            - Price sweeps past recent swing high or low of last 15-20 bars (Stop Hunt / Fakeout).
            - Price fails to sustain breakout and rejects back inside the structural range.
@@ -768,21 +769,33 @@ class GoldScalpingBot:
            - Strong reversal bar with solid body (Body Ratio >= 50% of candle range).
            - 1-Bar Dominance: Engulfs the previous opposite candle body/open.
            - OR 2-Bar Dominance: Current bar closes beyond the opening of 2 bars ago.
-        3. Session Timing:
-           - Active European & US Trading Sessions (14:00 - 02:00 Thai Time / London & NY Liquidity).
-        4. Target Risk-Reward:
-           - SL placed safely beyond the sweep wick (+0.40 USD buffer).
-           - Target TP = 2.0R (with Break-Even locked at +1.0R).
+        3. ICT Precision Killzones:
+           - London Killzone: 14:00 - 17:30 Thai Time (07:00 - 10:30 UTC)
+           - New York Killzone: 19:00 - 23:30 Thai Time (12:00 - 16:30 UTC)
+        4. Wyckoff Volume Effort vs Result:
+           - Tick volume on sweep or dominance candle >= 1.10x 20-bar volume MA (Smart Money accumulation/distribution).
+        5. RTM Sweep Depth Control:
+           - Sweep depth limited to <= 1.25 * ATR14 to filter out violent momentum breakouts.
+        6. SMC Macro Trend Alignment:
+           - Aligned with H1 EMA50 slope and higher timeframe order flow.
         """
         if len(df) < 30:
             return False, False, ""
 
-        # Time/Session check: Active institutional session (14:00 - 02:00 Thai Time)
-        th_tz = timezone(timedelta(hours=7))
-        now_time = datetime.now(th_tz).time()
-        in_session = (now_time >= dtime(14, 0)) or (now_time <= dtime(2, 0))
-        if not in_session:
+        # Simulated time in backtesting if available, else Thai Time (GMT+7)
+        sim_time = getattr(self.connector, "current_time", None)
+        if sim_time is not None and hasattr(sim_time, "time") and not hasattr(sim_time, "_mock_return_value"):
+            now_time = sim_time.time()
+        else:
+            th_tz = timezone(timedelta(hours=7))
+            now_time = datetime.now(th_tz).time()
+
+        # ICT Precision Killzones (London 14:00-17:30, NY 19:00-23:30 Thai Time)
+        in_london_kz = (dtime(14, 0) <= now_time <= dtime(17, 30))
+        in_ny_kz = (dtime(19, 0) <= now_time <= dtime(23, 30))
+        if not (in_london_kz or in_ny_kz):
             return False, False, ""
+        kz_name = "London KZ" if in_london_kz else "NY KZ"
 
         b1 = df.iloc[-2]  # Trigger bar (last completed bar)
         b2 = df.iloc[-3]  # Previous bar
@@ -804,6 +817,51 @@ class GoldScalpingBot:
         if curr_body_ratio < 0.50:
             return False, False, ""
 
+        # Wyckoff Volume Effort confirmation
+        vol_col = 'tick_volume' if 'tick_volume' in df.columns else ('volume' if 'volume' in df.columns else None)
+        if vol_col is not None and len(df) >= 22:
+            vol_series = df[vol_col]
+            vol_ma20 = float(vol_series.iloc[-22:-2].mean())
+            curr_vol = float(b1[vol_col])
+            prev_vol = float(b2[vol_col])
+            has_volume = (vol_ma20 <= 0) or (curr_vol >= 1.10 * vol_ma20) or (prev_vol >= 1.10 * vol_ma20)
+        else:
+            has_volume = True
+
+        if not has_volume:
+            return False, False, ""
+
+        # RTM Sweep Depth calculation using M5 ATR14
+        hl = df['high'] - df['low']
+        hc = (df['high'] - df['close'].shift()).abs()
+        lc = (df['low'] - df['close'].shift()).abs()
+        tr = pd.concat([hl, hc, lc], axis=1).max(axis=1)
+        atr_series = tr.rolling(window=14).mean()
+        m5_atr = float(atr_series.iloc[-2]) if not pd.isna(atr_series.iloc[-2]) else 2.0
+        if m5_atr <= 0:
+            m5_atr = 2.0
+
+        # SMC Macro Trend Alignment via H1 EMA50
+        h1_bull_allowed = True
+        h1_bear_allowed = True
+        if self.connector:
+            try:
+                df_h1 = self.connector.get_rates(symbol, "H1", 60)
+                if isinstance(df_h1, pd.DataFrame) and not df_h1.empty and len(df_h1) >= 50:
+                    h1_ema50 = df_h1['close'].ewm(span=50, adjust=False).mean()
+                    h1_close = float(df_h1['close'].iloc[-2])
+                    h1_ema50_now = float(h1_ema50.iloc[-2])
+                    h1_ema50_prev = float(h1_ema50.iloc[-7])
+                    h1_slope = h1_ema50_now - h1_ema50_prev
+
+                    is_h1_strong_downtrend = (h1_close < h1_ema50_now) and (h1_slope < -0.40)
+                    is_h1_strong_uptrend = (h1_close > h1_ema50_now) and (h1_slope > 0.40)
+
+                    h1_bull_allowed = not is_h1_strong_downtrend
+                    h1_bear_allowed = not is_h1_strong_uptrend
+            except Exception:
+                pass
+
         prev_o = float(b2['open'])
         prev_c = float(b2['close'])
         prev_h = float(b2['high'])
@@ -820,7 +878,8 @@ class GoldScalpingBot:
         # 1. BULLISH SWEEP + CANDLE DOMINANCE (BUY)
         # Price swept prior swing low (either trigger bar or previous bar pierced it) and closed back above
         swept_low = (curr_l < prior_swing_low or prev_l < prior_swing_low) and (curr_c > prior_swing_low)
-        if swept_low and curr_c > curr_o:
+        sweep_depth_bull = prior_swing_low - min(curr_l, prev_l)
+        if swept_low and curr_c > curr_o and (sweep_depth_bull <= 1.25 * m5_atr) and h1_bull_allowed:
             # 1-Bar Dominance: Engulfs prev candle open
             is_1bar_bull = (prev_c < prev_o) and (curr_c > prev_o)
             # 2-Bar Dominance: Combined with prev candle engulfs b3
@@ -830,12 +889,13 @@ class GoldScalpingBot:
 
             if is_1bar_bull or is_2bar_bull:
                 dom_type = "1-Bar Engulfing" if is_1bar_bull else "2-Bar Combined"
-                return True, False, f"🕯️ KC Dominance: Bullish Liquidity Sweep ({dom_type} | Body {curr_body_ratio*100:.0f}% | Swept {prior_swing_low:.2f})"
+                return True, False, f"🕯️ KC Dominance: Bullish Liquidity Sweep ({dom_type} | Body {curr_body_ratio*100:.0f}% | Swept {prior_swing_low:.2f} | Depth {sweep_depth_bull:.2f} | {kz_name})"
 
         # 2. BEARISH SWEEP + CANDLE DOMINANCE (SELL)
         # Price swept prior swing high and closed back below
         swept_high = (curr_h > prior_swing_high or prev_h > prior_swing_high) and (curr_c < prior_swing_high)
-        if swept_high and curr_c < curr_o:
+        sweep_depth_bear = max(curr_h, prev_h) - prior_swing_high
+        if swept_high and curr_c < curr_o and (sweep_depth_bear <= 1.25 * m5_atr) and h1_bear_allowed:
             is_1bar_bear = (prev_c > prev_o) and (curr_c < prev_o)
             prev2_o = float(b3['open'])
             prev2_c = float(b3['close'])
@@ -843,7 +903,7 @@ class GoldScalpingBot:
 
             if is_1bar_bear or is_2bar_bear:
                 dom_type = "1-Bar Engulfing" if is_1bar_bear else "2-Bar Combined"
-                return False, True, f"🕯️ KC Dominance: Bearish Liquidity Sweep ({dom_type} | Body {curr_body_ratio*100:.0f}% | Swept {prior_swing_high:.2f})"
+                return False, True, f"🕯️ KC Dominance: Bearish Liquidity Sweep ({dom_type} | Body {curr_body_ratio*100:.0f}% | Swept {prior_swing_high:.2f} | Depth {sweep_depth_bear:.2f} | {kz_name})"
 
         return False, False, ""
 

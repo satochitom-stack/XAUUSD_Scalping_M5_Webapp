@@ -88,24 +88,22 @@ def load_ohlc_csv(path: str) -> pd.DataFrame:
     }
     df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
 
-    if "time" not in df.columns:
-        if "date" in df.columns and "time" in df.columns:
-            pass
-        if "datetime" in df.columns:
-            df["time"] = pd.to_datetime(df["datetime"])
-        elif "date" in df.columns and "hour" in df.columns:
-            df["time"] = pd.to_datetime(df["date"] + " " + df["hour"].astype(str), errors="coerce")
-        elif "date" in df.columns:
-            # MT5 export always has separate <DATE> (YYYY.MM.DD) and <TIME> (HH:MM[:SS]) columns
-            time_col = df["time"] if "time" in df.columns else "00:00:00"
-            df["time"] = pd.to_datetime(
-                df["date"].astype(str).str.replace(".", "-", regex=False) + " " + df.get("time", "00:00:00").astype(str),
-                errors="coerce"
-            )
-        else:
-            raise ValueError(f"Could not find a date/time column in {path}. Columns found: {list(df.columns)}")
-    else:
+    if "date" in df.columns and "time" in df.columns:
+        # MT5 or generic export with separate Date and Time columns
+        df["time"] = pd.to_datetime(
+            df["date"].astype(str).str.replace(".", "-", regex=False) + " " + df["time"].astype(str),
+            errors="coerce"
+        )
+    elif "datetime" in df.columns:
+        df["time"] = pd.to_datetime(df["datetime"], errors="coerce")
+    elif "time" in df.columns:
         df["time"] = pd.to_datetime(df["time"], errors="coerce")
+    elif "date" in df.columns and "hour" in df.columns:
+        df["time"] = pd.to_datetime(df["date"] + " " + df["hour"].astype(str), errors="coerce")
+    elif "date" in df.columns:
+        df["time"] = pd.to_datetime(df["date"].astype(str).str.replace(".", "-", regex=False), errors="coerce")
+    else:
+        raise ValueError(f"Could not find a date/time column in {path}. Columns found: {list(df.columns)}")
 
     required = ["open", "high", "low", "close"]
     missing = [c for c in required if c not in df.columns]
@@ -564,7 +562,8 @@ class HistoricalBacktester:
                 "same_bar_sl_tp_conflict": "SL assumed first (conservative)",
                 "trailing_and_be_lock_simulated": True,
                 "note": "Public/CSV-sourced or live-MT5-sourced historical data replayed through the real bot_engine.py signal, AI-gating, and execution logic (run_iteration()). Not a substitute for forward/paper testing."
-            }
+            },
+            "trades": trades
         }
 
     def save_results(self, path: str, results: Optional[dict] = None):
@@ -590,10 +589,13 @@ if __name__ == "__main__":
     parser.add_argument("--balance", type=float, default=3000.0)
     parser.add_argument("--spread", type=float, default=20.0, help="Fixed spread in points (1pt = $0.01).")
     parser.add_argument("--warmup", type=int, default=800)
+    parser.add_argument("--strategy", default=None, help="Strategy mode (e.g. CONFLUENCE_SQUEEZE_M15, ALL)")
     parser.add_argument("--out", default="backtest_results.json")
     args = parser.parse_args()
 
     bt = HistoricalBacktester(symbol=args.symbol, initial_balance=args.balance, spread_points=args.spread)
+    if args.strategy:
+        bt.config.setdefault("strategy", {})["strategy_mode"] = args.strategy
     if args.mt5:
         bt.load_from_mt5(bars_count=args.bars)
     elif args.m5_csv:
@@ -603,5 +605,6 @@ if __name__ == "__main__":
 
     results = bt.run(warmup_bars=args.warmup)
     bt.save_results(args.out, results)
-    print(json.dumps(results, indent=2, ensure_ascii=False, default=str))
-    print(f"\nSaved to {args.out}")
+    summary_print = {k: v for k, v in results.items() if k != "trades"}
+    print(json.dumps(summary_print, indent=2, ensure_ascii=False, default=str))
+    print(f"\nSaved {len(results.get('trades', []))} trades to {args.out}")
