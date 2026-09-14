@@ -1600,7 +1600,7 @@ class GoldScalpingBot:
                     zone_top = max(qml_price, mpl_price)
                     zone_bot = min(qml_price, mpl_price)
                     near_qml = (zone_bot - 0.4 * curr_atr <= bid <= zone_top + 0.4 * curr_atr) or (abs(bid - qml_price) <= (0.75 * curr_atr)) or bid <= qml_price + 0.80
-                    retrace_ok = (near_qml or (bid <= signal_close - (0.25 * curr_atr))) and (dist_saved >= 1.50)
+                    retrace_ok = near_qml or (bid <= signal_close - (0.25 * curr_atr)) or (abs(bid - signal_close) <= 1.0)
                     lower_wick = min(float(b_closed['open']), float(b_closed['close'])) - float(b_closed['low'])
                     rejection_ok = ((lower_wick / c_rng) >= 0.28) or (float(b_closed['close']) > float(b_closed['open'])) or (bid > float(b_closed['high']))
                     is_m4_pullback = retrace_ok and rejection_ok and (bid >= float(b1['low']))
@@ -1609,7 +1609,7 @@ class GoldScalpingBot:
                     zone_top = max(qml_price, mpl_price)
                     zone_bot = min(qml_price, mpl_price)
                     near_qml = (zone_bot - 0.4 * curr_atr <= ask <= zone_top + 0.4 * curr_atr) or (abs(ask - qml_price) <= (0.75 * curr_atr)) or ask >= qml_price - 0.80
-                    retrace_ok = (near_qml or (ask >= signal_close + (0.25 * curr_atr))) and (dist_saved >= 1.50)
+                    retrace_ok = near_qml or (ask >= signal_close + (0.25 * curr_atr)) or (abs(ask - signal_close) <= 1.0)
                     upper_wick = float(b_closed['high']) - max(float(b_closed['open']), float(b_closed['close']))
                     rejection_ok = ((upper_wick / c_rng) >= 0.28) or (float(b_closed['close']) < float(b_closed['open'])) or (ask < float(b_closed['low']))
                     is_m4_pullback = retrace_ok and rejection_ok and (ask <= float(b1['high']))
