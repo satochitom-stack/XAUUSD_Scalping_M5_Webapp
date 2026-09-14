@@ -146,6 +146,9 @@ class BacktestConnector:
         self.m5_df = m5_df.reset_index(drop=True)
         self.m15_df = m15_df.reset_index(drop=True)
         self.h1_df = h1_df.reset_index(drop=True)
+        self.m5_times = np.array(self.m5_df["time"].values, dtype="datetime64[ns]")
+        self.m15_times = np.array(self.m15_df["time"].values, dtype="datetime64[ns]")
+        self.h1_times = np.array(self.h1_df["time"].values, dtype="datetime64[ns]")
         self.spread_points = spread_points
 
         self.balance = initial_balance
@@ -171,13 +174,20 @@ class BacktestConnector:
     # --- MT5Connector-compatible interface ---
     def get_rates(self, symbol: str, timeframe: str = "M5", count: int = 100) -> pd.DataFrame:
         tf = timeframe.upper()
-        src = {"M5": self.m5_df, "M15": self.m15_df, "H1": self.h1_df}.get(tf, self.m5_df)
+        if tf == "M15":
+            src, times = self.m15_df, self.m15_times
+        elif tf == "H1":
+            src, times = self.h1_df, self.h1_times
+        else:
+            src, times = self.m5_df, self.m5_times
+
         if self.current_time is None or src.empty:
             return pd.DataFrame()
-        sliced = src[src["time"] <= self.current_time]
-        if sliced.empty:
+        cur_dt64 = np.datetime64(self.current_time)
+        idx = int(np.searchsorted(times, cur_dt64, side="right"))
+        if idx == 0:
             return pd.DataFrame()
-        return sliced.tail(count).reset_index(drop=True)
+        return src.iloc[max(0, idx - count):idx].reset_index(drop=True)
 
     def get_market_info(self, symbol: str) -> dict:
         half_spread = (self.spread_points * 0.01) / 2.0
@@ -415,8 +425,8 @@ class HistoricalBacktester:
             return df[["time", "open", "high", "low", "close", "tick_volume"]]
 
         self.m5_df = _fetch(mt5.TIMEFRAME_M5, bars_count)
-        self.m15_df = _fetch(mt5.TIMEFRAME_M15, bars_count // 3 + 100)
-        self.h1_df = _fetch(mt5.TIMEFRAME_H1, bars_count // 12 + 100)
+        self.m15_df = _fetch(mt5.TIMEFRAME_M15, bars_count // 3 + 200)
+        self.h1_df = _fetch(mt5.TIMEFRAME_H1, bars_count // 12 + 500)
         logger.info(f"Loaded {len(self.m5_df)} M5 / {len(self.m15_df)} M15 / {len(self.h1_df)} H1 bars from live MT5.")
         return self
 
@@ -463,7 +473,8 @@ class HistoricalBacktester:
                 except Exception as e:
                     logger.error(f"run_iteration() error at bar {i} ({bar_i['time']}): {e}")
                 if progress_every and (i - warmup_bars) % progress_every == 0:
-                    logger.info(f"...bar {i}/{n} ({bar_i['time']}) balance=${self.connector.balance:.2f}")
+                    pct = 100.0 * (i - warmup_bars) / max(n - warmup_bars, 1)
+                    print(f"...bar {i}/{n} ({pct:.1f}%) | {bar_i['time']} | balance=${self.connector.balance:.2f}", flush=True)
 
             # Close anything still open at the end of the dataset at the last bar's close
             last_close = float(self.m5_df.iloc[-1]["close"])

@@ -365,7 +365,7 @@ class GoldScalpingBot:
         # -------------------------------------------------------------
         
         # --- PILLAR 1: SMCxSTO ระบบปีศาจ H1 Devil System (Macro Trend & Single-Rule OB) ---
-        if strat_mode in ["ALL", "SMC_X_STO_H1", "SMCXSTO"]:
+        if strat_mode in ["ALL", "SMC_X_STO_H1", "SMCXSTO", "ALCHEMIST_4", "UPGRADED_4"]:
             if not self.has_open_positions_for_setup(symbol, "SMC_X_STO_H1"):
                 b_sig, s_sig, reason = self._check_smc_x_sto_h1(symbol)
                 if b_sig or s_sig:
@@ -374,7 +374,7 @@ class GoldScalpingBot:
         # --- PILLAR 4: RTM Quasimodo Multi-Model Institutional Engine (M15 + H1 Filter) ---
         rtm_mode = strat_cfg.get("rtm_mode", "PULLBACK_DUO")
         rtm_variants = ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH"]
-        if strat_mode in ["ALL", "RTM"] or any(strat_mode == v for v in rtm_variants):
+        if strat_mode in ["ALL", "RTM", "ALCHEMIST_4", "UPGRADED_4"] or any(strat_mode == v for v in rtm_variants):
             self._process_rtm_confluence_engine(df, symbol, spread, rtm_mode)
 
         # --- PILLAR 5: Signature Pullback Engine (#PullBack ร้อยล้าน - Dr. Ekk / Trader Overseas) ---
@@ -386,7 +386,7 @@ class GoldScalpingBot:
 
         # --- PILLAR 6: KC Forex Trading (Liquidity Sweep + Candle Dominance) ---
         kc_enabled = strat_cfg.get("kc_liquidity_dominance_enabled", True)
-        if kc_enabled and (strat_mode in ["ALL", "KC_LIQUIDITY_DOMINANCE", "KC_DOMINANCE"]):
+        if kc_enabled and (strat_mode in ["ALL", "KC_LIQUIDITY_DOMINANCE", "KC_DOMINANCE", "ALCHEMIST_4", "UPGRADED_4"]):
             if not self.has_open_positions_for_setup(symbol, "KC_LIQUIDITY_DOMINANCE"):
                 b_sig, s_sig, reason = self._check_kc_liquidity_dominance(df, symbol)
                 if b_sig or s_sig:
