@@ -670,17 +670,34 @@ class RealTradeAnalyticsManager:
                 st["max_drawdown_pct"] = 0.0
                 st["status"] = "🟢 บอทรันพร้อมเทรด (0 ไม้)"
 
-        # Set active status tags based on session
+        # Load strategy config to determine real active/paused state
+        strat_cfg = {}
+        try:
+            cfg_path = os.path.join(os.path.dirname(__file__), "config.json")
+            if os.path.exists(cfg_path):
+                with open(cfg_path, "r", encoding="utf-8") as f:
+                    cdata = json.load(f)
+                    strat_cfg = cdata.get("strategy", {})
+        except Exception:
+            pass
+
+        m4_active = strat_cfg.get("rtm_m4_enabled", True) and strat_cfg.get("rtm_mode") != "MODEL_6"
+        m6_active = strat_cfg.get("rtm_m6_enabled", True)
+        smc_active = strat_cfg.get("smc_x_sto_h1_enabled", True)
+        kc_active = strat_cfg.get("kc_liquidity_dominance_enabled", True)
+        ekk_active = strat_cfg.get("pullback_dr_ekk_enabled", True)
+
+        # Set active status tags based on real configuration
         if "PULLBACK_DR_EKK" in setups_data:
-            setups_data["PULLBACK_DR_EKK"]["status"] = "🟢 ACTIVE (Signature Pullback Step-Up 2.0%)"
+            setups_data["PULLBACK_DR_EKK"]["status"] = "🟢 ACTIVE (Signature Pullback Step-Up 2.0%)" if ekk_active else "⏸️ PAUSED (ปิดการทำงาน)"
         if "RTM_M4_CONSERVATIVE" in setups_data:
-            setups_data["RTM_M4_CONSERVATIVE"]["status"] = "🟢 ACTIVE (Confluence Grade A/A+)"
+            setups_data["RTM_M4_CONSERVATIVE"]["status"] = "🟢 ACTIVE (Confluence Grade A/A+)" if m4_active else "⏸️ PAUSED (ปิดการทำงาน)"
         if "RTM_M6_ELITE_GROWTH" in setups_data:
-            setups_data["RTM_M6_ELITE_GROWTH"]["status"] = "🟢 ACTIVE (Elite Growth Step-Up 2.0%)"
+            setups_data["RTM_M6_ELITE_GROWTH"]["status"] = "🟢 ACTIVE (Elite Growth Step-Up 2.0%)" if m6_active else "⏸️ PAUSED (ปิดการทำงาน)"
         if "SMC_X_STO_H1" in setups_data:
-            setups_data["SMC_X_STO_H1"]["status"] = "🟢 ACTIVE (Devil H1 OB+STO)"
+            setups_data["SMC_X_STO_H1"]["status"] = "🟢 ACTIVE (Devil H1 OB+STO)" if smc_active else "⏸️ PAUSED (ปิดการทำงาน)"
         if "KC_LIQUIDITY_DOMINANCE" in setups_data:
-            setups_data["KC_LIQUIDITY_DOMINANCE"]["status"] = "🟢 ACTIVE (KC Candle Dominance Step-Up 1.5%)"
+            setups_data["KC_LIQUIDITY_DOMINANCE"]["status"] = "🟢 ACTIVE (KC Candle Dominance Step-Up 1.5%)" if kc_active else "⏸️ PAUSED (ปิดการทำงาน)"
         if "RETIRED_SETUPS" in setups_data:
             setups_data["RETIRED_SETUPS"]["status"] = "📦 ARCHIVED (บันทึกประวัติเดิม)"
 
