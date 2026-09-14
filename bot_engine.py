@@ -365,7 +365,8 @@ class GoldScalpingBot:
         # -------------------------------------------------------------
         
         # --- PILLAR 1: SMCxSTO ระบบปีศาจ H1 Devil System (Macro Trend & Single-Rule OB) ---
-        if strat_mode in ["ALL", "SMC_X_STO_H1", "SMCXSTO", "ALCHEMIST_4", "UPGRADED_4"]:
+        smc_enabled = strat_cfg.get("smc_x_sto_h1_enabled", True)
+        if smc_enabled and (strat_mode in ["ALL", "SMC_X_STO_H1", "SMCXSTO", "ALCHEMIST_4", "UPGRADED_4"]):
             if not self.has_open_positions_for_setup(symbol, "SMC_X_STO_H1"):
                 b_sig, s_sig, reason = self._check_smc_x_sto_h1(symbol)
                 if b_sig or s_sig:
@@ -1587,7 +1588,9 @@ class GoldScalpingBot:
             return
 
         # --- MODEL 4 (Conservative): Genuine Pullback / QML & MPL Retest ---
-        if rtm_mode in ["ALL", "MODEL_4", "PULLBACK_DUO"] and grade in ["A+", "A", "B"] and not setup["m4_filled"]:
+        strat_cfg = self.config.get("strategy", {})
+        m4_enabled = strat_cfg.get("rtm_m4_enabled", True)
+        if m4_enabled and rtm_mode in ["ALL", "MODEL_4", "PULLBACK_DUO"] and grade in ["A+", "A", "B"] and not setup["m4_filled"]:
             if not self.has_open_positions_for_setup(symbol, "RTM_M4_CONSERVATIVE"):
                 is_m4_pullback = False
                 dist_saved = 0.0
@@ -1629,7 +1632,8 @@ class GoldScalpingBot:
                         self.add_log(f"🛡️ [RTM M4 FILLED] Conservative QML Pullback executed @ {curr_price:.2f} (Grade {grade} | TP: {dynamic_tp}R | LotMult: {opt.get('lot_multiplier', 1.0):.2f}x)", "SUCCESS")
 
         # --- MODEL 6 (Elite Growth): Institutional Sweet Spot (Fib 50.0% - 65.0%) ---
-        if rtm_mode in ["ALL", "MODEL_6", "PULLBACK_DUO"] and grade in ["A+", "A", "B"] and not setup["m6_filled"]:
+        m6_enabled = strat_cfg.get("rtm_m6_enabled", True)
+        if m6_enabled and rtm_mode in ["ALL", "MODEL_6", "PULLBACK_DUO"] and grade in ["A+", "A", "B"] and not setup["m6_filled"]:
             if not self.has_open_positions_for_setup(symbol, "RTM_M6_ELITE_GROWTH"):
                 is_m6_ote = False
                 break_level = setup.get("break_level", 0.0)
@@ -1669,9 +1673,9 @@ class GoldScalpingBot:
 
         # If all eligible models (M4 and M6) are filled, clear active setup
         all_done = True
-        if rtm_mode in ["ALL", "MODEL_4", "PULLBACK_DUO"] and grade in ["A+", "A", "B"] and not setup.get("m4_filled", False):
+        if m4_enabled and rtm_mode in ["ALL", "MODEL_4", "PULLBACK_DUO"] and grade in ["A+", "A", "B"] and not setup.get("m4_filled", False):
             all_done = False
-        if rtm_mode in ["ALL", "MODEL_6", "PULLBACK_DUO"] and grade in ["A+", "A", "B"] and not setup.get("m6_filled", False):
+        if m6_enabled and rtm_mode in ["ALL", "MODEL_6", "PULLBACK_DUO"] and grade in ["A+", "A", "B"] and not setup.get("m6_filled", False):
             all_done = False
 
         if all_done:
