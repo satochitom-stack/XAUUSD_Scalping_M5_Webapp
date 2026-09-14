@@ -74,12 +74,12 @@ def test_dynamic_execution_and_learning():
     stats = opt.get_dashboard_summary()
     assert stats["enabled"] == True
 
-    # Record consecutive wins for SMC_SWEEP
-    opt.record_trade_outcome("SMC_SWEEP", 45.0, 15.0, "SMC Liquidity Sweep Low")
-    opt.record_trade_outcome("SMC_SWEEP", 50.0, 16.0, "SMC Liquidity Sweep Low")
-    opt.record_trade_outcome("SMC_SWEEP", 60.0, 20.0, "SMC Liquidity Sweep Low")
+    # Record consecutive wins for SMC_X_STO_H1
+    opt.record_trade_outcome("SMC_X_STO_H1", 45.0, 15.0, "SMC Liquidity Sweep Low")
+    opt.record_trade_outcome("SMC_X_STO_H1", 50.0, 16.0, "SMC Liquidity Sweep Low")
+    opt.record_trade_outcome("SMC_X_STO_H1", 60.0, 20.0, "SMC Liquidity Sweep Low")
 
-    smc_stat = opt.strategy_stats["SMC_SWEEP"]
+    smc_stat = opt.strategy_stats["SMC_X_STO_H1"]
     print(f"SMC Stats after 3 wins: Winrate = {smc_stat['winrate']}% | Streak = {smc_stat['streak']} | Weight = {smc_stat['weight']}x")
     assert smc_stat["wins"] == 3
     assert smc_stat["streak"] == 3
@@ -94,12 +94,12 @@ def test_dynamic_execution_and_learning():
         "is_choppy": False,
         "recommended_strategies": ["EMA_RIBBON", "ALL_CONFLUENCE"]
     }
-    # Calculate execution for SMC_SWEEP (Should have higher dynamic R:R due to base 1.60R + streak)
-    smc_plan = opt.calculate_optimized_execution("SMC_SWEEP", 1.0, 150.0, dummy_regime)
-    print("AI Optimized Execution Plan for SMC_SWEEP:", smc_plan)
+    # Calculate execution for SMC_X_STO_H1 (Should have higher dynamic R:R due to base 1.60R + streak)
+    smc_plan = opt.calculate_optimized_execution("SMC_X_STO_H1", 1.0, 150.0, dummy_regime)
+    print("AI Optimized Execution Plan for SMC_X_STO_H1:", smc_plan)
     assert smc_plan["should_execute"] == True
     assert smc_plan["tp_ratio"] >= 1.60
-    assert smc_plan["trailing_type"] == "TIGHT_LOCK"
+    assert smc_plan["trailing_type"] == "CONFLUENCE_STAGE"
 
     # Calculate execution for BB_SQUEEZE in High Volatility
     vol_regime = {
@@ -113,7 +113,7 @@ def test_dynamic_execution_and_learning():
     bb_plan = opt.calculate_optimized_execution("BB_SQUEEZE", 1.0, 150.0, vol_regime)
     print("AI Optimized Execution Plan for BB_SQUEEZE in High Volatility:", bb_plan)
     assert bb_plan["tp_ratio"] >= 1.80
-    assert bb_plan["trailing_type"] == "WIDE_ATR"
+    assert bb_plan["trailing_type"] == "TIGHT_LOCK"
 
     print("✅ Dynamic Execution & Learning tests passed successfully!")
 

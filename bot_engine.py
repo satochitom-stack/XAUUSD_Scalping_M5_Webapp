@@ -1041,15 +1041,36 @@ class GoldScalpingBot:
                 
                 # Check 1: Must pull back at least 1.0x ATR from swing high (Discount Zone)
                 if pullback_dist >= (1.0 * curr_atr):
-                    # Check 2: Single-Rule Bullish Order Block
-                    ob_candles = lookback[lookback['close'] < lookback['open']]
-                    if not ob_candles.empty:
-                        last_ob = ob_candles.iloc[-1]
-                        ob_low = float(last_ob['low'])
-                        ob_high = float(last_ob['high'])
+                    # Check 2: Single-Rule Bullish Order Block WITH FVG Imbalance / Displacement
+                    # Search lookback for last bearish candle followed by strong expansion and FVG
+                    valid_ob = None
+                    for i in range(len(lookback) - 3, -1, -1):
+                        c0 = lookback.iloc[i]
+                        c1 = lookback.iloc[i+1]
+                        c2 = lookback.iloc[i+2]
+                        # c0 is bearish (OB candidate)
+                        if c0['close'] < c0['open']:
+                            # c1 is bullish expansion (displacement)
+                            if c1['close'] > c1['open']:
+                                fvg_gap = float(c2['low']) - float(c0['high'])
+                                # Valid if genuine FVG gap or displacement expansion
+                                has_fvg = fvg_gap >= 0.20 or (float(c1['close']) - float(c0['high'])) >= (0.65 * curr_atr)
+                                if has_fvg:
+                                    valid_ob = {
+                                        "low": float(c0['low']),
+                                        "high": float(c0['high']),
+                                        "fvg_high": max(float(c2['low']), float(c1['close'])),
+                                        "has_fvg": fvg_gap >= 0.20
+                                    }
+                                    break
+                    
+                    if valid_ob:
+                        ob_low = valid_ob["low"]
+                        ob_high = valid_ob["high"]
+                        fvg_zone_high = valid_ob["fvg_high"]
                         
-                        # Price tested the Order Block zone
-                        price_in_ob = (float(b1['low']) <= (ob_high + 0.3 * curr_atr)) and (float(b1['close']) >= (ob_low - 0.2 * curr_atr))
+                        # Price tested the Order Block or FVG zone
+                        price_in_ob = (float(b1['low']) <= (max(ob_high, fvg_zone_high) + 0.3 * curr_atr)) and (float(b1['close']) >= (ob_low - 0.2 * curr_atr))
                         
                         if price_in_ob:
                             # Liquidity Sweep / Lower Wick Rejection Confirmation:
@@ -1065,7 +1086,7 @@ class GoldScalpingBot:
                             
                             if was_oversold and stoch_cross_up and (float(b1['close']) > float(b1['open'])) and has_rejection:
                                 self.last_smc_sto_h1_bar_time = h1_bar_time
-                                return True, False, "😈 SMCxSTO: H1 Discount OB + Sweep Rebound (BUY)"
+                                return True, False, "😈 SMCxSTO: H1 Discount OB + FVG Imbalance Rebound (BUY)"
 
             # --- BEARISH (SELL) SETUP ---
             if is_downtrend:
@@ -1074,15 +1095,34 @@ class GoldScalpingBot:
                 
                 # Check 1: Must rally at least 1.0x ATR from swing low (Premium Zone)
                 if pullback_dist >= (1.0 * curr_atr):
-                    # Check 2: Single-Rule Bearish Order Block
-                    ob_candles = lookback[lookback['close'] > lookback['open']]
-                    if not ob_candles.empty:
-                        last_ob = ob_candles.iloc[-1]
-                        ob_low = float(last_ob['low'])
-                        ob_high = float(last_ob['high'])
+                    # Check 2: Single-Rule Bearish Order Block WITH FVG Imbalance / Displacement
+                    valid_ob = None
+                    for i in range(len(lookback) - 3, -1, -1):
+                        c0 = lookback.iloc[i]
+                        c1 = lookback.iloc[i+1]
+                        c2 = lookback.iloc[i+2]
+                        # c0 is bullish (OB candidate)
+                        if c0['close'] > c0['open']:
+                            # c1 is bearish expansion (displacement)
+                            if c1['close'] < c1['open']:
+                                fvg_gap = float(c0['low']) - float(c2['high'])
+                                has_fvg = fvg_gap >= 0.20 or (float(c0['low']) - float(c1['close'])) >= (0.65 * curr_atr)
+                                if has_fvg:
+                                    valid_ob = {
+                                        "low": float(c0['low']),
+                                        "high": float(c0['high']),
+                                        "fvg_low": min(float(c2['high']), float(c1['close'])),
+                                        "has_fvg": fvg_gap >= 0.20
+                                    }
+                                    break
+                    
+                    if valid_ob:
+                        ob_low = valid_ob["low"]
+                        ob_high = valid_ob["high"]
+                        fvg_zone_low = valid_ob["fvg_low"]
                         
-                        # Price tested the Order Block zone
-                        price_in_ob = (float(b1['high']) >= (ob_low - 0.3 * curr_atr)) and (float(b1['close']) <= (ob_high + 0.2 * curr_atr))
+                        # Price tested the Order Block or FVG zone
+                        price_in_ob = (float(b1['high']) >= (min(ob_low, fvg_zone_low) - 0.3 * curr_atr)) and (float(b1['close']) <= (ob_high + 0.2 * curr_atr))
                         
                         if price_in_ob:
                             # Liquidity Sweep / Upper Wick Rejection Confirmation:
@@ -1096,7 +1136,7 @@ class GoldScalpingBot:
                             
                             if was_overbought and stoch_cross_down and (float(b1['close']) < float(b1['open'])) and has_rejection:
                                 self.last_smc_sto_h1_bar_time = h1_bar_time
-                                return False, True, "😈 SMCxSTO: H1 Premium OB + Sweep Rebound (SELL)"
+                                return False, True, "😈 SMCxSTO: H1 Premium OB + FVG Imbalance Rebound (SELL)"
 
         except Exception as e:
             logger.error(f"Error evaluating SMCxSTO H1 strategy: {e}")
@@ -1158,10 +1198,10 @@ class GoldScalpingBot:
                 if val_l == float(lows_s.iloc[idx-5:idx+6].min()):
                     p_lows[idx] = val_l
 
-            s_high_vals = list(p_highs.values())
-            s_low_vals = list(p_lows.values())
+            s_high_items = sorted(list(p_highs.items()), key=lambda x: x[0])
+            s_low_items = sorted(list(p_lows.items()), key=lambda x: x[0])
 
-            if len(s_high_vals) < 2 or len(s_low_vals) < 2:
+            if len(s_high_items) < 2 or len(s_low_items) < 2:
                 return {}
 
             b1 = df_m15.iloc[-2] # Closed M15 candle
@@ -1177,14 +1217,36 @@ class GoldScalpingBot:
 
             # 5. Check Bearish Quasimodo (SELL)
             # High1 (QML) -> Low1 -> High2 (HH - Head) -> Low2 (LL - Breakout) -> Retest QML
-            qml_high = s_high_vals[-2]
-            head_hh = s_high_vals[-1]
-            low1 = s_low_vals[-2]
-            break_ll = s_low_vals[-1]
+            idx_qml, qml_high = s_high_items[-2]
+            idx_head, head_hh = s_high_items[-1]
+            idx_low1, low1 = s_low_items[-2]
+            idx_break, break_ll = s_low_items[-1]
 
-            if head_hh > qml_high and break_ll < low1:
-                # Check price retest at Left Shoulder QML
-                if abs(h - qml_high) <= (0.65 * curr_atr) or (c >= qml_high - (0.4 * curr_atr) and h >= qml_high):
+            if head_hh > qml_high and break_ll < low1 and idx_qml < idx_head and idx_head < idx_break:
+                # 1. Calculate Refined MPL (Maximum Pain Level)
+                ls_cluster = df_m15.iloc[max(0, idx_qml-2) : min(len(df_m15), idx_qml+3)]
+                mpl_price = float(ls_cluster[['open', 'close']].max().max())
+
+                # 2. Check FTB (First Time Back) - Ensure no prior bounce from QML
+                is_ftb = True
+                if (idx_break + 1) < (len(df_m15) - 3):
+                    prior_bars = df_m15.iloc[idx_break + 1 : -2]
+                    touched = False
+                    for _, p_row in prior_bars.iterrows():
+                        if p_row['high'] >= (min(qml_high, mpl_price) - 0.3 * curr_atr):
+                            touched = True
+                        elif touched and p_row['low'] <= (min(qml_high, mpl_price) - 1.2 * curr_atr):
+                            is_ftb = False
+                            break
+
+                # Only trade pristine First Time Back (FTB) setups (Alchemist Trading Rule)
+                if not is_ftb:
+                    return {}
+
+                # Check price retest at Left Shoulder QML / MPL Zone
+                retest_lower = min(qml_high, mpl_price)
+                near_zone = abs(h - qml_high) <= (0.65 * curr_atr) or (h >= retest_lower - 0.3 * curr_atr and c >= retest_lower - 0.4 * curr_atr)
+                if near_zone:
                     score = 40.0
                     if in_kz: score += 20.0
                     swing_range = head_hh - break_ll
@@ -1195,6 +1257,7 @@ class GoldScalpingBot:
                     has_rejection = (h - max(c, o)) >= (0.35 * candle_range) or (c < o and (o - c) >= (0.4 * candle_range))
                     if has_rejection: score += 15.0
                     if h1_trend == -1: score += 10.0
+                    if abs(qml_high - mpl_price) <= (0.35 * curr_atr): score += 5.0
 
                     if score >= 50.0:
                         grade = "A+" if score >= 85.0 else ("A" if score >= 70.0 else "B")
@@ -1208,23 +1271,47 @@ class GoldScalpingBot:
                             "grade": grade,
                             "sl": stop_loss,
                             "m15_time": m15_bar_time,
-                            "reason": f"RTM Quasimodo Bearish QML [{grade}] ({score:.0f} pts)",
+                            "reason": f"RTM Quasimodo Bearish QML/MPL [FTB {grade}] ({score:.0f} pts)",
                             "qml_price": qml_high,
+                            "mpl_price": mpl_price,
                             "head_extreme": head_hh,
                             "break_level": break_ll,
                             "signal_close": c,
-                            "curr_atr": curr_atr
+                            "curr_atr": curr_atr,
+                            "is_ftb": is_ftb
                         }
 
             # 6. Check Bullish Quasimodo (BUY)
             # Low1 (QML) -> High1 -> Low2 (LL - Head) -> High2 (HH - Breakout) -> Retest QML
-            qml_low = s_low_vals[-2]
-            head_ll = s_low_vals[-1]
-            high1 = s_high_vals[-2]
-            break_hh = s_high_vals[-1]
+            idx_qml, qml_low = s_low_items[-2]
+            idx_head, head_ll = s_low_items[-1]
+            idx_high1, high1 = s_high_items[-2]
+            idx_break, break_hh = s_high_items[-1]
 
-            if head_ll < qml_low and break_hh > high1:
-                if abs(l - qml_low) <= (0.65 * curr_atr) or (c <= qml_low + (0.4 * curr_atr) and l <= qml_low):
+            if head_ll < qml_low and break_hh > high1 and idx_qml < idx_head and idx_head < idx_break:
+                # 1. Calculate Refined MPL (Maximum Pain Level)
+                ls_cluster = df_m15.iloc[max(0, idx_qml-2) : min(len(df_m15), idx_qml+3)]
+                mpl_price = float(ls_cluster[['open', 'close']].min().min())
+
+                # 2. Check FTB (First Time Back) - Ensure no prior bounce from QML
+                is_ftb = True
+                if (idx_break + 1) < (len(df_m15) - 3):
+                    prior_bars = df_m15.iloc[idx_break + 1 : -2]
+                    touched = False
+                    for _, p_row in prior_bars.iterrows():
+                        if p_row['low'] <= (max(qml_low, mpl_price) + 0.3 * curr_atr):
+                            touched = True
+                        elif touched and p_row['high'] >= (max(qml_low, mpl_price) + 1.2 * curr_atr):
+                            is_ftb = False
+                            break
+
+                # Only trade pristine First Time Back (FTB) setups (Alchemist Trading Rule)
+                if not is_ftb:
+                    return {}
+
+                retest_upper = max(qml_low, mpl_price)
+                near_zone = abs(l - qml_low) <= (0.65 * curr_atr) or (l <= retest_upper + 0.3 * curr_atr and c <= retest_upper + 0.4 * curr_atr)
+                if near_zone:
                     score = 40.0
                     if in_kz: score += 20.0
                     swing_range = break_hh - head_ll
@@ -1235,6 +1322,7 @@ class GoldScalpingBot:
                     has_rejection = (min(c, o) - l) >= (0.35 * candle_range) or (c > o and (c - o) >= (0.4 * candle_range))
                     if has_rejection: score += 15.0
                     if h1_trend == 1: score += 10.0
+                    if abs(qml_low - mpl_price) <= (0.35 * curr_atr): score += 5.0
 
                     if score >= 50.0:
                         grade = "A+" if score >= 85.0 else ("A" if score >= 70.0 else "B")
@@ -1248,12 +1336,14 @@ class GoldScalpingBot:
                             "grade": grade,
                             "sl": stop_loss,
                             "m15_time": m15_bar_time,
-                            "reason": f"RTM Quasimodo Bullish QML [{grade}] ({score:.0f} pts)",
+                            "reason": f"RTM Quasimodo Bullish QML/MPL [FTB {grade}] ({score:.0f} pts)",
                             "qml_price": qml_low,
+                            "mpl_price": mpl_price,
                             "head_extreme": head_ll,
                             "break_level": break_hh,
                             "signal_close": c,
-                            "curr_atr": curr_atr
+                            "curr_atr": curr_atr,
+                            "is_ftb": is_ftb
                         }
 
         except Exception as e:
@@ -1330,6 +1420,7 @@ class GoldScalpingBot:
             "sl": sl,
             "reason": reason,
             "qml_price": sig.get("qml_price", 0.0),
+            "mpl_price": sig.get("mpl_price", sig.get("qml_price", 0.0)),
             "head_extreme": sig.get("head_extreme", 0.0),
             "break_level": sig.get("break_level", 0.0),
             "signal_close": sig.get("signal_close", 0.0),
@@ -1338,10 +1429,11 @@ class GoldScalpingBot:
             "expiry_time": time.time() + (45 * 60), # 45 minutes
             "rtm_mode": rtm_mode,
             "m4_filled": False,
-            "m6_filled": False
+            "m6_filled": False,
+            "is_ftb": sig.get("is_ftb", True)
         }
 
-        self.add_log(f"⏳ [RTM PULLBACK DUO QUEUE] Staggered monitoring active for M4 (QML Retest) & M6 (OTE Zone) | Target QML: {sig.get('qml_price', 0.0):.2f}", "INFO")
+        self.add_log(f"⏳ [RTM PULLBACK DUO QUEUE] Staggered monitoring active for M4 (QML/MPL Retest) & M6 (OTE Zone) | QML: {sig.get('qml_price', 0.0):.2f} MPL: {sig.get('mpl_price', 0.0):.2f}", "INFO")
 
     def _pass_rtm_ai_quality_gate(self, rates_m5: pd.DataFrame, symbol: str, strat_id: str, action: str, base_lot_m: float) -> Tuple[bool, dict]:
         """
@@ -1374,7 +1466,7 @@ class GoldScalpingBot:
         """
         Staggered Deep-Pullback & Anti-Clustering Execution Engine:
         Continuously evaluates pending RTM setups across ticks/bars to fill:
-        - M4 (Conservative): Genuine Pullback / Retest of QML level (at least 1.5 USD better than breakout)
+        - M4 (Conservative): Genuine Pullback / Retest of QML/MPL level (at least 1.5 USD better than breakout)
         - M6 (Elite Growth): Deep OTE Retest (Fib 61.8% - 78.6%)
         - M7 (Max Alpha): M5 Micro-Structure Confirmation
         """
@@ -1393,6 +1485,7 @@ class GoldScalpingBot:
         action = setup["action"]
         sl = setup["sl"]
         qml_price = setup["qml_price"]
+        mpl_price = setup.get("mpl_price", qml_price)
         head_extreme = setup["head_extreme"]
         signal_close = setup["signal_close"]
         curr_atr = setup["curr_atr"]
@@ -1432,7 +1525,7 @@ class GoldScalpingBot:
         if rates_m5 is None or rates_m5.empty or len(rates_m5) < 5:
             return
 
-        # --- MODEL 4 (Conservative): Genuine Pullback / QML Retest ---
+        # --- MODEL 4 (Conservative): Genuine Pullback / QML & MPL Retest ---
         if rtm_mode in ["ALL", "MODEL_4", "PULLBACK_DUO"] and grade in ["A+", "A", "B"] and not setup["m4_filled"]:
             if not self.has_open_positions_for_setup(symbol, "RTM_M4_CONSERVATIVE"):
                 is_m4_pullback = False
@@ -1443,14 +1536,18 @@ class GoldScalpingBot:
 
                 if action == "BUY":
                     dist_saved = signal_close - bid
-                    near_qml = abs(bid - qml_price) <= (0.75 * curr_atr) or bid <= qml_price + 0.80
+                    zone_top = max(qml_price, mpl_price)
+                    zone_bot = min(qml_price, mpl_price)
+                    near_qml = (zone_bot - 0.4 * curr_atr <= bid <= zone_top + 0.4 * curr_atr) or (abs(bid - qml_price) <= (0.75 * curr_atr)) or bid <= qml_price + 0.80
                     retrace_ok = near_qml or (bid <= signal_close - (0.25 * curr_atr)) or (abs(bid - signal_close) <= 1.0)
                     lower_wick = min(float(b_closed['open']), float(b_closed['close'])) - float(b_closed['low'])
                     rejection_ok = ((lower_wick / c_rng) >= 0.28) or (float(b_closed['close']) > float(b_closed['open'])) or (bid > float(b_closed['high']))
                     is_m4_pullback = retrace_ok and rejection_ok and (bid >= float(b1['low']))
                 elif action == "SELL":
                     dist_saved = ask - signal_close
-                    near_qml = abs(ask - qml_price) <= (0.75 * curr_atr) or ask >= qml_price - 0.80
+                    zone_top = max(qml_price, mpl_price)
+                    zone_bot = min(qml_price, mpl_price)
+                    near_qml = (zone_bot - 0.4 * curr_atr <= ask <= zone_top + 0.4 * curr_atr) or (abs(ask - qml_price) <= (0.75 * curr_atr)) or ask >= qml_price - 0.80
                     retrace_ok = near_qml or (ask >= signal_close + (0.25 * curr_atr)) or (abs(ask - signal_close) <= 1.0)
                     upper_wick = float(b_closed['high']) - max(float(b_closed['open']), float(b_closed['close']))
                     rejection_ok = ((upper_wick / c_rng) >= 0.28) or (float(b_closed['close']) < float(b_closed['open'])) or (ask < float(b_closed['low']))
