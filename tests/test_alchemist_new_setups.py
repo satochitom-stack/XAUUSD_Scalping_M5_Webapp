@@ -159,6 +159,21 @@ class TestAlchemistNewSetups(unittest.TestCase):
         self.assertFalse(s_sig)
         self.assertIn("Bullish FVG", reason)
 
+        # Test at 19:10 Thai time (inside new 19:00 - 23:00 window)
+        mock_dt.now.return_value = datetime(2026, 9, 15, 19, 10, tzinfo=timezone(timedelta(hours=7)))
+        b_sig, _, _ = self.bot._check_ict_silver_bullet_fvg(df, "XAUUSDc")
+        self.assertTrue(b_sig)
+
+        # Test outside window: 18:55
+        mock_dt.now.return_value = datetime(2026, 9, 15, 18, 55, tzinfo=timezone(timedelta(hours=7)))
+        b_sig, _, _ = self.bot._check_ict_silver_bullet_fvg(df, "XAUUSDc")
+        self.assertFalse(b_sig)
+
+        # Test outside window: 23:05
+        mock_dt.now.return_value = datetime(2026, 9, 15, 23, 5, tzinfo=timezone(timedelta(hours=7)))
+        b_sig, _, _ = self.bot._check_ict_silver_bullet_fvg(df, "XAUUSDc")
+        self.assertFalse(b_sig)
+
     @patch('bot_engine.datetime')
     def test_ew_wave3_breaker_detection(self, mock_dt):
         """Verify Elliott Wave 3 detects Wave 3 breakout above Wave 1 top."""

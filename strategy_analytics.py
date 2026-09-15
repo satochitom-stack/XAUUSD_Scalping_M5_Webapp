@@ -96,10 +96,10 @@ class RealTradeAnalyticsManager:
             "icon": "🔫",
             "category": "ICT_PRECISION",
             "timeframe": "M5",
-            "best_session": "NY AM Killzone (19:30 - 22:30)",
+            "best_session": "NY Session & Silver Bullet (19:00 - 23:00)",
             "magic_numbers": [555920, 555921, 555922, 555923],
-            "avg_rr": "1:1.5",
-            "description": "ICT 2022 Silver Bullet Model: ดักจังหวะ Liquidity Sweep 15-20 แท่ง เกิด Market Structure Shift (MSS) พร้อมแท่ง Displacement ทิ้งรอย FVG แล้วเข้าที่ 50% Consequent Encroachment (ความเสี่ยง 0.5% | TP 1.5R)"
+            "avg_rr": "1:2.0",
+            "description": "ICT 2022 Silver Bullet Model: ดักจังหวะ Liquidity Sweep 15-20 แท่ง เกิด Market Structure Shift (MSS) พร้อมแท่ง Displacement ทิ้งรอย FVG แล้วเข้าที่ 50% Consequent Encroachment (ความเสี่ยง 0.5% | TP 2.0R)"
         },
         "EW_WAVE3_BREAKER": {
             "id": "EW_WAVE3_BREAKER",
@@ -125,7 +125,7 @@ class RealTradeAnalyticsManager:
         }
     }
 
-    # Allowed Magic Numbers for Elite 5 Pillars (active models + retired)
+    # Allowed Magic Numbers for Elite Pillars (active models + retired)
     ELITE_MAGIC_NUMBERS = {
         777004, 777014, 777024, 777034,  # RTM M4
         777005, 777015, 777025, 777035,  # RTM M5
@@ -137,7 +137,10 @@ class RealTradeAnalyticsManager:
         555860, 555861, 555862, 555863,  # Signature Pullback Dr. Ekk
         555880, 555881, 555882, 555883,  # KC Liquidity Dominance M5
         555900, 555901, 555902, 555903,  # Tug of War Volume Read M15
-        555950, 555951, 555952, 555953   # AI Confluence Squeeze Breakout M15
+        555950, 555951, 555952, 555953,  # AI Confluence Squeeze Breakout M15
+        555910, 555911, 555912, 555913,  # ICT Judas Swing & RTM QM
+        555920, 555921, 555922, 555923,  # ICT NY Silver Bullet & FVG Imbalance
+        555930, 555931, 555932, 555933   # Elliott Wave 3 & SMC Breaker
     }
     
     # System Epoch Cutoff: Start recording fresh from 2026-09-07 15:00:00 (Today's update)

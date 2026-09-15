@@ -1018,9 +1018,9 @@ class GoldScalpingBot:
 
     def _check_ict_silver_bullet_fvg(self, df: pd.DataFrame, symbol: str = "XAUUSD") -> Tuple[bool, bool, str]:
         """
-        🔫 ICT NY Silver Bullet & FVG Imbalance (M5, NY AM Killzone 19:30 - 22:30 Thai Time)
+        🔫 ICT NY Silver Bullet & FVG Imbalance (M5, NY AM Killzone 19:00 - 23:00 Thai Time)
         Synthesis of:
-        - Time Window: 19:30 - 22:30 Thai Time (High liquidity US session)
+        - Time Window: 19:00 - 23:00 Thai Time (High liquidity US session)
         - Liquidity Run: Sweep of short-term High/Low of last 15-20 bars
         - Market Structure Shift (MSS) with Displacement candle (Body >= 52%)
         - Fair Value Gap (FVG): 3-bar imbalance (BISI/SIBI)
@@ -1036,8 +1036,8 @@ class GoldScalpingBot:
             th_tz = timezone(timedelta(hours=7))
             now_time = datetime.now(th_tz).time()
 
-        # NY AM Session / Silver Bullet window: 19:30 - 22:30 Thai Time
-        if not (dtime(19, 30) <= now_time <= dtime(22, 30)):
+        # NY AM Session / Silver Bullet window: 19:00 - 23:00 Thai Time
+        if not (dtime(19, 0) <= now_time <= dtime(23, 0)):
             return False, False, ""
 
         hl = df['high'] - df['low']
