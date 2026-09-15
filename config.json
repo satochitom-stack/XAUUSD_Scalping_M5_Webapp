@@ -89,7 +89,7 @@
         "rtm_mode": "MODEL_6",
         "rtm_m4_enabled": false,
         "rtm_m6_enabled": true,
-        "smc_x_sto_h1_enabled": false,
+        "smc_x_sto_h1_enabled": true,
         "pullback_dr_ekk_enabled": true,
         "kc_liquidity_dominance_enabled": true,
         "max_concurrent_setups": 4
@@ -151,7 +151,7 @@
     "rtm_mode": "MODEL_6",
     "rtm_m4_enabled": false,
     "rtm_m6_enabled": true,
-    "smc_x_sto_h1_enabled": false,
+    "smc_x_sto_h1_enabled": true,
     "pullback_dr_ekk_enabled": true,
     "kc_liquidity_dominance_enabled": true,
     "max_concurrent_setups": 4
