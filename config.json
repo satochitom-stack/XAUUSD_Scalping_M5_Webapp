@@ -92,8 +92,7 @@
         "smc_x_sto_h1_enabled": false,
         "pullback_dr_ekk_enabled": true,
         "kc_liquidity_dominance_enabled": true,
-        "confluence_squeeze_enabled": true,
-        "max_concurrent_setups": 6
+        "max_concurrent_setups": 4
       }
     }
   ],
@@ -155,8 +154,7 @@
     "smc_x_sto_h1_enabled": false,
     "pullback_dr_ekk_enabled": true,
     "kc_liquidity_dominance_enabled": true,
-    "confluence_squeeze_enabled": true,
-    "max_concurrent_setups": 6
+    "max_concurrent_setups": 4
   },
   "server": {
     "host": "0.0.0.0",

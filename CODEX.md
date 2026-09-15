@@ -20,7 +20,6 @@ Only **6 active setups** are permitted to scan the market and execute new trades
 | `RTM_M6_ELITE_GROWTH` | RTM Quasimodo M6 (Elite Growth) | M15 (H1 Filter) | 14:00 - 23:00 | 2.0% Step-Up Compounding | 1:2.0 | Retest Golden Pocket 50%-65% + Rejection Wick + BE lock at 1.0R |
 | `SMC_X_STO_H1` | SMC x STO Devil System (ระบบปีศาจ) | H1 | 14:00 - 04:00 | 1.0% Fixed Risk | 1:2.0 | EMA 50/200 Trend + Discount/Premium ATR + Single OB + Stoch 14,3,3 |
 | `KC_LIQUIDITY_DOMINANCE` | KC Forex (Sweep x Candle Dominance) | M5 | 14:00 - 02:00 | 1.5% Step-Up Compounding | 1:2.0 | Liquidity Sweep 15-20 Bars + Dominance Rejection (Body $\ge 50\%$) + BE at 1.0R |
-| `CONFLUENCE_SQUEEZE_M15` | AI Confluence Squeeze Breakout (Self-Designed) | M15 (H1 Filter) | 14:00 - 04:00 | 0.5% Fixed Risk | 1:2.0 (1.5-4.0R AI-bounded) | Volatility Squeeze (BB Width low-20%ile) + Expansion Breakout ($\ge$55% body, $\ge$1.3x ATR) + Structure Break + Volume $\ge$1.3x + London/NY + H1 Trend Filter; BE lock at 1.0R, +0.9R lock at 1.6R |
 | `RETIRED_SETUPS` | เซตอัพที่เลิกใช้ (Archived) | Multi-TF | Historical Archive | None (No new orders) | N/A | Preserves all historical trade records and closed PnL |
 
 ---
@@ -34,12 +33,12 @@ STRATEGY_MAGIC_MAP = {
     "RTM_M6_ELITE_GROWTH":    {"base": 777006, "pos1": 777016, "pos2": 777026, "pos3": 777036},
     "SMC_X_STO_H1":           {"base": 555770, "pos1": 555771, "pos2": 555772, "pos3": 555773},
     "KC_LIQUIDITY_DOMINANCE": {"base": 555880, "pos1": 555881, "pos2": 555882, "pos3": 555883},
-    "CONFLUENCE_SQUEEZE_M15": {"base": 555950, "pos1": 555951, "pos2": 555952, "pos3": 555953},
 }
 ```
 
 ### 📦 Archived / Retired Setups (DO NOT RE-ENABLE OR DELETE DATA)
 The following Magic numbers represent decommissioned strategies whose historical PnL **must always be classified into `RETIRED_SETUPS`**:
+- **AI Confluence Squeeze Breakout**: Magic `555950..555953`, comments containing `conflue`, `squeeze`
 - **News Momentum Expansion**: Magic `555889..555893`, `666888..666890`, comments containing `news`, `momentum`, `goldm5_pro`
 - **Asian Range Sniper**: Magic `555820..555823`, comments containing `asian`
 - **RTM M5 (All-Weather)**: Magic `777005, 777015, 777025, 777035`
@@ -96,8 +95,7 @@ The following Magic numbers represent decommissioned strategies whose historical
    - `PULLBACK_DR_EKK`, `RTM_M4`, and `RTM_M6` utilize **2.0% Step-Up Compounding** (Tier base calculated against high-water equity).
    - `KC_LIQUIDITY_DOMINANCE` uses **1.5% Step-Up Compounding**.
    - `SMC_X_STO_H1` uses **1.0% Fixed Risk**.
-   - `CONFLUENCE_SQUEEZE_M15` uses **0.5% Fixed Risk** (self-designed setup, no live track record yet; same Full AI Gating pipeline as every other pillar via `_process_single_setup_signal()`). Unlike Tug of War, it runs as an AI Trend Trail (trailing runner, not a fixed TP) since volatility-squeeze breakouts statistically tend to continue.
-   - All 6 percentages above are **defaults only** - the user can override any of them per-setup, per-account, live from the Web Dashboard (see section 6, `/api/strategy/risk_config`). Never remove `RISK_PROFILE_DEFAULTS` in `bot_engine.py` or hardcode a risk % back into `calculate_lot_size()` - it must always resolve through that table + the `risk_overrides` lookup.
+   - All 5 percentages above are **defaults only** - the user can override any of them per-setup, per-account, live from the Web Dashboard (see section 6, `/api/strategy/risk_config`). Never remove `RISK_PROFILE_DEFAULTS` in `bot_engine.py` or hardcode a risk % back into `calculate_lot_size()` - it must always resolve through that table + the `risk_overrides` lookup.
 
 4. **Testing is Mandatory Before Commit**:
    - Always run the test suite to verify no regressions:

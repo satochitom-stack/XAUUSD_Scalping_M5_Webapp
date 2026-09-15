@@ -342,9 +342,9 @@ async def toggle_strategy_learning(_: bool = Depends(verify_token)):
     return {"status": True, "enabled": account_manager.optimizer.enabled, "message": f"AI Learning {status_str}"}
 
 # --- PER-SETUP RISK CONFIGURATION API ---
-# Lets the Web Dashboard set a custom risk % per active pillar (all 6: PULLBACK_DR_EKK,
-# RTM_M4_CONSERVATIVE, RTM_M6_ELITE_GROWTH, SMC_X_STO_H1, KC_LIQUIDITY_DOMINANCE,
-# CONFLUENCE_SQUEEZE_M15). Changes apply to the LIVE running bot immediately via
+# Lets the Web Dashboard set a custom risk % per active pillar (all 5: PULLBACK_DR_EKK,
+# RTM_M4_CONSERVATIVE, RTM_M6_ELITE_GROWTH, SMC_X_STO_H1, KC_LIQUIDITY_DOMINANCE).
+# Changes apply to the LIVE running bot immediately via
 # account_manager.update_strategy_settings() (no restart, no MT5 reconnect) and persist to
 # config.json so they survive a real restart too. See RISK_PROFILE_DEFAULTS in bot_engine.py
 # for the single source of truth on default %, sizing mode, and the allowed [min, max] band.
@@ -615,14 +615,13 @@ async def get_system_version():
     return {
         "status": True,
         "latest_commit": commit_str,
-        "strategies_count": 6,
+        "strategies_count": 5,
         "strategies": [
             "PULLBACK_DR_EKK",
             "RTM_M4_CONSERVATIVE",
             "RTM_M6_ELITE_GROWTH",
             "SMC_X_STO_H1",
-            "KC_LIQUIDITY_DOMINANCE",
-            "CONFLUENCE_SQUEEZE_M15"
+            "KC_LIQUIDITY_DOMINANCE"
         ]
     }
 

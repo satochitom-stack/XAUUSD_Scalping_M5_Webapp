@@ -41,7 +41,6 @@ class TestRiskProfileDefaults(unittest.TestCase):
             "SMC_X_STO_H1":           (1.0, "FIXED"),
             "KC_LIQUIDITY_DOMINANCE": (1.5, "STEP_UP_COMPOUNDING"),
             "TUG_OF_WAR_M15":         (0.5, "FIXED"),
-            "CONFLUENCE_SQUEEZE_M15": (0.5, "FIXED"),
         }
         for strat_id, (default_pct, mode) in expected.items():
             profile = RISK_PROFILE_DEFAULTS[strat_id]

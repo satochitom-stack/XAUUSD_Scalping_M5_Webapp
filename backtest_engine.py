@@ -1,5 +1,5 @@
 """
-Historical Multi-Strategy Backtesting Engine for XAUUSD (Gold) - Elite 6 Pillars Edition
+Historical Multi-Strategy Backtesting Engine for XAUUSD (Gold) - Elite 5 Pillars Edition
 
 Design goal: ZERO logic duplication. This engine does not reimplement any strategy rule,
 AI-gating threshold, SL/TP formula, or lot-sizing rule. Instead it builds a paper-trading
@@ -10,9 +10,8 @@ calling its real run_iteration() every simulated M5 bar close - the identical en
 main.py's scheduler calls in production. This guarantees the backtest exercises the exact
 same code path as live trading: MarketRegimeScorer quality filter, RealTimeStrategyOptimizer
 dynamic R:R / AI throttle, execute_buy/execute_sell SL-TP construction, calculate_lot_size
-risk sizing, and manage_open_positions trailing/BE-lock - for all 6 active pillars
-(PULLBACK_DR_EKK, RTM_M4_CONSERVATIVE, RTM_M6_ELITE_GROWTH, SMC_X_STO_H1, KC_LIQUIDITY_DOMINANCE,
-CONFLUENCE_SQUEEZE_M15).
+risk sizing, and manage_open_positions trailing/BE-lock - for all 5 active pillars
+(PULLBACK_DR_EKK, RTM_M4_CONSERVATIVE, RTM_M6_ELITE_GROWTH, SMC_X_STO_H1, KC_LIQUIDITY_DOMINANCE).
 
 Two data sources are supported:
   1. CSV files exported from MT5 (History Center "Export" button, or chart right-click ->
@@ -600,7 +599,7 @@ if __name__ == "__main__":
     parser.add_argument("--balance", type=float, default=3000.0)
     parser.add_argument("--spread", type=float, default=20.0, help="Fixed spread in points (1pt = $0.01).")
     parser.add_argument("--warmup", type=int, default=800)
-    parser.add_argument("--strategy", default=None, help="Strategy mode (e.g. CONFLUENCE_SQUEEZE_M15, ALL)")
+    parser.add_argument("--strategy", default=None, help="Strategy mode (e.g. KC_LIQUIDITY_DOMINANCE, ALL)")
     parser.add_argument("--out", default="backtest_results.json")
     args = parser.parse_args()
 
