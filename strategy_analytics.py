@@ -79,6 +79,39 @@ class RealTradeAnalyticsManager:
             "avg_rr": "1:2.0",
             "description": "กลยุทธ์ Price Action Tug-of-War จาก KC Forex Trading: ดักจังหวะ Stop Hunt กวาด Liquidity High/Low 15-20 แท่ง แล้วปฏิเสธราคาด้วย Candle Dominance (เนื้อเทียนตัน >= 50%) วาง SL นอกปลายไส้ + ล็อคทุน BE ที่ 1.0R (ความเสี่ยง Step-Up 1.5% | TP 2.0R)"
         },
+        "ICT_JUDAS_RTM_QM": {
+            "id": "ICT_JUDAS_RTM_QM",
+            "name": "ICT Judas Swing & RTM Quasimodo",
+            "icon": "🎯",
+            "category": "INSTITUTIONAL_SNIPER",
+            "timeframe": "M5",
+            "best_session": "London Killzone (14:00 - 17:30)",
+            "magic_numbers": [555910, 555911, 555912, 555913],
+            "avg_rr": "1:2.0",
+            "description": "ICT Judas Swing หลอกล่อกินสภาพคล่องกรอบเช้า (Asian Range) แล้วกลับตัวด้วย RTM Quasimodo (QML/MPL) ในช่วงเปิดตลาดยุโรป (ความเสี่ยง 0.5% | TP 2.0R)"
+        },
+        "ICT_SILVER_BULLET_FVG": {
+            "id": "ICT_SILVER_BULLET_FVG",
+            "name": "ICT NY Silver Bullet & FVG Imbalance",
+            "icon": "🔫",
+            "category": "ICT_PRECISION",
+            "timeframe": "M5",
+            "best_session": "NY AM Killzone (19:30 - 22:30)",
+            "magic_numbers": [555920, 555921, 555922, 555923],
+            "avg_rr": "1:1.5",
+            "description": "ICT 2022 Silver Bullet Model: ดักจังหวะ Liquidity Sweep 15-20 แท่ง เกิด Market Structure Shift (MSS) พร้อมแท่ง Displacement ทิ้งรอย FVG แล้วเข้าที่ 50% Consequent Encroachment (ความเสี่ยง 0.5% | TP 1.5R)"
+        },
+        "EW_WAVE3_BREAKER": {
+            "id": "EW_WAVE3_BREAKER",
+            "name": "Elliott Wave 3 & SMC Breaker Propulsion",
+            "icon": "🌊",
+            "category": "WAVE_PROPULSION",
+            "timeframe": "M5",
+            "best_session": "London & NY Trend (14:00 - 02:00)",
+            "magic_numbers": [555930, 555931, 555932, 555933],
+            "avg_rr": "1:2.5",
+            "description": "Elliott Wave 3 Flagship: ตามคลื่นส่ง Wave 3 หลังยืนยันการย่อ Wave 2 ไม่หลุดจุดเริ่ม Wave 1 (Rule 1) ทะลุ Breaker Block พร้อม EWO (5/34) ขยายตัวสูงสุด (ความเสี่ยง 1.0% | TP 2.5R)"
+        },
         "RETIRED_SETUPS": {
             "id": "RETIRED_SETUPS",
             "name": "เซตอัพที่เลิกใช้",
@@ -490,7 +523,19 @@ class RealTradeAnalyticsManager:
         if "kc" in comment or "dominance" in comment or (555880 <= magic <= 555883):
             return "KC_LIQUIDITY_DOMINANCE"
 
-        # 5. Decommissioned / Retired Setups (AI Confluence Squeeze, News Momentum, Asian Range Sniper, RTM M5, RTM M7, Captain SMC, Tug of War M15, etc.)
+        # 5. Active: ICT Judas Swing & RTM Quasimodo
+        if "judas" in comment or "judas_qm" in comment or (555910 <= magic <= 555913):
+            return "ICT_JUDAS_RTM_QM"
+
+        # 6. Active: ICT NY Silver Bullet & FVG Imbalance
+        if "silver" in comment or "bullet" in comment or "silver_b" in comment or (555920 <= magic <= 555923):
+            return "ICT_SILVER_BULLET_FVG"
+
+        # 7. Active: Elliott Wave 3 & SMC Breaker Propulsion
+        if "wave3" in comment or "breaker" in comment or "ew_wave" in comment or (555930 <= magic <= 555933):
+            return "EW_WAVE3_BREAKER"
+
+        # 8. Decommissioned / Retired Setups (AI Confluence Squeeze, News Momentum, Asian Range Sniper, RTM M5, RTM M7, Captain SMC, Tug of War M15, etc.)
         return "RETIRED_SETUPS"
 
     def get_real_stats_summary(self) -> dict:
@@ -670,6 +715,9 @@ class RealTradeAnalyticsManager:
         smc_active = strat_cfg.get("smc_x_sto_h1_enabled", True)
         kc_active = strat_cfg.get("kc_liquidity_dominance_enabled", True)
         ekk_active = strat_cfg.get("pullback_dr_ekk_enabled", True)
+        judas_active = strat_cfg.get("ict_judas_rtm_qm_enabled", True)
+        silver_active = strat_cfg.get("ict_silver_bullet_fvg_enabled", True)
+        ew_active = strat_cfg.get("ew_wave3_breaker_enabled", True)
 
         # Set active status tags based on real configuration
         if "PULLBACK_DR_EKK" in setups_data:
@@ -682,6 +730,12 @@ class RealTradeAnalyticsManager:
             setups_data["SMC_X_STO_H1"]["status"] = "🟢 ACTIVE (Devil H1 OB+STO)" if smc_active else "⏸️ PAUSED (ปิดการทำงาน)"
         if "KC_LIQUIDITY_DOMINANCE" in setups_data:
             setups_data["KC_LIQUIDITY_DOMINANCE"]["status"] = "🟢 ACTIVE (KC Candle Dominance Step-Up 1.5%)" if kc_active else "⏸️ PAUSED (ปิดการทำงาน)"
+        if "ICT_JUDAS_RTM_QM" in setups_data:
+            setups_data["ICT_JUDAS_RTM_QM"]["status"] = "🟢 ACTIVE (Judas RTM QM 0.5%)" if judas_active else "⏸️ PAUSED (ปิดการทำงาน)"
+        if "ICT_SILVER_BULLET_FVG" in setups_data:
+            setups_data["ICT_SILVER_BULLET_FVG"]["status"] = "🟢 ACTIVE (Silver Bullet FVG 0.5%)" if silver_active else "⏸️ PAUSED (ปิดการทำงาน)"
+        if "EW_WAVE3_BREAKER" in setups_data:
+            setups_data["EW_WAVE3_BREAKER"]["status"] = "🟢 ACTIVE (EW Wave 3 Breaker 1.0%)" if ew_active else "⏸️ PAUSED (ปิดการทำงาน)"
         if "RETIRED_SETUPS" in setups_data:
             setups_data["RETIRED_SETUPS"]["status"] = "📦 ARCHIVED (บันทึกประวัติเดิม)"
 

@@ -92,7 +92,10 @@
         "smc_x_sto_h1_enabled": true,
         "pullback_dr_ekk_enabled": true,
         "kc_liquidity_dominance_enabled": true,
-        "max_concurrent_setups": 4
+        "ict_judas_rtm_qm_enabled": true,
+        "ict_silver_bullet_fvg_enabled": true,
+        "ew_wave3_breaker_enabled": true,
+        "max_concurrent_setups": 6
       }
     }
   ],
@@ -154,7 +157,10 @@
     "smc_x_sto_h1_enabled": true,
     "pullback_dr_ekk_enabled": true,
     "kc_liquidity_dominance_enabled": true,
-    "max_concurrent_setups": 4
+    "ict_judas_rtm_qm_enabled": true,
+    "ict_silver_bullet_fvg_enabled": true,
+    "ew_wave3_breaker_enabled": true,
+    "max_concurrent_setups": 6
   },
   "server": {
     "host": "0.0.0.0",

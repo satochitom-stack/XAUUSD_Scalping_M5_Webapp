@@ -214,7 +214,7 @@ class TestRTMEngine(unittest.TestCase):
         self.assertNotIn("ASIAN_RANGE_SNIPER", STRATEGY_MAGIC_MAP)
         self.assertNotIn("NEWS_MOMENTUM_EXPANSION", STRATEGY_MAGIC_MAP)
         self.assertNotIn("CONFLUENCE_SQUEEZE_M15", STRATEGY_MAGIC_MAP)
-        self.assertEqual(len(STRATEGY_MAGIC_MAP), 5)
+        self.assertEqual(len(STRATEGY_MAGIC_MAP), 8)
 
     def test_smc_devil_trailing_lock(self):
         """Test SMC x STO Devil locks +0.8R at 1.4R and +1.2R at 1.8R."""

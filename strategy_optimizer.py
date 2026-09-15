@@ -23,10 +23,52 @@ DEFAULT_STRATEGIES = [
     "RTM_M4_CONSERVATIVE",
     "RTM_M6_ELITE_GROWTH",
     "SMC_X_STO_H1",
-    "KC_LIQUIDITY_DOMINANCE"
+    "KC_LIQUIDITY_DOMINANCE",
+    "ICT_JUDAS_RTM_QM",
+    "ICT_SILVER_BULLET_FVG",
+    "EW_WAVE3_BREAKER"
 ]
 
 SETUP_PROFILES = {
+    "ICT_JUDAS_RTM_QM": {
+        "id": "ICT_JUDAS_RTM_QM",
+        "name": "ICT Judas Swing & RTM Quasimodo",
+        "icon": "🎯",
+        "win_prob": 74.0,
+        "base_rr": 2.00,
+        "min_rr": 1.50,
+        "max_rr": 3.00,
+        "trailing_type": "CONFLUENCE_STAGE",
+        "trail_points": 200.0,
+        "trail_step_points": 30.0,
+        "description": "ICT Judas Swing + RTM Quasimodo (QML/MPL Retest) - Fixed 0.5% Risk"
+    },
+    "ICT_SILVER_BULLET_FVG": {
+        "id": "ICT_SILVER_BULLET_FVG",
+        "name": "ICT NY Silver Bullet & FVG Imbalance",
+        "icon": "🔫",
+        "win_prob": 76.0,
+        "base_rr": 1.50,
+        "min_rr": 1.20,
+        "max_rr": 2.20,
+        "trailing_type": "CONFLUENCE_STAGE",
+        "trail_points": 180.0,
+        "trail_step_points": 25.0,
+        "description": "ICT 2022 Silver Bullet 50% FVG Retest - Fixed 0.5% Risk"
+    },
+    "EW_WAVE3_BREAKER": {
+        "id": "EW_WAVE3_BREAKER",
+        "name": "Elliott Wave 3 & SMC Breaker Propulsion",
+        "icon": "🌊",
+        "win_prob": 70.0,
+        "base_rr": 2.50,
+        "min_rr": 2.00,
+        "max_rr": 3.50,
+        "trailing_type": "CONFLUENCE_STAGE",
+        "trail_points": 250.0,
+        "trail_step_points": 40.0,
+        "description": "Elliott Wave 3 Flagship Breakout + SMC Breaker - Fixed 1.0% Risk"
+    },
     "KC_LIQUIDITY_DOMINANCE": {
         "id": "KC_LIQUIDITY_DOMINANCE",
         "name": "KC Forex: Liquidity Sweep x Candle Dominance",
@@ -608,6 +650,9 @@ class RealTimeStrategyOptimizer:
             elif "rtm_m6" in comment or "m6_elite" in comment: strat = "RTM_M6_ELITE_GROWTH"
             elif "sto" in comment or "devil" in comment or "smcxsto" in comment: strat = "SMC_X_STO_H1"
             elif "kc" in comment or "dominance" in comment: strat = "KC_LIQUIDITY_DOMINANCE"
+            elif "judas" in comment or "judas_qm" in comment: strat = "ICT_JUDAS_RTM_QM"
+            elif "silver" in comment or "bullet" in comment or "silver_b" in comment: strat = "ICT_SILVER_BULLET_FVG"
+            elif "wave3" in comment or "breaker" in comment or "ew_wave" in comment: strat = "EW_WAVE3_BREAKER"
             elif "news" in comment or "momentum" in comment or "asian" in comment or "rtm_m5" in comment or "m5_allw" in comment or "rtm_m7" in comment or "m7_alpha" in comment: strat = "RETIRED_SETUPS"
 
             self.record_trade_outcome(strat, profit, 0.0, comment, ticket=deal.get("ticket"))

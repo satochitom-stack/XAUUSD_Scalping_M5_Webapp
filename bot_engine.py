@@ -33,7 +33,10 @@ STRATEGY_MAGIC_MAP = {
     "RTM_M4_CONSERVATIVE": {"base": 777004, "pos1": 777014, "pos2": 777024, "pos3": 777034},
     "RTM_M6_ELITE_GROWTH": {"base": 777006, "pos1": 777016, "pos2": 777026, "pos3": 777036},
     "SMC_X_STO_H1": {"base": 555770, "pos1": 555771, "pos2": 555772, "pos3": 555773},
-    "KC_LIQUIDITY_DOMINANCE": {"base": 555880, "pos1": 555881, "pos2": 555882, "pos3": 555883}
+    "KC_LIQUIDITY_DOMINANCE": {"base": 555880, "pos1": 555881, "pos2": 555882, "pos3": 555883},
+    "ICT_JUDAS_RTM_QM": {"base": 555910, "pos1": 555911, "pos2": 555912, "pos3": 555913},
+    "ICT_SILVER_BULLET_FVG": {"base": 555920, "pos1": 555921, "pos2": 555922, "pos3": 555923},
+    "EW_WAVE3_BREAKER": {"base": 555930, "pos1": 555931, "pos2": 555932, "pos3": 555933}
 }
 
 # Per-pillar risk sizing profile: default risk %, sizing MODE (whether Step-Up Compounding
@@ -48,6 +51,9 @@ RISK_PROFILE_DEFAULTS = {
     "RTM_M6_ELITE_GROWTH":    {"default_pct": 2.0, "mode": "STEP_UP_COMPOUNDING"},
     "SMC_X_STO_H1":           {"default_pct": 1.0, "mode": "FIXED"},
     "KC_LIQUIDITY_DOMINANCE": {"default_pct": 1.5, "mode": "STEP_UP_COMPOUNDING"},
+    "ICT_JUDAS_RTM_QM":        {"default_pct": 0.5, "mode": "FIXED"},
+    "ICT_SILVER_BULLET_FVG":   {"default_pct": 0.5, "mode": "FIXED"},
+    "EW_WAVE3_BREAKER":        {"default_pct": 1.0, "mode": "FIXED"},
     "TUG_OF_WAR_M15":         {"default_pct": 0.5, "mode": "FIXED"},
 }
 RISK_OVERRIDE_MIN_PCT = 0.10
@@ -389,6 +395,30 @@ class GoldScalpingBot:
                 b_sig, s_sig, reason = self._check_kc_liquidity_dominance(df, symbol)
                 if b_sig or s_sig:
                     self._process_single_setup_signal(df, symbol, spread, "KC_LIQUIDITY_DOMINANCE", "BUY" if b_sig else "SELL", reason)
+
+        # --- PILLAR 6: ICT Judas Swing & RTM Quasimodo (London Killzone) ---
+        judas_qm_enabled = strat_cfg.get("ict_judas_rtm_qm_enabled", True)
+        if judas_qm_enabled and (strat_mode in ["ALL", "ICT_JUDAS_RTM_QM", "JUDAS_QM"]):
+            if not self.has_open_positions_for_setup(symbol, "ICT_JUDAS_RTM_QM"):
+                b_sig, s_sig, reason = self._check_ict_judas_rtm_qm(df, symbol)
+                if b_sig or s_sig:
+                    self._process_single_setup_signal(df, symbol, spread, "ICT_JUDAS_RTM_QM", "BUY" if b_sig else "SELL", reason)
+
+        # --- PILLAR 7: ICT NY Silver Bullet & FVG Imbalance (NY AM Killzone) ---
+        silver_bullet_enabled = strat_cfg.get("ict_silver_bullet_fvg_enabled", True)
+        if silver_bullet_enabled and (strat_mode in ["ALL", "ICT_SILVER_BULLET_FVG", "SILVER_BULLET"]):
+            if not self.has_open_positions_for_setup(symbol, "ICT_SILVER_BULLET_FVG"):
+                b_sig, s_sig, reason = self._check_ict_silver_bullet_fvg(df, symbol)
+                if b_sig or s_sig:
+                    self._process_single_setup_signal(df, symbol, spread, "ICT_SILVER_BULLET_FVG", "BUY" if b_sig else "SELL", reason)
+
+        # --- PILLAR 8: Elliott Wave 3 & SMC Breaker Propulsion (Trend Session) ---
+        ew_breaker_enabled = strat_cfg.get("ew_wave3_breaker_enabled", True)
+        if ew_breaker_enabled and (strat_mode in ["ALL", "EW_WAVE3_BREAKER", "EW_BREAKER"]):
+            if not self.has_open_positions_for_setup(symbol, "EW_WAVE3_BREAKER"):
+                b_sig, s_sig, reason = self._check_ew_wave3_breaker(df, symbol)
+                if b_sig or s_sig:
+                    self._process_single_setup_signal(df, symbol, spread, "EW_WAVE3_BREAKER", "BUY" if b_sig else "SELL", reason)
 
         # Update Trend Badge with News Radar
         if news_status.get("is_news_active"):
@@ -894,6 +924,249 @@ class GoldScalpingBot:
             if is_1bar_bear or is_2bar_bear:
                 dom_type = "1-Bar Engulfing" if is_1bar_bear else "2-Bar Combined"
                 return False, True, f"🕯️ KC Dominance: Bearish Liquidity Sweep ({dom_type} | Body {curr_body_ratio*100:.0f}% | Swept {prior_swing_high:.2f} | Depth {sweep_depth_bear:.2f} | {kz_name})"
+
+        return False, False, ""
+
+    def _check_ict_judas_rtm_qm(self, df: pd.DataFrame, symbol: str = "XAUUSD") -> Tuple[bool, bool, str]:
+        """
+        🎯 ICT Judas Swing & RTM Quasimodo (M5, London Killzone 14:00 - 17:30 Thai Time)
+        Synthesis of:
+        - ICT Judas Swing: Fakeout outside Asian range during London Open
+        - RTM Quasimodo: High-Low-HigherHigh-LowerLow (Bearish) or Low-High-LowerLow-HigherHigh (Bullish)
+        - First Time Back (FTB) retest into QML (Left Shoulder)
+        """
+        if len(df) < 25:
+            return False, False, ""
+
+        sim_time = getattr(self.connector, "current_time", None)
+        if sim_time is not None and hasattr(sim_time, "time") and not hasattr(sim_time, "_mock_return_value"):
+            now_time = sim_time.time()
+        else:
+            th_tz = timezone(timedelta(hours=7))
+            now_time = datetime.now(th_tz).time()
+
+        # London Killzone window: 14:00 - 17:30 Thai Time
+        if not (dtime(14, 0) <= now_time <= dtime(17, 30)):
+            return False, False, ""
+
+        b1 = df.iloc[-2]  # Trigger bar (last closed bar)
+        b2 = df.iloc[-3]
+
+        # Asian Range reference (bars before recent 15 bars)
+        asia_lookback = df.iloc[max(0, len(df) - 60) : -15]
+        if len(asia_lookback) < 5:
+            return False, False, ""
+
+        asia_high = float(asia_lookback['high'].max())
+        asia_low = float(asia_lookback['low'].min())
+        if asia_high <= asia_low or (asia_high - asia_low) < 2.0:
+            return False, False, ""
+
+        # M5 ATR calculation
+        hl = df['high'] - df['low']
+        hc = (df['high'] - df['close'].shift()).abs()
+        lc = (df['low'] - df['close'].shift()).abs()
+        tr = pd.concat([hl, hc, lc], axis=1).max(axis=1)
+        m5_atr = float(tr.rolling(window=14).mean().iloc[-2]) if len(df) >= 15 else 2.0
+        if math.isnan(m5_atr) or m5_atr <= 0: m5_atr = 2.0
+
+        recent_bars = df.iloc[-15:-1]
+        recent_high = float(recent_bars['high'].max())
+        recent_low = float(recent_bars['low'].min())
+
+        # 1. Bearish Judas QM (SELL):
+        # - Swept Asia High (recent_high > asia_high)
+        # - Left Shoulder exists before Head
+        # - Broke structure downwards with Lower Low
+        # - Retesting QML
+        if recent_high > asia_high and (recent_high - asia_high) <= (2.5 * m5_atr):
+            head_idx = int(recent_bars['high'].argmax())
+            if 1 <= head_idx <= len(recent_bars) - 2:
+                left_shoulder_high = float(recent_bars['high'].iloc[:head_idx].max())
+                ls_idx = int(recent_bars['high'].iloc[:head_idx].argmax())
+                inter_low = float(recent_bars['low'].iloc[ls_idx : head_idx].min()) if ls_idx < head_idx else float(recent_bars['low'].iloc[:head_idx].min())
+                break_low = float(recent_bars['low'].iloc[head_idx:].min())
+
+                if recent_high > left_shoulder_high and break_low < inter_low:
+                    qml_price = left_shoulder_high
+                    near_qml = abs(float(b1['high']) - qml_price) <= (0.75 * m5_atr) or (float(b1['high']) >= qml_price - 0.30 and float(b1['close']) <= qml_price + 0.50)
+                    rejection = float(b1['close']) < float(b1['open']) or ((float(b1['high']) - max(float(b1['open']), float(b1['close']))) / (float(b1['high']) - float(b1['low']) + 1e-9) >= 0.25)
+                    if near_qml and rejection:
+                        return False, True, f"🎯 ICT Judas RTM Bearish QM (Asia High Swept {recent_high:.2f} + QML {qml_price:.2f})"
+
+        # 2. Bullish Judas QM (BUY):
+        # - Swept Asia Low (recent_low < asia_low)
+        # - Left Shoulder exists before Head
+        # - Broke structure upwards with Higher High
+        # - Retesting QML
+        if recent_low < asia_low and (asia_low - recent_low) <= (2.5 * m5_atr):
+            head_idx = int(recent_bars['low'].argmin())
+            if 1 <= head_idx <= len(recent_bars) - 2:
+                left_shoulder_low = float(recent_bars['low'].iloc[:head_idx].min())
+                ls_idx = int(recent_bars['low'].iloc[:head_idx].argmin())
+                inter_high = float(recent_bars['high'].iloc[ls_idx : head_idx].max()) if ls_idx < head_idx else float(recent_bars['high'].iloc[:head_idx].max())
+                break_high = float(recent_bars['high'].iloc[head_idx:].max())
+
+                if recent_low < left_shoulder_low and break_high > inter_high:
+                    qml_price = left_shoulder_low
+                    near_qml = abs(float(b1['low']) - qml_price) <= (0.75 * m5_atr) or (float(b1['low']) <= qml_price + 0.30 and float(b1['close']) >= qml_price - 0.50)
+                    rejection = float(b1['close']) > float(b1['open']) or ((min(float(b1['open']), float(b1['close'])) - float(b1['low'])) / (float(b1['high']) - float(b1['low']) + 1e-9) >= 0.25)
+                    if near_qml and rejection:
+                        return True, False, f"🎯 ICT Judas RTM Bullish QM (Asia Low Swept {recent_low:.2f} + QML {qml_price:.2f})"
+
+        return False, False, ""
+
+    def _check_ict_silver_bullet_fvg(self, df: pd.DataFrame, symbol: str = "XAUUSD") -> Tuple[bool, bool, str]:
+        """
+        🔫 ICT NY Silver Bullet & FVG Imbalance (M5, NY AM Killzone 19:30 - 22:30 Thai Time)
+        Synthesis of:
+        - Time Window: 19:30 - 22:30 Thai Time (High liquidity US session)
+        - Liquidity Run: Sweep of short-term High/Low of last 15-20 bars
+        - Market Structure Shift (MSS) with Displacement candle (Body >= 52%)
+        - Fair Value Gap (FVG): 3-bar imbalance (BISI/SIBI)
+        - Consequent Encroachment (50% FVG retest) entry trigger
+        """
+        if len(df) < 30:
+            return False, False, ""
+
+        sim_time = getattr(self.connector, "current_time", None)
+        if sim_time is not None and hasattr(sim_time, "time") and not hasattr(sim_time, "_mock_return_value"):
+            now_time = sim_time.time()
+        else:
+            th_tz = timezone(timedelta(hours=7))
+            now_time = datetime.now(th_tz).time()
+
+        # NY AM Session / Silver Bullet window: 19:30 - 22:30 Thai Time
+        if not (dtime(19, 30) <= now_time <= dtime(22, 30)):
+            return False, False, ""
+
+        hl = df['high'] - df['low']
+        hc = (df['high'] - df['close'].shift()).abs()
+        lc = (df['low'] - df['close'].shift()).abs()
+        tr = pd.concat([hl, hc, lc], axis=1).max(axis=1)
+        m5_atr = float(tr.rolling(window=14).mean().iloc[-2]) if len(df) >= 15 else 2.0
+        if math.isnan(m5_atr) or m5_atr <= 0: m5_atr = 2.0
+
+        min_fvg_size = max(0.50, 0.20 * m5_atr)
+
+        b_anchor = df.iloc[-4]
+        b_disp = df.iloc[-3]
+        b_trig = df.iloc[-2]
+
+        disp_h = float(b_disp['high'])
+        disp_l = float(b_disp['low'])
+        disp_o = float(b_disp['open'])
+        disp_c = float(b_disp['close'])
+        disp_range = disp_h - disp_l
+        disp_body = abs(disp_c - disp_o)
+
+        if disp_range < 0.60 or (disp_body / (disp_range + 1e-9)) < 0.50:
+            return False, False, ""
+
+        pool_high = float(df['high'].iloc[-20:-4].max())
+        pool_low = float(df['low'].iloc[-20:-4].min())
+
+        # 1. Bullish Silver Bullet FVG (BUY):
+        if disp_c > disp_o:
+            swept_ssl = float(df['low'].iloc[-10:-2].min()) <= pool_low + 0.15
+            bar1_h = float(b_anchor['high'])
+            fvg_gap = float(b_disp['close']) - bar1_h
+            if swept_ssl and fvg_gap >= min_fvg_size:
+                fvg_midpoint = bar1_h + (fvg_gap * 0.50)
+                retested = float(b_trig['low']) <= fvg_midpoint + 0.35 and float(b_trig['close']) >= bar1_h - 0.25
+                if retested:
+                    return True, False, f"🔫 ICT NY Silver Bullet Bullish FVG (SSL Swept + FVG 50% CE @ {fvg_midpoint:.2f})"
+
+        # 2. Bearish Silver Bullet FVG (SELL):
+        if disp_c < disp_o:
+            swept_bsl = float(df['high'].iloc[-10:-2].max()) >= pool_high - 0.15
+            bar1_l = float(b_anchor['low'])
+            fvg_gap = bar1_l - float(b_disp['close'])
+            if swept_bsl and fvg_gap >= min_fvg_size:
+                fvg_midpoint = bar1_l - (fvg_gap * 0.50)
+                retested = float(b_trig['high']) >= fvg_midpoint - 0.35 and float(b_trig['close']) <= bar1_l + 0.25
+                if retested:
+                    return False, True, f"🔫 ICT NY Silver Bullet Bearish FVG (BSL Swept + FVG 50% CE @ {fvg_midpoint:.2f})"
+
+        return False, False, ""
+
+    def _check_ew_wave3_breaker(self, df: pd.DataFrame, symbol: str = "XAUUSD") -> Tuple[bool, bool, str]:
+        """
+        🌊 Elliott Wave 3 & SMC Breaker Propulsion (M5/M15, Trend Session 14:00 - 02:00 Thai Time)
+        Synthesis of:
+        - Elliott Wave Principle: Wave 3 Flagship Breakout (Peak Momentum, Asymmetry)
+        - The 3 Inviolable Rules: Wave 2 never retraces > 100% of Wave 1 origin (Hard Stop)
+        - SMC Breaker Block: Failed Wave 1/2 structure flipped to propulsion zone
+        - Elliott Wave Oscillator (5/34) momentum expansion
+        """
+        if len(df) < 25:
+            return False, False, ""
+
+        sim_time = getattr(self.connector, "current_time", None)
+        if sim_time is not None and hasattr(sim_time, "time") and not hasattr(sim_time, "_mock_return_value"):
+            now_time = sim_time.time()
+        else:
+            th_tz = timezone(timedelta(hours=7))
+            now_time = datetime.now(th_tz).time()
+
+        # Trend hours: 14:00 - 02:00 Thai Time
+        in_trend_hours = (dtime(14, 0) <= now_time) or (now_time <= dtime(2, 0))
+        if not in_trend_hours:
+            return False, False, ""
+
+        b1 = df.iloc[-2]  # Trigger bar (last closed bar)
+        b2 = df.iloc[-3]
+
+        median_price = (df['high'] + df['low']) / 2.0
+        ewo = median_price.rolling(window=5).mean() - median_price.rolling(window=34).mean()
+        curr_ewo = float(ewo.iloc[-2]) if len(ewo) >= 35 else 0.0
+        prev_ewo = float(ewo.iloc[-3]) if len(ewo) >= 35 else 0.0
+
+        # BUY (Bullish Wave 3):
+        p0_idx = int(df['low'].iloc[-25:-10].argmin()) + (len(df) - 25)
+        p0_low = float(df['low'].iloc[p0_idx])
+
+        p1_subset = df.iloc[p0_idx + 1 : -4]
+        if len(p1_subset) >= 3:
+            p1_idx = int(p1_subset['high'].argmax()) + (p0_idx + 1)
+            p1_high = float(p1_subset['high'].max())
+
+            p2_subset = df.iloc[p1_idx + 1 : -1]
+            if len(p2_subset) >= 2:
+                p2_low = float(p2_subset['low'].min())
+                wave1_dist = p1_high - p0_low
+                wave2_retrace = p1_high - p2_low
+
+                # Rule 1 check: P2 > P0 (Never retrace 100%)
+                if wave1_dist >= 2.00 and p2_low > p0_low:
+                    retrace_ratio = wave2_retrace / wave1_dist
+                    if 0.25 <= retrace_ratio <= 0.80:
+                        # Breakout: b1 closed above Wave 1 High
+                        if float(b1['close']) > p1_high and float(b2['close']) <= p1_high + 0.50:
+                            if curr_ewo >= 0.0 or curr_ewo >= prev_ewo:
+                                return True, False, f"🌊 Elliott Wave 3 Breaker Bullish (W1 Top {p1_high:.2f} Broken | Tactical SL @ W2 Low {p2_low:.2f})"
+
+        # SELL (Bearish Wave 3):
+        p0_sell_idx = int(df['high'].iloc[-25:-10].argmax()) + (len(df) - 25)
+        p0_high = float(df['high'].iloc[p0_sell_idx])
+
+        p1_sell_subset = df.iloc[p0_sell_idx + 1 : -4]
+        if len(p1_sell_subset) >= 3:
+            p1_sell_idx = int(p1_sell_subset['low'].argmin()) + (p0_sell_idx + 1)
+            p1_sell_low = float(p1_sell_subset['low'].min())
+
+            p2_sell_subset = df.iloc[p1_sell_idx + 1 : -1]
+            if len(p2_sell_subset) >= 2:
+                p2_sell_high = float(p2_sell_subset['high'].max())
+                wave1_dist = p0_high - p1_sell_low
+                wave2_retrace = p2_sell_high - p1_sell_low
+
+                if wave1_dist >= 2.00 and p2_sell_high < p0_high:
+                    retrace_ratio = wave2_retrace / wave1_dist
+                    if 0.25 <= retrace_ratio <= 0.80:
+                        if float(b1['close']) < p1_sell_low and float(b2['close']) >= p1_sell_low - 0.50:
+                            if curr_ewo <= 0.0 or curr_ewo <= prev_ewo:
+                                return False, True, f"🌊 Elliott Wave 3 Breaker Bearish (W1 Bottom {p1_sell_low:.2f} Broken | Tactical SL @ W2 High {p2_sell_high:.2f})"
 
         return False, False, ""
 
@@ -1628,6 +1901,33 @@ class GoldScalpingBot:
             if sl_dist > 12.00: sl = ask - 12.00; sl_dist = 12.00
             target_rr = opt.get("tp_ratio", 2.0)
             tp2 = ask + (sl_dist * target_rr)
+        elif strat_id == "ICT_JUDAS_RTM_QM":
+            lowest_low = float(df['low'].iloc[-15:-1].min())
+            sl_buffer = 0.40 * sl_mult
+            sl = lowest_low - sl_buffer
+            sl_dist = ask - sl
+            if sl_dist < 2.00: sl = ask - 2.00; sl_dist = 2.00
+            if sl_dist > 10.00: sl = ask - 10.00; sl_dist = 10.00
+            target_rr = opt.get("tp_ratio", 2.0)
+            tp2 = ask + (sl_dist * target_rr)
+        elif strat_id == "ICT_SILVER_BULLET_FVG":
+            lowest_low = float(df['low'].iloc[-8:-1].min())
+            sl_buffer = 0.35 * sl_mult
+            sl = lowest_low - sl_buffer
+            sl_dist = ask - sl
+            if sl_dist < 1.80: sl = ask - 1.80; sl_dist = 1.80
+            if sl_dist > 8.00: sl = ask - 8.00; sl_dist = 8.00
+            target_rr = opt.get("tp_ratio", 1.5)
+            tp2 = ask + (sl_dist * target_rr)
+        elif strat_id == "EW_WAVE3_BREAKER":
+            lowest_low = float(df['low'].iloc[-8:-1].min())
+            sl_buffer = 0.40 * sl_mult
+            sl = lowest_low - sl_buffer
+            sl_dist = ask - sl
+            if sl_dist < 2.50: sl = ask - 2.50; sl_dist = 2.50
+            if sl_dist > 12.00: sl = ask - 12.00; sl_dist = 12.00
+            target_rr = opt.get("tp_ratio", 2.5)
+            tp2 = ask + (sl_dist * target_rr)
         else:
             # News Momentum Expansion / Default (EarthETC Structural SL)
             if len(df) >= 15:
@@ -1649,7 +1949,11 @@ class GoldScalpingBot:
             if sl_dist > 18.00: sl = ask - 18.00; sl_dist = 18.00  # EarthETC: wide structural room, no arbitrary 7.00 choke
             tp2 = ask + (sl_dist * 1.8)
 
-        if strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH", "PULLBACK_DR_EKK", "KC_LIQUIDITY_DOMINANCE"]:
+        if strat_id in ["ICT_JUDAS_RTM_QM", "ICT_SILVER_BULLET_FVG"]:
+            risk_label = "0.5% Risk"
+        elif strat_id == "EW_WAVE3_BREAKER":
+            risk_label = "1.0% Risk"
+        elif strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH", "PULLBACK_DR_EKK", "KC_LIQUIDITY_DOMINANCE"]:
             risk_label = "Step-Up 1.5% Risk" if strat_id == "KC_LIQUIDITY_DOMINANCE" else ("Step-Up 2% Risk" if self.config.get("strategy", {}).get("enable_step_up_compounding", True) else "2.0% Risk")
         elif strat_id in ["NEWS_MOMENTUM_EXPANSION", "ASIAN_RANGE_SNIPER"]:
             lot_mult = 0.5  # Fixed 0.5% risk per user instruction
@@ -1737,6 +2041,33 @@ class GoldScalpingBot:
             if sl_dist > 12.00: sl = bid + 12.00; sl_dist = 12.00
             target_rr = opt.get("tp_ratio", 2.0)
             tp2 = bid - (sl_dist * target_rr)
+        elif strat_id == "ICT_JUDAS_RTM_QM":
+            highest_high = float(df['high'].iloc[-15:-1].max())
+            sl_buffer = 0.40 * sl_mult
+            sl = highest_high + sl_buffer
+            sl_dist = sl - bid
+            if sl_dist < 2.00: sl = bid + 2.00; sl_dist = 2.00
+            if sl_dist > 10.00: sl = bid + 10.00; sl_dist = 10.00
+            target_rr = opt.get("tp_ratio", 2.0)
+            tp2 = bid - (sl_dist * target_rr)
+        elif strat_id == "ICT_SILVER_BULLET_FVG":
+            highest_high = float(df['high'].iloc[-8:-1].max())
+            sl_buffer = 0.35 * sl_mult
+            sl = highest_high + sl_buffer
+            sl_dist = sl - bid
+            if sl_dist < 1.80: sl = bid + 1.80; sl_dist = 1.80
+            if sl_dist > 8.00: sl = bid + 8.00; sl_dist = 8.00
+            target_rr = opt.get("tp_ratio", 1.5)
+            tp2 = bid - (sl_dist * target_rr)
+        elif strat_id == "EW_WAVE3_BREAKER":
+            highest_high = float(df['high'].iloc[-8:-1].max())
+            sl_buffer = 0.40 * sl_mult
+            sl = highest_high + sl_buffer
+            sl_dist = sl - bid
+            if sl_dist < 2.50: sl = bid + 2.50; sl_dist = 2.50
+            if sl_dist > 12.00: sl = bid + 12.00; sl_dist = 12.00
+            target_rr = opt.get("tp_ratio", 2.5)
+            tp2 = bid - (sl_dist * target_rr)
         else:
             # News Momentum Expansion / Default (EarthETC Structural SL)
             if len(df) >= 15:
@@ -1758,7 +2089,11 @@ class GoldScalpingBot:
             if sl_dist > 18.00: sl = bid + 18.00; sl_dist = 18.00  # EarthETC: wide structural room, no arbitrary 7.00 choke
             tp2 = bid - (sl_dist * 1.8)
 
-        if strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH", "PULLBACK_DR_EKK", "KC_LIQUIDITY_DOMINANCE"]:
+        if strat_id in ["ICT_JUDAS_RTM_QM", "ICT_SILVER_BULLET_FVG"]:
+            risk_label = "0.5% Risk"
+        elif strat_id == "EW_WAVE3_BREAKER":
+            risk_label = "1.0% Risk"
+        elif strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH", "PULLBACK_DR_EKK", "KC_LIQUIDITY_DOMINANCE"]:
             risk_label = "Step-Up 1.5% Risk" if strat_id == "KC_LIQUIDITY_DOMINANCE" else ("Step-Up 2% Risk" if self.config.get("strategy", {}).get("enable_step_up_compounding", True) else "2.0% Risk")
         elif strat_id in ["NEWS_MOMENTUM_EXPANSION", "ASIAN_RANGE_SNIPER"]:
             lot_mult = 0.5  # Fixed 0.5% risk per user instruction
@@ -1911,6 +2246,12 @@ class GoldScalpingBot:
                             initial_r = abs(open_p - tp) / 1.5
                         elif strat_id == "KC_LIQUIDITY_DOMINANCE":
                             initial_r = abs(open_p - tp) / 2.0
+                        elif strat_id == "ICT_JUDAS_RTM_QM":
+                            initial_r = abs(open_p - tp) / 2.0
+                        elif strat_id == "ICT_SILVER_BULLET_FVG":
+                            initial_r = abs(open_p - tp) / 1.5
+                        elif strat_id == "EW_WAVE3_BREAKER":
+                            initial_r = abs(open_p - tp) / 2.5
                         else:
                             initial_r = abs(open_p - tp) / 1.8
                         self.initial_risk_map[t_id] = initial_r
@@ -1926,6 +2267,9 @@ class GoldScalpingBot:
                 is_smc_devil = strat_id == "SMC_X_STO_H1"
                 is_pullback_dr_ekk = strat_id == "PULLBACK_DR_EKK"
                 is_kc_dominance = strat_id == "KC_LIQUIDITY_DOMINANCE"
+                is_judas_qm = strat_id == "ICT_JUDAS_RTM_QM"
+                is_silver_bullet = strat_id == "ICT_SILVER_BULLET_FVG"
+                is_ew_breaker = strat_id == "EW_WAVE3_BREAKER"
 
                 if ptype == "BUY":
                     profit_dist = bid - open_p
@@ -2031,6 +2375,45 @@ class GoldScalpingBot:
                             if sl < target_sl - 0.10:
                                 self.connector.modify_position(t_id, target_sl, tp)
                                 self.add_log(f"🛡️ [KC DOMINANCE BREAK-EVEN] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
+
+                    elif is_judas_qm:
+                        # ICT Judas Swing & RTM Quasimodo (Target 2.0R)
+                        if r_profit >= 1.4:
+                            target_sl = round(open_p + (initial_r * 0.8), 2)
+                            if sl < target_sl - 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🎯 [JUDAS QM +0.8R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +0.8R ({target_sl:.2f})", "SUCCESS")
+                        elif r_profit >= 1.0:
+                            target_sl = round(open_p + 0.30, 2)
+                            if sl < target_sl - 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🛡️ [JUDAS QM BREAK-EVEN] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
+
+                    elif is_silver_bullet:
+                        # ICT NY Silver Bullet FVG (Target 1.5R)
+                        if r_profit >= 1.0:
+                            target_sl = round(open_p + 0.30, 2)
+                            if sl < target_sl - 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🛡️ [SILVER BULLET BREAK-EVEN] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
+
+                    elif is_ew_breaker:
+                        # Elliott Wave 3 Breaker (Target 2.5R)
+                        if r_profit >= 1.8:
+                            target_sl = round(open_p + (initial_r * 1.2), 2)
+                            if sl < target_sl - 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"💰 [EW WAVE3 +1.2R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.2R ({target_sl:.2f})", "SUCCESS")
+                        elif r_profit >= 1.2:
+                            target_sl = round(open_p + (initial_r * 0.6), 2)
+                            if sl < target_sl - 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🎯 [EW WAVE3 +0.6R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +0.6R ({target_sl:.2f})", "SUCCESS")
+                        elif r_profit >= 1.0:
+                            target_sl = round(open_p + 0.30, 2)
+                            if sl < target_sl - 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🛡️ [EW WAVE3 BREAK-EVEN] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
 
                     else:
                         if r_profit >= 1.0:
@@ -2143,6 +2526,45 @@ class GoldScalpingBot:
                             if sl == 0 or sl > target_sl + 0.10:
                                 self.connector.modify_position(t_id, target_sl, tp)
                                 self.add_log(f"🛡️ [KC DOMINANCE BREAK-EVEN] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
+
+                    elif is_judas_qm:
+                        # ICT Judas Swing & RTM Quasimodo (Target 2.0R)
+                        if r_profit >= 1.4:
+                            target_sl = round(open_p - (initial_r * 0.8), 2)
+                            if sl == 0 or sl > target_sl + 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🎯 [JUDAS QM +0.8R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +0.8R ({target_sl:.2f})", "SUCCESS")
+                        elif r_profit >= 1.0:
+                            target_sl = round(open_p - 0.30, 2)
+                            if sl == 0 or sl > target_sl + 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🛡️ [JUDAS QM BREAK-EVEN] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
+
+                    elif is_silver_bullet:
+                        # ICT NY Silver Bullet FVG (Target 1.5R)
+                        if r_profit >= 1.0:
+                            target_sl = round(open_p - 0.30, 2)
+                            if sl == 0 or sl > target_sl + 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🛡️ [SILVER BULLET BREAK-EVEN] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
+
+                    elif is_ew_breaker:
+                        # Elliott Wave 3 Breaker (Target 2.5R)
+                        if r_profit >= 1.8:
+                            target_sl = round(open_p - (initial_r * 1.2), 2)
+                            if sl == 0 or sl > target_sl + 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"💰 [EW WAVE3 +1.2R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.2R ({target_sl:.2f})", "SUCCESS")
+                        elif r_profit >= 1.2:
+                            target_sl = round(open_p - (initial_r * 0.6), 2)
+                            if sl == 0 or sl > target_sl + 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🎯 [EW WAVE3 +0.6R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +0.6R ({target_sl:.2f})", "SUCCESS")
+                        elif r_profit >= 1.0:
+                            target_sl = round(open_p - 0.30, 2)
+                            if sl == 0 or sl > target_sl + 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🛡️ [EW WAVE3 BREAK-EVEN] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
 
                     else:
                         if r_profit >= 1.0:
