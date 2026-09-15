@@ -369,6 +369,22 @@ def _resolve_account_instance(acc_id: Optional[str] = None):
         return list(account_manager.accounts.values())[0]
     return None
 
+def _is_strategy_active(strat_id: str, cfg: dict) -> bool:
+    strat_key_map = {
+        "PULLBACK_DR_EKK": "pullback_dr_ekk_enabled",
+        "RTM_M4_CONSERVATIVE": "rtm_m4_enabled",
+        "RTM_M6_ELITE_GROWTH": "rtm_m6_enabled",
+        "SMC_X_STO_H1": "smc_x_sto_h1_enabled",
+        "KC_LIQUIDITY_DOMINANCE": "kc_liquidity_dominance_enabled",
+        "ICT_JUDAS_RTM_QM": "ict_judas_rtm_qm_enabled",
+        "ICT_SILVER_BULLET_FVG": "ict_silver_bullet_fvg_enabled",
+        "EW_WAVE3_BREAKER": "ew_wave3_breaker_enabled"
+    }
+    cfg_key = strat_key_map.get(strat_id)
+    if cfg_key:
+        return cfg.get(cfg_key, True)
+    return True
+
 def _build_risk_config_response(inst) -> dict:
     overrides = inst.strategy_cfg.get("risk_overrides") or {}
     registry = getattr(account_manager.analytics, "STRATEGY_REGISTRY", {})
@@ -376,6 +392,9 @@ def _build_risk_config_response(inst) -> dict:
     for strat_id in STRATEGY_MAGIC_MAP.keys():
         profile = RISK_PROFILE_DEFAULTS.get(strat_id)
         if not profile:
+            continue
+        # Filter out disabled / inactive strategies (e.g. RTM_M4 when rtm_m4_enabled is false)
+        if not _is_strategy_active(strat_id, inst.strategy_cfg):
             continue
         reg_entry = registry.get(strat_id, {})
         setups.append({
