@@ -23,18 +23,6 @@
   },
   "accounts": [
     {
-      "id": "acc_manual_tom",
-      "name": "Tom_Manual",
-      "type": "MANUAL",
-      "login": 257508244,
-      "password": "",
-      "server": "Exness-MT5Real36",
-      "path": "C:\\Users\\Windows11\\AppData\\Local\\Programs\\MetaTrader 5 EXNESS 2\\terminal64.exe",
-      "symbol": "XAUUSDc",
-      "magic_number": 0,
-      "simulation_mode": false
-    },
-    {
       "id": "acc_c354ec",
       "name": "Auto1",
       "type": "BOT",

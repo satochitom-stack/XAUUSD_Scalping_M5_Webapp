@@ -350,12 +350,19 @@ async def toggle_strategy_learning(_: bool = Depends(verify_token)):
 # for the single source of truth on default %, sizing mode, and the allowed [min, max] band.
 
 def _resolve_account_instance(acc_id: Optional[str] = None):
-    if hasattr(account_manager, "get_account"):
-        inst = account_manager.get_account(acc_id)
-        if inst is not None:
+    if acc_id:
+        if hasattr(account_manager, "get_account"):
+            inst = account_manager.get_account(acc_id)
+            if inst is not None:
+                return inst
+        if acc_id in account_manager.accounts:
+            return account_manager.accounts[acc_id]
+
+    # When acc_id is omitted, prioritize the active automated BOT account
+    for inst in account_manager.accounts.values():
+        if inst.type == "BOT":
             return inst
-    if acc_id and acc_id in account_manager.accounts:
-        return account_manager.accounts[acc_id]
+
     if hasattr(account_manager, "selected_account_id") and account_manager.selected_account_id in account_manager.accounts:
         return account_manager.accounts[account_manager.selected_account_id]
     if account_manager.accounts:
