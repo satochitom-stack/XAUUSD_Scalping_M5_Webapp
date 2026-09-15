@@ -123,7 +123,7 @@ class TestAlchemistNewSetups(unittest.TestCase):
         data.append({"open": 2405.0, "high": 2412.0, "low": 2404.0, "close": 2410.0, "volume": 120})
         data.append({"open": 2410.0, "high": 2410.0, "low": 2406.0, "close": 2407.0, "volume": 110})
         data.append({"open": 2407.0, "high": 2414.0, "low": 2407.0, "close": 2413.0, "volume": 250})
-        data.append({"open": 2413.0, "high": 2413.0, "low": 2403.0, "close": 2404.0, "volume": 280})
+        data.append({"open": 2413.0, "high": 2413.0, "low": 2400.0, "close": 2401.0, "volume": 280})
         for _ in range(7):
             data.append({"open": 2404.0, "high": 2406.0, "low": 2403.0, "close": 2405.0, "volume": 100})
         data.append({"open": 2405.0, "high": 2411.8, "low": 2405.0, "close": 2411.0, "volume": 150})

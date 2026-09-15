@@ -95,6 +95,7 @@ class GoldScalpingBot:
         self.active_rtm_setup: Optional[dict] = None
         self.last_rtm_sl_time: Dict[str, float] = {"BUY": 0.0, "SELL": 0.0}
         self.last_rtm_m5_confirmed_bar = None
+        self.judas_last_trade_date: Optional[object] = None
         
         mt5_cfg = self.config.get("mt5", {})
         self.magic_number = mt5_cfg.get("magic_number", 555888)
@@ -929,10 +930,13 @@ class GoldScalpingBot:
 
     def _check_ict_judas_rtm_qm(self, df: pd.DataFrame, symbol: str = "XAUUSD") -> Tuple[bool, bool, str]:
         """
-        🎯 ICT Judas Swing & RTM Quasimodo (M5, London Killzone 14:00 - 17:30 Thai Time)
+        🎯 ICT Judas Swing & RTM Quasimodo (M5, London Killzone 14:00 - 17:00 Thai Time)
         Synthesis of:
-        - ICT Judas Swing: Fakeout outside Asian range during London Open
+        - ICT Judas Swing: Fakeout outside Asian range (07:00 - 13:30 Thai Time) during London Open
+        - Macro Filter: Aligns with H1 Trend (EMA 50 vs EMA 200) to avoid counter-trend knife catching
+        - Session Lock: Max 1 high-probability Judas trade per day
         - RTM Quasimodo: High-Low-HigherHigh-LowerLow (Bearish) or Low-High-LowerLow-HigherHigh (Bullish)
+        - Displacement BOS: Decisive body close past intermediate structure (>= 0.20 ATR)
         - First Time Back (FTB) retest into QML (Left Shoulder)
         """
         if len(df) < 25:
@@ -940,26 +944,45 @@ class GoldScalpingBot:
 
         sim_time = getattr(self.connector, "current_time", None)
         if sim_time is not None and hasattr(sim_time, "time") and not hasattr(sim_time, "_mock_return_value"):
+            curr_date = sim_time.date() if hasattr(sim_time, "date") else None
             now_time = sim_time.time()
         else:
             th_tz = timezone(timedelta(hours=7))
-            now_time = datetime.now(th_tz).time()
+            now_dt = datetime.now(th_tz)
+            curr_date = now_dt.date()
+            now_time = now_dt.time()
 
-        # London Killzone window: 14:00 - 17:30 Thai Time
-        if not (dtime(14, 0) <= now_time <= dtime(17, 30)):
+        # 1. London Killzone window: 14:00 - 17:00 Thai Time
+        if not (dtime(14, 0) <= now_time <= dtime(17, 0)):
+            return False, False, ""
+
+        # 2. Daily Lock: Max 1 Judas QM trade per day
+        if curr_date is not None and getattr(self, "judas_last_trade_date", None) == curr_date:
             return False, False, ""
 
         b1 = df.iloc[-2]  # Trigger bar (last closed bar)
-        b2 = df.iloc[-3]
 
-        # Asian Range reference (bars before recent 15 bars)
-        asia_lookback = df.iloc[max(0, len(df) - 60) : -15]
-        if len(asia_lookback) < 5:
-            return False, False, ""
+        # 3. Asian Range Reference (07:00 - 13:30 Thai Time)
+        asia_high, asia_low = 0.0, 0.0
+        times = df.get('time')
+        if times is not None and len(times) > 0 and hasattr(times.iloc[0], 'date') and curr_date is not None:
+            asia_mask = (times.dt.date == curr_date) & (times.dt.time >= dtime(7, 0)) & (times.dt.time <= dtime(13, 30))
+            asia_df = df[asia_mask]
+            if len(asia_df) >= 8:
+                asia_high = float(asia_df['high'].max())
+                asia_low = float(asia_df['low'].min())
 
-        asia_high = float(asia_lookback['high'].max())
-        asia_low = float(asia_lookback['low'].min())
-        if asia_high <= asia_low or (asia_high - asia_low) < 2.0:
+        if asia_high <= asia_low:
+            asia_lookback = df.iloc[max(0, len(df) - 65) : -18]
+            if len(asia_lookback) >= 10:
+                asia_high = float(asia_lookback['high'].max())
+                asia_low = float(asia_lookback['low'].min())
+            else:
+                return False, False, ""
+
+        asia_range = asia_high - asia_low
+        # Skip when Asian session is ultra compressed (< 4.0 USD), as London will expand trend rather than fakeout
+        if asia_range < 4.0:
             return False, False, ""
 
         # M5 ATR calculation
@@ -970,51 +993,81 @@ class GoldScalpingBot:
         m5_atr = float(tr.rolling(window=14).mean().iloc[-2]) if len(df) >= 15 else 2.0
         if math.isnan(m5_atr) or m5_atr <= 0: m5_atr = 2.0
 
-        recent_bars = df.iloc[-15:-1]
+        # 4. H1 Macro Trend Order Flow Alignment
+        df_h1 = None
+        if hasattr(self, 'connector') and hasattr(self.connector, 'get_rates'):
+            try:
+                df_h1 = self.connector.get_rates(symbol, "H1", 60)
+            except Exception:
+                df_h1 = None
+
+        h1_bull = True
+        h1_bear = True
+        if df_h1 is not None and not df_h1.empty and len(df_h1) >= 20:
+            df_h1_copy = df_h1.copy()
+            df_h1_copy['ema50'] = df_h1_copy['close'].ewm(span=50, adjust=False).mean()
+            df_h1_copy['ema200'] = df_h1_copy['close'].ewm(span=200, adjust=False).mean()
+            h1_last = df_h1_copy.iloc[-1]
+            h1_c = float(h1_last['close'])
+            h1_e50 = float(h1_last['ema50'])
+            h1_e200 = float(h1_last['ema200'])
+            h1_bull = (h1_e50 >= h1_e200) or (h1_c >= h1_e50)
+            h1_bear = (h1_e50 <= h1_e200) or (h1_c <= h1_e50)
+
+        recent_bars = df.iloc[-18:-1]
         recent_high = float(recent_bars['high'].max())
         recent_low = float(recent_bars['low'].min())
 
-        # 1. Bearish Judas QM (SELL):
-        # - Swept Asia High (recent_high > asia_high)
+        # 5. Bearish Judas QM (SELL):
+        # - Swept Asia High (recent_high > asia_high + 0.20)
+        # - Aligns with Bearish H1 Order Flow
         # - Left Shoulder exists before Head
-        # - Broke structure downwards with Lower Low
-        # - Retesting QML
-        if recent_high > asia_high and (recent_high - asia_high) <= (2.5 * m5_atr):
+        # - Decisive BOS displacement downwards past intermediate low
+        # - First Time Back retest into QML
+        if h1_bear and (recent_high > asia_high + 0.20) and ((recent_high - asia_high) <= 2.5 * m5_atr):
             head_idx = int(recent_bars['high'].argmax())
-            if 1 <= head_idx <= len(recent_bars) - 2:
+            if 2 <= head_idx <= len(recent_bars) - 3:
                 left_shoulder_high = float(recent_bars['high'].iloc[:head_idx].max())
                 ls_idx = int(recent_bars['high'].iloc[:head_idx].argmax())
                 inter_low = float(recent_bars['low'].iloc[ls_idx : head_idx].min()) if ls_idx < head_idx else float(recent_bars['low'].iloc[:head_idx].min())
-                break_low = float(recent_bars['low'].iloc[head_idx:].min())
+                post_head = recent_bars.iloc[head_idx:]
+                broke = any(float(row['close']) < (inter_low - 0.20 * m5_atr) for _, row in post_head.iterrows())
 
-                if recent_high > left_shoulder_high and break_low < inter_low:
+                if recent_high > (left_shoulder_high + 0.15) and broke:
                     qml_price = left_shoulder_high
-                    near_qml = abs(float(b1['high']) - qml_price) <= (0.75 * m5_atr) or (float(b1['high']) >= qml_price - 0.30 and float(b1['close']) <= qml_price + 0.50)
-                    rejection = float(b1['close']) < float(b1['open']) or ((float(b1['high']) - max(float(b1['open']), float(b1['close']))) / (float(b1['high']) - float(b1['low']) + 1e-9) >= 0.25)
+                    near_qml = abs(float(b1['high']) - qml_price) <= (0.70 * m5_atr)
+                    rejection = (float(b1['close']) < float(b1['open'])) or (((float(b1['high']) - max(float(b1['open']), float(b1['close']))) / (float(b1['high']) - float(b1['low']) + 1e-9)) >= 0.25)
                     if near_qml and rejection:
+                        if curr_date is not None:
+                            self.judas_last_trade_date = curr_date
                         return False, True, f"🎯 ICT Judas RTM Bearish QM (Asia High Swept {recent_high:.2f} + QML {qml_price:.2f})"
 
-        # 2. Bullish Judas QM (BUY):
-        # - Swept Asia Low (recent_low < asia_low)
+        # 6. Bullish Judas QM (BUY):
+        # - Swept Asia Low (recent_low < asia_low - 0.20)
+        # - Aligns with Bullish H1 Order Flow
         # - Left Shoulder exists before Head
-        # - Broke structure upwards with Higher High
-        # - Retesting QML
-        if recent_low < asia_low and (asia_low - recent_low) <= (2.5 * m5_atr):
+        # - Decisive BOS displacement upwards past intermediate high
+        # - First Time Back retest into QML
+        if h1_bull and (recent_low < asia_low - 0.20) and ((asia_low - recent_low) <= 2.5 * m5_atr):
             head_idx = int(recent_bars['low'].argmin())
-            if 1 <= head_idx <= len(recent_bars) - 2:
+            if 2 <= head_idx <= len(recent_bars) - 3:
                 left_shoulder_low = float(recent_bars['low'].iloc[:head_idx].min())
                 ls_idx = int(recent_bars['low'].iloc[:head_idx].argmin())
                 inter_high = float(recent_bars['high'].iloc[ls_idx : head_idx].max()) if ls_idx < head_idx else float(recent_bars['high'].iloc[:head_idx].max())
-                break_high = float(recent_bars['high'].iloc[head_idx:].max())
+                post_head = recent_bars.iloc[head_idx:]
+                broke = any(float(row['close']) > (inter_high + 0.20 * m5_atr) for _, row in post_head.iterrows())
 
-                if recent_low < left_shoulder_low and break_high > inter_high:
+                if recent_low < (left_shoulder_low - 0.15) and broke:
                     qml_price = left_shoulder_low
-                    near_qml = abs(float(b1['low']) - qml_price) <= (0.75 * m5_atr) or (float(b1['low']) <= qml_price + 0.30 and float(b1['close']) >= qml_price - 0.50)
-                    rejection = float(b1['close']) > float(b1['open']) or ((min(float(b1['open']), float(b1['close'])) - float(b1['low'])) / (float(b1['high']) - float(b1['low']) + 1e-9) >= 0.25)
+                    near_qml = abs(float(b1['low']) - qml_price) <= (0.70 * m5_atr)
+                    rejection = (float(b1['close']) > float(b1['open'])) or (((min(float(b1['open']), float(b1['close'])) - float(b1['low'])) / (float(b1['high']) - float(b1['low']) + 1e-9)) >= 0.25)
                     if near_qml and rejection:
+                        if curr_date is not None:
+                            self.judas_last_trade_date = curr_date
                         return True, False, f"🎯 ICT Judas RTM Bullish QM (Asia Low Swept {recent_low:.2f} + QML {qml_price:.2f})"
 
         return False, False, ""
+
 
     def _check_ict_silver_bullet_fvg(self, df: pd.DataFrame, symbol: str = "XAUUSD") -> Tuple[bool, bool, str]:
         """
@@ -1902,13 +1955,13 @@ class GoldScalpingBot:
             target_rr = opt.get("tp_ratio", 2.0)
             tp2 = ask + (sl_dist * target_rr)
         elif strat_id == "ICT_JUDAS_RTM_QM":
-            lowest_low = float(df['low'].iloc[-15:-1].min())
-            sl_buffer = 0.40 * sl_mult
+            lowest_low = float(df['low'].iloc[-18:-1].min())
+            sl_buffer = 0.80 * sl_mult
             sl = lowest_low - sl_buffer
             sl_dist = ask - sl
             if sl_dist < 2.00: sl = ask - 2.00; sl_dist = 2.00
             if sl_dist > 10.00: sl = ask - 10.00; sl_dist = 10.00
-            target_rr = opt.get("tp_ratio", 2.0)
+            target_rr = opt.get("tp_ratio", 2.2)
             tp2 = ask + (sl_dist * target_rr)
         elif strat_id == "ICT_SILVER_BULLET_FVG":
             lowest_low = float(df['low'].iloc[-8:-1].min())
@@ -2042,13 +2095,13 @@ class GoldScalpingBot:
             target_rr = opt.get("tp_ratio", 2.0)
             tp2 = bid - (sl_dist * target_rr)
         elif strat_id == "ICT_JUDAS_RTM_QM":
-            highest_high = float(df['high'].iloc[-15:-1].max())
-            sl_buffer = 0.40 * sl_mult
+            highest_high = float(df['high'].iloc[-18:-1].max())
+            sl_buffer = 0.80 * sl_mult
             sl = highest_high + sl_buffer
             sl_dist = sl - bid
             if sl_dist < 2.00: sl = bid + 2.00; sl_dist = 2.00
             if sl_dist > 10.00: sl = bid + 10.00; sl_dist = 10.00
-            target_rr = opt.get("tp_ratio", 2.0)
+            target_rr = opt.get("tp_ratio", 2.2)
             tp2 = bid - (sl_dist * target_rr)
         elif strat_id == "ICT_SILVER_BULLET_FVG":
             highest_high = float(df['high'].iloc[-8:-1].max())

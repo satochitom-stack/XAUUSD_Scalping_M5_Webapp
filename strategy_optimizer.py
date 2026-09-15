@@ -35,7 +35,7 @@ SETUP_PROFILES = {
         "name": "ICT Judas Swing & RTM Quasimodo",
         "icon": "🎯",
         "win_prob": 74.0,
-        "base_rr": 2.00,
+        "base_rr": 2.20,
         "min_rr": 1.50,
         "max_rr": 3.00,
         "trailing_type": "CONFLUENCE_STAGE",

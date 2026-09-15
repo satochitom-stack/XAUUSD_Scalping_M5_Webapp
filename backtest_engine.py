@@ -420,7 +420,7 @@ class HistoricalBacktester:
                 if rates is None or len(rates) == 0:
                     raise RuntimeError(f"Could not retrieve rates for {self.symbol}")
             df = pd.DataFrame(rates)
-            df["time"] = pd.to_datetime(df["time"], unit="s")
+            df["time"] = pd.to_datetime(df["time"], unit="s") + pd.Timedelta(hours=7)
             return df[["time", "open", "high", "low", "close", "tick_volume"]]
 
         self.m5_df = _fetch(mt5.TIMEFRAME_M5, bars_count)
