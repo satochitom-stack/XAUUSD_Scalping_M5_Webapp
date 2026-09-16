@@ -1,9 +1,79 @@
 {
   "threshold": 55,
   "is_enabled": true,
-  "saved_junk_trades": 27,
-  "last_updated": "2026-09-15T09:57:41.634054",
+  "saved_junk_trades": 37,
+  "last_updated": "2026-09-16T08:32:34.196329",
   "recent_evaluations": [
+    {
+      "time": "08:32:34",
+      "setup": "RTM_M4_CONSERVATIVE",
+      "score": 40,
+      "grade": "D",
+      "reason": "Score 40 < 55 | Low Volume Filter"
+    },
+    {
+      "time": "08:31:07",
+      "setup": "RTM_M4_CONSERVATIVE",
+      "score": 40,
+      "grade": "D",
+      "reason": "Score 40 < 55 | Low Volume Filter"
+    },
+    {
+      "time": "08:29:39",
+      "setup": "RTM_M4_CONSERVATIVE",
+      "score": 40,
+      "grade": "D",
+      "reason": "Score 40 < 55 | Low Volume Filter"
+    },
+    {
+      "time": "14:03:35",
+      "setup": "RTM_M4_CONSERVATIVE",
+      "score": 40,
+      "grade": "D",
+      "reason": "Score 40 < 55 | Low Volume Filter"
+    },
+    {
+      "time": "13:50:00",
+      "setup": "RTM_M4_CONSERVATIVE",
+      "score": 40,
+      "grade": "D",
+      "reason": "Score 40 < 55 | Low Volume Filter"
+    },
+    {
+      "time": "13:05:19",
+      "setup": "RTM_M4_CONSERVATIVE",
+      "score": 40,
+      "grade": "D",
+      "reason": "Score 40 < 55 | Low Volume Filter"
+    },
+    {
+      "time": "11:59:40",
+      "setup": "RTM_M4_CONSERVATIVE",
+      "score": 40,
+      "grade": "D",
+      "reason": "Score 40 < 55 | Low Volume Filter"
+    },
+    {
+      "time": "11:44:28",
+      "setup": "RTM_M4_CONSERVATIVE",
+      "score": 40,
+      "grade": "D",
+      "reason": "Score 40 < 55 | Low Volume Filter"
+    },
+    {
+      "time": "11:44:06",
+      "setup": "RTM_M4_CONSERVATIVE",
+      "score": 40,
+      "grade": "D",
+      "reason": "Score 40 < 55 | Low Volume Filter"
+    },
+    {
+      "time": "10:20:45",
+      "setup": "RTM_M4_CONSERVATIVE",
+      "score": 40,
+      "grade": "D",
+      "reason": "Score 40 < 55 | Low Volume Filter"
+    },
     {
       "time": "09:57:41",
       "setup": "RTM_M4_CONSERVATIVE",

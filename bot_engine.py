@@ -59,6 +59,55 @@ RISK_PROFILE_DEFAULTS = {
 RISK_OVERRIDE_MIN_PCT = 0.10
 RISK_OVERRIDE_MAX_PCT = 5.00
 
+# Per-pillar trading schedule defaults: start and end hours in Thai Time (GMT+7).
+# Setups that previously traded in the Asian session (Pullback Dr. Ekk, RTM M6, SMCxSTO H1)
+# now start at 14:00 (London session) through 24:00 (midnight).
+# Users can freely customize each setup's schedule via the Web Dashboard without bot restart.
+DEFAULT_TRADING_HOURS = {
+    "PULLBACK_DR_EKK":        {"start": "14:00", "end": "24:00"},
+    "RTM_M4_CONSERVATIVE":    {"start": "14:00", "end": "24:00"},
+    "RTM_M6_ELITE_GROWTH":    {"start": "14:00", "end": "24:00"},
+    "SMC_X_STO_H1":           {"start": "14:00", "end": "24:00"},
+    "KC_LIQUIDITY_DOMINANCE": {"start": "14:00", "end": "24:00"},
+    "ICT_JUDAS_RTM_QM":        {"start": "14:00", "end": "17:00"},
+    "ICT_SILVER_BULLET_FVG":   {"start": "19:00", "end": "23:00"},
+    "EW_WAVE3_BREAKER":        {"start": "14:00", "end": "02:00"},
+    "TUG_OF_WAR_M15":         {"start": "14:00", "end": "24:00"},
+}
+
+def is_time_in_range(check_t: dtime, start_str: str, end_str: str) -> bool:
+    """Checks if a given time (GMT+7) is inside [start_str, end_str].
+    Supports midnight wrap-around (e.g. 14:00 to 02:00) and 24:00 end of day."""
+    try:
+        def parse_t(s: str) -> dtime:
+            s = str(s).strip()
+            if s in ["24:00", "24:00:00", "00:00:00", "00:00"]:
+                if s.startswith("24"):
+                    return dtime(23, 59, 59)
+                return dtime(0, 0, 0)
+            parts = s.split(":")
+            h = int(parts[0])
+            m = int(parts[1]) if len(parts) > 1 else 0
+            sec = int(parts[2]) if len(parts) > 2 else 0
+            if h >= 24:
+                return dtime(23, 59, 59)
+            return dtime(h, m, sec)
+
+        t_start = parse_t(start_str)
+        t_end = parse_t(end_str)
+
+        # Special case: end is 24:00 or 00:00 meaning end of calendar day
+        if end_str.strip() in ["24:00", "24:00:00", "00:00"] and t_start > dtime(0, 0):
+            t_end = dtime(23, 59, 59)
+
+        if t_start <= t_end:
+            return t_start <= check_t <= t_end
+        else:
+            # Crosses midnight (e.g. 14:00 - 02:00)
+            return (check_t >= t_start) or (check_t <= t_end)
+    except Exception:
+        return True
+
 class GoldScalpingBot:
     """Scalping Strategy Execution Engine with Multi-Setup Concurrent Risk Guard."""
     def __init__(self, connector, config: dict):
@@ -222,6 +271,42 @@ class GoldScalpingBot:
         else:
             return "LATE NIGHT ROLLOVER"
 
+    def is_setup_in_trading_hours(self, strat_id: str, check_time: Optional[dtime] = None) -> Tuple[bool, str, str, str]:
+        """
+        Validates whether the given strategy setup is currently within its allowed trading hours.
+        Returns: (is_allowed, reason, start_time, end_time)
+        Reads overrides from config["strategy"]["trading_hours_overrides"][strat_id],
+        falling back to DEFAULT_TRADING_HOURS[strat_id].
+        """
+        hours_cfg = dict(DEFAULT_TRADING_HOURS.get(strat_id, {"start": "14:00", "end": "24:00"}))
+        strat_cfg = self.config.get("strategy", {})
+        overrides = strat_cfg.get("trading_hours_overrides", {})
+        if strat_id in overrides and isinstance(overrides[strat_id], dict):
+            s_custom = overrides[strat_id].get("start_time") or overrides[strat_id].get("start")
+            e_custom = overrides[strat_id].get("end_time") or overrides[strat_id].get("end")
+            if s_custom and e_custom:
+                hours_cfg["start"] = str(s_custom)
+                hours_cfg["end"] = str(e_custom)
+
+        start_str = hours_cfg.get("start", "14:00")
+        end_str = hours_cfg.get("end", "24:00")
+
+        if check_time is not None:
+            now_t = check_time
+        else:
+            sim_time = getattr(self.connector, "current_time", None)
+            if sim_time is not None and hasattr(sim_time, "time") and not hasattr(sim_time, "_mock_return_value"):
+                now_t = sim_time.time()
+            else:
+                th_tz = timezone(timedelta(hours=7))
+                now_t = datetime.now(th_tz).time()
+
+        allowed = is_time_in_range(now_t, start_str, end_str)
+        if not allowed:
+            reason = f"OUTSIDE TRADING HOURS ({now_t.strftime('%H:%M')} not in {start_str}-{end_str} Thai Time)"
+            return False, reason, start_str, end_str
+        return True, "IN_HOURS", start_str, end_str
+
     def run_iteration(self):
         """Called periodically by AccountManager to evaluate strategy."""
         if not self.is_running:
@@ -372,54 +457,61 @@ class GoldScalpingBot:
         smc_enabled = strat_cfg.get("smc_x_sto_h1_enabled", True)
         if smc_enabled and (strat_mode in ["ALL", "SMC_X_STO_H1", "SMCXSTO", "ALCHEMIST_4", "UPGRADED_4"]):
             if not self.has_open_positions_for_setup(symbol, "SMC_X_STO_H1"):
-                b_sig, s_sig, reason = self._check_smc_x_sto_h1(symbol)
-                if b_sig or s_sig:
-                    self._process_single_setup_signal(df, symbol, spread, "SMC_X_STO_H1", "BUY" if b_sig else "SELL", reason)
+                if self.is_setup_in_trading_hours("SMC_X_STO_H1")[0]:
+                    b_sig, s_sig, reason = self._check_smc_x_sto_h1(symbol)
+                    if b_sig or s_sig:
+                        self._process_single_setup_signal(df, symbol, spread, "SMC_X_STO_H1", "BUY" if b_sig else "SELL", reason)
 
         # --- PILLAR 4: RTM Quasimodo Multi-Model Institutional Engine (M15 + H1 Filter) ---
         rtm_mode = strat_cfg.get("rtm_mode", "PULLBACK_DUO")
         rtm_variants = ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH"]
         if strat_mode in ["ALL", "RTM", "ALCHEMIST_4", "UPGRADED_4"] or any(strat_mode == v for v in rtm_variants):
-            self._process_rtm_confluence_engine(df, symbol, spread, rtm_mode)
+            if self.is_setup_in_trading_hours("RTM_M6_ELITE_GROWTH")[0]:
+                self._process_rtm_confluence_engine(df, symbol, spread, rtm_mode)
 
         # --- PILLAR 5: Signature Pullback Engine (#PullBack ร้อยล้าน - Dr. Ekk / Trader Overseas) ---
         if strat_mode in ["ALL", "PULLBACK_DR_EKK", "DR_EKK_PULLBACK"]:
             if not self.has_open_positions_for_setup(symbol, "PULLBACK_DR_EKK"):
-                b_sig, s_sig, reason = self._check_pullback_dr_ekk(df, symbol)
-                if b_sig or s_sig:
-                    self._process_single_setup_signal(df, symbol, spread, "PULLBACK_DR_EKK", "BUY" if b_sig else "SELL", reason)
+                if self.is_setup_in_trading_hours("PULLBACK_DR_EKK")[0]:
+                    b_sig, s_sig, reason = self._check_pullback_dr_ekk(df, symbol)
+                    if b_sig or s_sig:
+                        self._process_single_setup_signal(df, symbol, spread, "PULLBACK_DR_EKK", "BUY" if b_sig else "SELL", reason)
 
         # --- PILLAR 5: KC Forex Trading (Liquidity Sweep + Candle Dominance) ---
         kc_enabled = strat_cfg.get("kc_liquidity_dominance_enabled", True)
         if kc_enabled and (strat_mode in ["ALL", "KC_LIQUIDITY_DOMINANCE", "KC_DOMINANCE", "ALCHEMIST_4", "UPGRADED_4"]):
             if not self.has_open_positions_for_setup(symbol, "KC_LIQUIDITY_DOMINANCE"):
-                b_sig, s_sig, reason = self._check_kc_liquidity_dominance(df, symbol)
-                if b_sig or s_sig:
-                    self._process_single_setup_signal(df, symbol, spread, "KC_LIQUIDITY_DOMINANCE", "BUY" if b_sig else "SELL", reason)
+                if self.is_setup_in_trading_hours("KC_LIQUIDITY_DOMINANCE")[0]:
+                    b_sig, s_sig, reason = self._check_kc_liquidity_dominance(df, symbol)
+                    if b_sig or s_sig:
+                        self._process_single_setup_signal(df, symbol, spread, "KC_LIQUIDITY_DOMINANCE", "BUY" if b_sig else "SELL", reason)
 
         # --- PILLAR 6: ICT Judas Swing & RTM Quasimodo (London Killzone) ---
         judas_qm_enabled = strat_cfg.get("ict_judas_rtm_qm_enabled", True)
         if judas_qm_enabled and (strat_mode in ["ALL", "ICT_JUDAS_RTM_QM", "JUDAS_QM"]):
             if not self.has_open_positions_for_setup(symbol, "ICT_JUDAS_RTM_QM"):
-                b_sig, s_sig, reason = self._check_ict_judas_rtm_qm(df, symbol)
-                if b_sig or s_sig:
-                    self._process_single_setup_signal(df, symbol, spread, "ICT_JUDAS_RTM_QM", "BUY" if b_sig else "SELL", reason)
+                if self.is_setup_in_trading_hours("ICT_JUDAS_RTM_QM")[0]:
+                    b_sig, s_sig, reason = self._check_ict_judas_rtm_qm(df, symbol)
+                    if b_sig or s_sig:
+                        self._process_single_setup_signal(df, symbol, spread, "ICT_JUDAS_RTM_QM", "BUY" if b_sig else "SELL", reason)
 
         # --- PILLAR 7: ICT NY Silver Bullet & FVG Imbalance (NY AM Killzone) ---
         silver_bullet_enabled = strat_cfg.get("ict_silver_bullet_fvg_enabled", True)
         if silver_bullet_enabled and (strat_mode in ["ALL", "ICT_SILVER_BULLET_FVG", "SILVER_BULLET"]):
             if not self.has_open_positions_for_setup(symbol, "ICT_SILVER_BULLET_FVG"):
-                b_sig, s_sig, reason = self._check_ict_silver_bullet_fvg(df, symbol)
-                if b_sig or s_sig:
-                    self._process_single_setup_signal(df, symbol, spread, "ICT_SILVER_BULLET_FVG", "BUY" if b_sig else "SELL", reason)
+                if self.is_setup_in_trading_hours("ICT_SILVER_BULLET_FVG")[0]:
+                    b_sig, s_sig, reason = self._check_ict_silver_bullet_fvg(df, symbol)
+                    if b_sig or s_sig:
+                        self._process_single_setup_signal(df, symbol, spread, "ICT_SILVER_BULLET_FVG", "BUY" if b_sig else "SELL", reason)
 
         # --- PILLAR 8: Elliott Wave 3 & SMC Breaker Propulsion (Trend Session) ---
         ew_breaker_enabled = strat_cfg.get("ew_wave3_breaker_enabled", True)
         if ew_breaker_enabled and (strat_mode in ["ALL", "EW_WAVE3_BREAKER", "EW_BREAKER"]):
             if not self.has_open_positions_for_setup(symbol, "EW_WAVE3_BREAKER"):
-                b_sig, s_sig, reason = self._check_ew_wave3_breaker(df, symbol)
-                if b_sig or s_sig:
-                    self._process_single_setup_signal(df, symbol, spread, "EW_WAVE3_BREAKER", "BUY" if b_sig else "SELL", reason)
+                if self.is_setup_in_trading_hours("EW_WAVE3_BREAKER")[0]:
+                    b_sig, s_sig, reason = self._check_ew_wave3_breaker(df, symbol)
+                    if b_sig or s_sig:
+                        self._process_single_setup_signal(df, symbol, spread, "EW_WAVE3_BREAKER", "BUY" if b_sig else "SELL", reason)
 
         # Update Trend Badge with News Radar
         if news_status.get("is_news_active"):
@@ -435,6 +527,13 @@ class GoldScalpingBot:
 
     def _process_single_setup_signal(self, df: pd.DataFrame, symbol: str, spread: float, strat_key: str, action_type: str, reason: str, is_asian_scalp: bool = False, **kwargs):
         """Processes and executes a signal specifically isolated for a single strategy setup."""
+        # 0. Evaluate Trading Hours Schedule Guard
+        in_hours, h_reason, s_t, e_t = self.is_setup_in_trading_hours(strat_key)
+        if not in_hours:
+            self.add_log(f"⏰ [HOURS GUARD] {strat_key} ({action_type}) Skipped | {h_reason}", "INFO")
+            self.latest_trend = f"WAITING ({strat_key}: Outside {s_t}-{e_t})"
+            return
+
         # 1. Evaluate Market Regime & Liquidity Filter Score (0 - 100)
         score_res = self.scorer.evaluate_market_confluence(df, spread, strat_key)
         if not score_res.get("is_allowed", True):
@@ -656,6 +755,10 @@ class GoldScalpingBot:
         if len(df) < 35:
             return False, False, ""
 
+        in_hours, _, _, _ = self.is_setup_in_trading_hours("PULLBACK_DR_EKK")
+        if not in_hours:
+            return False, False, ""
+
         b1 = df.iloc[-2]  # Last closed bar
         close_p = float(b1['close'])
         high_p = float(b1['high'])
@@ -811,12 +914,20 @@ class GoldScalpingBot:
             th_tz = timezone(timedelta(hours=7))
             now_time = datetime.now(th_tz).time()
 
-        # ICT Precision Killzones (London 14:00-17:30, NY 19:00-23:30 Thai Time)
-        in_london_kz = (dtime(14, 0) <= now_time <= dtime(17, 30))
-        in_ny_kz = (dtime(19, 0) <= now_time <= dtime(23, 30))
-        if not (in_london_kz or in_ny_kz):
+        in_hours, _, _, _ = self.is_setup_in_trading_hours("KC_LIQUIDITY_DOMINANCE", now_time)
+        if not in_hours:
             return False, False, ""
-        kz_name = "London KZ" if in_london_kz else "NY KZ"
+
+        # If not overridden by custom schedule, preserve precision dual-killzones
+        has_override = "KC_LIQUIDITY_DOMINANCE" in self.config.get("strategy", {}).get("trading_hours_overrides", {})
+        if not has_override:
+            in_london_kz = (dtime(14, 0) <= now_time <= dtime(17, 30))
+            in_ny_kz = (dtime(19, 0) <= now_time <= dtime(23, 30))
+            if not (in_london_kz or in_ny_kz):
+                return False, False, ""
+            kz_name = "London KZ" if in_london_kz else "NY KZ"
+        else:
+            kz_name = f"Active KZ ({now_time.strftime('%H:%M')})"
 
         b1 = df.iloc[-2]  # Trigger bar (last completed bar)
         b2 = df.iloc[-3]  # Previous bar
@@ -952,8 +1063,9 @@ class GoldScalpingBot:
             curr_date = now_dt.date()
             now_time = now_dt.time()
 
-        # 1. London Killzone window: 14:00 - 17:00 Thai Time
-        if not (dtime(14, 0) <= now_time <= dtime(17, 0)):
+        # 1. Trading hours window (Default London Killzone: 14:00 - 17:00 Thai Time)
+        in_hours, _, _, _ = self.is_setup_in_trading_hours("ICT_JUDAS_RTM_QM", now_time)
+        if not in_hours:
             return False, False, ""
 
         # 2. Daily Lock: Max 1 Judas QM trade per day
@@ -1089,8 +1201,9 @@ class GoldScalpingBot:
             th_tz = timezone(timedelta(hours=7))
             now_time = datetime.now(th_tz).time()
 
-        # NY AM Session / Silver Bullet window: 19:00 - 23:00 Thai Time
-        if not (dtime(19, 0) <= now_time <= dtime(23, 0)):
+        # Trading hours window (Default NY AM Session: 19:00 - 23:00 Thai Time)
+        in_hours, _, _, _ = self.is_setup_in_trading_hours("ICT_SILVER_BULLET_FVG", now_time)
+        if not in_hours:
             return False, False, ""
 
         hl = df['high'] - df['low']
@@ -1162,9 +1275,9 @@ class GoldScalpingBot:
             th_tz = timezone(timedelta(hours=7))
             now_time = datetime.now(th_tz).time()
 
-        # Trend hours: 14:00 - 02:00 Thai Time
-        in_trend_hours = (dtime(14, 0) <= now_time) or (now_time <= dtime(2, 0))
-        if not in_trend_hours:
+        # Trend hours window (Default: 14:00 - 02:00 Thai Time)
+        in_hours, _, _, _ = self.is_setup_in_trading_hours("EW_WAVE3_BREAKER", now_time)
+        if not in_hours:
             return False, False, ""
 
         b1 = df.iloc[-2]  # Trigger bar (last closed bar)
@@ -1241,6 +1354,10 @@ class GoldScalpingBot:
             h1_bar_time = df_h1['time'].iloc[-2]
             # 0. H1 Bar Lock: Max 1 trade per H1 bar to prevent over-trading
             if getattr(self, 'last_smc_sto_h1_bar_time', None) == h1_bar_time:
+                return False, False, ""
+
+            in_hours, _, _, _ = self.is_setup_in_trading_hours("SMC_X_STO_H1")
+            if not in_hours:
                 return False, False, ""
 
             # Indicators on H1
@@ -1405,6 +1522,10 @@ class GoldScalpingBot:
             m15_bar_time = df_m15['time'].iloc[-2]
             # M15 Bar Lock: Max 1 evaluation per closed M15 candle
             if getattr(self, 'last_rtm_m15_bar_time', None) == m15_bar_time:
+                return {}
+
+            in_hours, _, _, _ = self.is_setup_in_trading_hours("RTM_M6_ELITE_GROWTH")
+            if not in_hours:
                 return {}
 
             # 1. H1 Trend

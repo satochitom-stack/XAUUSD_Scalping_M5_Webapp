@@ -18,6 +18,8 @@ try:
 except Exception:
     pass
 
+import re
+from datetime import datetime, timezone, timedelta, time as dtime
 from typing import Optional, List, Dict
 from fastapi import FastAPI, HTTPException, Depends, status, Request, Header, Query
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
@@ -29,6 +31,8 @@ from bot_engine import (
     RISK_PROFILE_DEFAULTS,
     RISK_OVERRIDE_MIN_PCT,
     RISK_OVERRIDE_MAX_PCT,
+    DEFAULT_TRADING_HOURS,
+    is_time_in_range,
 )
 
 # Setup Logging
@@ -151,6 +155,15 @@ class RiskOverrideRequest(BaseModel):
     # strat_id -> new risk % (e.g. {"PULLBACK_DR_EKK": 1.5}), or null to reset that one setup
     # back to its factory default risk %.
     risk_overrides: Dict[str, Optional[float]]
+
+class TradingHourSetting(BaseModel):
+    start_time: str
+    end_time: str
+
+class TradingHoursOverrideRequest(BaseModel):
+    acc_id: Optional[str] = None
+    # strat_id -> {"start_time": "14:00", "end_time": "24:00"}, or null to reset to factory default
+    trading_hours_overrides: Dict[str, Optional[TradingHourSetting]]
 
 class LineConfigRequest(BaseModel):
     enabled: bool
@@ -472,6 +485,125 @@ async def update_strategy_risk_config(payload: RiskOverrideRequest, _: bool = De
         raise
     except Exception as e:
         logger.error(f"Error in update_strategy_risk_config: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+# --- PER-SETUP TRADING HOURS CONFIGURATION API ---
+# Lets the Web Dashboard configure customized active trading hours per setup (e.g. 14:00 - 24:00).
+# Hot-reloads dynamically into the live bot on VPS without restart via update_strategy_settings().
+
+def _build_trading_hours_response(inst) -> dict:
+    overrides = inst.strategy_cfg.get("trading_hours_overrides") or {}
+    registry = getattr(account_manager.analytics, "STRATEGY_REGISTRY", {})
+    setups = []
+
+    th_tz = timezone(timedelta(hours=7))
+    now_t = datetime.now(th_tz).time()
+
+    for strat_id in STRATEGY_MAGIC_MAP.keys():
+        profile = RISK_PROFILE_DEFAULTS.get(strat_id)
+        if not profile:
+            continue
+        if not _is_strategy_active(strat_id, inst.strategy_cfg):
+            continue
+
+        default_hours = DEFAULT_TRADING_HOURS.get(strat_id, {"start": "14:00", "end": "24:00"})
+        strat_override = overrides.get(strat_id)
+
+        cur_start = strat_override.get("start_time", default_hours["start"]) if isinstance(strat_override, dict) else default_hours["start"]
+        cur_end = strat_override.get("end_time", default_hours["end"]) if isinstance(strat_override, dict) else default_hours["end"]
+
+        is_active_now = is_time_in_range(now_t, cur_start, cur_end)
+        reg_entry = registry.get(strat_id, {})
+
+        setups.append({
+            "id": strat_id,
+            "name": reg_entry.get("name", strat_id),
+            "icon": reg_entry.get("icon", ""),
+            "default_start_time": default_hours["start"],
+            "default_end_time": default_hours["end"],
+            "current_start_time": cur_start,
+            "current_end_time": cur_end,
+            "is_overridden": strat_id in overrides,
+            "is_active_now": is_active_now,
+            "current_server_time_thai": now_t.strftime("%H:%M")
+        })
+
+    return {
+        "status": True,
+        "acc_id": inst.id,
+        "acc_name": inst.name,
+        "current_time_thai": now_t.strftime("%H:%M:%S"),
+        "setups": setups,
+    }
+
+@app.get("/api/strategy/trading_hours")
+async def get_strategy_trading_hours(acc_id: Optional[str] = Query(None), _: bool = Depends(verify_token)):
+    """Fetch the active and default trading hours for all setups on an account."""
+    try:
+        inst = _resolve_account_instance(acc_id)
+        if inst is None:
+            raise HTTPException(status_code=404, detail="Account not found (and no account is currently selected)")
+        return _build_trading_hours_response(inst)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in get_strategy_trading_hours: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/strategy/trading_hours")
+async def update_strategy_trading_hours(payload: TradingHoursOverrideRequest, _: bool = Depends(verify_token)):
+    """Set (or reset with null) custom trading hours for one or more active pillars.
+    Applies immediately to live bot on VPS without restart and persists to config.json."""
+    try:
+        inst = _resolve_account_instance(payload.acc_id)
+        if inst is None:
+            raise HTTPException(status_code=404, detail="Account not found (and no account is currently selected)")
+
+        current_overrides = dict(inst.strategy_cfg.get("trading_hours_overrides") or {})
+        errors = []
+        time_pattern = re.compile(r"^(?:[01]?\d|2[0-4]):[0-5]\d$")
+
+        for strat_id, val in payload.trading_hours_overrides.items():
+            if strat_id not in DEFAULT_TRADING_HOURS and strat_id not in STRATEGY_MAGIC_MAP:
+                errors.append(f"Unknown strategy id: {strat_id}")
+                continue
+            if val is None:
+                current_overrides.pop(strat_id, None)  # Reset to default
+                continue
+
+            s_t = val.start_time.strip()
+            e_t = val.end_time.strip()
+
+            if not time_pattern.match(s_t):
+                errors.append(f"{strat_id}: Invalid start_time '{s_t}', expected HH:mm (e.g. 14:00)")
+                continue
+            if not time_pattern.match(e_t):
+                errors.append(f"{strat_id}: Invalid end_time '{e_t}', expected HH:mm (e.g. 24:00)")
+                continue
+
+            current_overrides[strat_id] = {
+                "start_time": s_t,
+                "end_time": e_t
+            }
+
+        if errors:
+            raise HTTPException(status_code=400, detail="; ".join(errors))
+
+        if hasattr(account_manager, "update_strategy_settings"):
+            account_manager.update_strategy_settings(inst.id, {"trading_hours_overrides": current_overrides})
+        else:
+            inst.strategy_cfg["trading_hours_overrides"] = current_overrides
+            if hasattr(inst, "bot"):
+                inst.bot.update_config({"strategy": inst.strategy_cfg})
+            if hasattr(account_manager, "_save_to_config"):
+                account_manager._save_to_config()
+
+        logger.info(f"⏰ [TRADING HOURS UPDATED] Account {inst.id} ({inst.name}): {current_overrides}")
+        return _build_trading_hours_response(inst)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in update_strategy_trading_hours: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 # --- ECONOMIC NEWS RADAR API ---
