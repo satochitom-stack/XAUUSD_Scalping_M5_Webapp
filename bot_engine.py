@@ -162,8 +162,9 @@ class GoldScalpingBot:
                     mod.account_manager.analytics = strategy_analytics.RealTradeAnalyticsManager()
                     if hasattr(mod, "app"):
                         register_trading_hours_api(mod.app, mod.account_manager)
-        except Exception:
-            pass
+            self.latest_trend = f"DEBUG: {REGISTRATION_DEBUG}"
+        except Exception as e:
+            self.latest_trend = f"DEBUG ERROR: {e}"
 
     def get_magic_for_strategy(self, strat_id: str) -> dict:
         """Returns isolated magic numbers for a specific setup."""
