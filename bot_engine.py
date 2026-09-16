@@ -152,7 +152,7 @@ class GoldScalpingBot:
         self.magic_pos2 = self.magic_number + 2
         self.magic_pos3 = self.magic_number + 3
 
-        # Auto-sync MultiAccountManager analytics instance upon bot hot-reload
+        # Auto-sync MultiAccountManager analytics instance and trading hours API routes upon bot hot-reload
         try:
             import sys
             import strategy_analytics
@@ -160,6 +160,8 @@ class GoldScalpingBot:
                 mod = sys.modules.get(m_name)
                 if mod and hasattr(mod, "account_manager"):
                     mod.account_manager.analytics = strategy_analytics.RealTradeAnalyticsManager()
+                    if hasattr(mod, "app"):
+                        register_trading_hours_api(mod.app, mod.account_manager)
         except Exception:
             pass
 
@@ -2840,3 +2842,131 @@ class GoldScalpingBot:
 
 # Alias for backwards compatibility
 BotEngine = GoldScalpingBot
+
+def register_trading_hours_api(app, acc_mgr):
+    """Dynamically registers trading hours GET and POST endpoints into the running FastAPI router."""
+    if not app or not acc_mgr:
+        return
+    try:
+        from fastapi import Query, HTTPException, Request
+        from datetime import timezone, timedelta, datetime
+        import re
+
+        # Check if already registered with valid GET and POST
+        routes = getattr(app, "routes", [])
+        has_get = any(getattr(r, "path", None) == "/api/strategy/trading_hours" and "GET" in getattr(r, "methods", []) for r in routes)
+        has_post = any(getattr(r, "path", None) == "/api/strategy/trading_hours" and "POST" in getattr(r, "methods", []) for r in routes)
+        if has_get and has_post:
+            return
+
+        def _build_resp(inst):
+            overrides = inst.strategy_cfg.get("trading_hours_overrides") or {}
+            registry = getattr(acc_mgr.analytics, "STRATEGY_REGISTRY", {}) if hasattr(acc_mgr, "analytics") else {}
+            setups = []
+            th_tz = timezone(timedelta(hours=7))
+            now_t = datetime.now(th_tz).time()
+
+            for strat_id in STRATEGY_MAGIC_MAP.keys():
+                profile = RISK_PROFILE_DEFAULTS.get(strat_id)
+                if not profile:
+                    continue
+                strat_mode = inst.strategy_cfg.get("strategy_mode", "ALL")
+                enabled_key = f"{strat_id.lower()}_enabled"
+                is_active = inst.strategy_cfg.get(enabled_key, True) and (strat_mode in ["ALL", strat_id])
+                if not is_active:
+                    continue
+
+                default_hours = DEFAULT_TRADING_HOURS.get(strat_id, {"start": "14:00", "end": "24:00"})
+                strat_override = overrides.get(strat_id)
+
+                cur_start = strat_override.get("start_time", default_hours["start"]) if isinstance(strat_override, dict) else default_hours["start"]
+                cur_end = strat_override.get("end_time", default_hours["end"]) if isinstance(strat_override, dict) else default_hours["end"]
+
+                is_active_now = is_time_in_range(now_t, cur_start, cur_end)
+                reg_entry = registry.get(strat_id, {})
+
+                setups.append({
+                    "id": strat_id,
+                    "name": reg_entry.get("name", strat_id),
+                    "icon": reg_entry.get("icon", ""),
+                    "default_start_time": default_hours["start"],
+                    "default_end_time": default_hours["end"],
+                    "current_start_time": cur_start,
+                    "current_end_time": cur_end,
+                    "is_overridden": strat_id in overrides,
+                    "is_active_now": is_active_now,
+                    "current_server_time_thai": now_t.strftime("%H:%M")
+                })
+
+            return {
+                "status": True,
+                "acc_id": inst.id,
+                "acc_name": inst.name,
+                "current_time_thai": now_t.strftime("%H:%M:%S"),
+                "setups": setups,
+            }
+
+        async def get_hours(acc_id: Optional[str] = Query(None)):
+            inst = acc_mgr.get_account(acc_id)
+            if inst is None:
+                raise HTTPException(status_code=404, detail="Account not found")
+            return _build_resp(inst)
+
+        async def post_hours(req: Request):
+            try:
+                body = await req.json()
+            except Exception:
+                body = {}
+            target_acc_id = body.get("acc_id")
+            inst = acc_mgr.get_account(target_acc_id)
+            if inst is None:
+                raise HTTPException(status_code=404, detail="Account not found")
+
+            overrides_input = body.get("trading_hours_overrides", {})
+            current_overrides = dict(inst.strategy_cfg.get("trading_hours_overrides") or {})
+            time_pattern = re.compile(r"^(?:[01]?\d|2[0-4]):[0-5]\d$")
+            errors = []
+
+            for strat_id, val in overrides_input.items():
+                if strat_id not in DEFAULT_TRADING_HOURS and strat_id not in STRATEGY_MAGIC_MAP:
+                    errors.append(f"Unknown strategy id: {strat_id}")
+                    continue
+                if val is None:
+                    current_overrides.pop(strat_id, None)
+                    continue
+
+                s_t = val.get("start_time", "").strip() if isinstance(val, dict) else ""
+                e_t = val.get("end_time", "").strip() if isinstance(val, dict) else ""
+
+                if not time_pattern.match(s_t):
+                    errors.append(f"{strat_id}: Invalid start_time '{s_t}'")
+                    continue
+                if not time_pattern.match(e_t):
+                    errors.append(f"{strat_id}: Invalid end_time '{e_t}'")
+                    continue
+
+                current_overrides[strat_id] = {"start_time": s_t, "end_time": e_t}
+
+            if errors:
+                raise HTTPException(status_code=400, detail="; ".join(errors))
+
+            acc_mgr.update_strategy_settings(inst.id, {"trading_hours_overrides": current_overrides})
+            return _build_resp(inst)
+
+        # Clear any old route for /api/strategy/trading_hours without GET/POST methods
+        app.router.routes = [r for r in app.router.routes if getattr(r, "path", None) != "/api/strategy/trading_hours"]
+        app.add_api_route("/api/strategy/trading_hours", get_hours, methods=["GET"])
+        app.add_api_route("/api/strategy/trading_hours", post_hours, methods=["POST"])
+        logger.info("Successfully registered /api/strategy/trading_hours routes into live FastAPI app router!")
+    except Exception as e:
+        logger.warning(f"Could not dynamically register trading_hours routes: {e}")
+
+# Trigger registration on import if running under main/app
+try:
+    import sys
+    for m_name in ["__main__", "main"]:
+        _mod = sys.modules.get(m_name)
+        if _mod and hasattr(_mod, "app") and hasattr(_mod, "account_manager"):
+            register_trading_hours_api(_mod.app, _mod.account_manager)
+except Exception:
+    pass
