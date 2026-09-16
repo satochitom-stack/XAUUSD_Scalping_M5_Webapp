@@ -874,6 +874,50 @@ async def trigger_git_update(auth: bool = Depends(verify_token)):
         logger.error(f"Error running git pull: {e}")
         return JSONResponse(status_code=500, content={"status": False, "error": str(e)})
 
+def restart_webapp_process(delay_sec: float = 1.0):
+    """Spawns a detached process to restart run_webapp.py and cleanly terminates the current process."""
+    import sys
+    import os
+    import subprocess
+    import threading
+    import time
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    py_exe = sys.executable
+    launcher = os.path.join(base_dir, "run_webapp.py")
+
+    cmd_str = f'ping 127.0.0.1 -n 3 >nul & "{py_exe}" "{launcher}"'
+    DETACHED_FLAGS = 0x00000008 | 0x00000200  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+    try:
+        subprocess.Popen(
+            f'cmd.exe /c "{cmd_str}"',
+            shell=True,
+            cwd=base_dir,
+            creationflags=DETACHED_FLAGS,
+            close_fds=True
+        )
+        logger.info(f"🚀 Detached launcher spawned: {cmd_str}")
+    except Exception as e:
+        logger.error(f"Failed to spawn detached launcher: {e}")
+        return False
+
+    def _do_exit():
+        time.sleep(delay_sec)
+        logger.info("Exiting current process to allow new server to bind...")
+        os._exit(0)
+
+    threading.Thread(target=_do_exit, daemon=True).start()
+    return True
+
+@app.post("/api/system/restart")
+async def trigger_system_restart(auth: bool = Depends(verify_token)):
+    """Restarts the WebApp server and bot engine cleanly without requiring VPS RDP access."""
+    success = restart_webapp_process(delay_sec=1.0)
+    if success:
+        return {"status": True, "message": "Server restarting in 1 second. Please wait 3-5 seconds and refresh."}
+    else:
+        return JSONResponse(status_code=500, content={"status": False, "error": "Failed to trigger restart"})
+
 if __name__ == "__main__":
     import uvicorn
     host = app_config.get("server", {}).get("host", "0.0.0.0")

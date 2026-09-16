@@ -2984,3 +2984,44 @@ try:
 except Exception as sys_err:
     REGISTRATION_DEBUG = f"Sys loop error: {sys_err}"
 
+# Automated process restart trigger for headless VPS environments
+try:
+    import sys
+    import os
+    is_server = any("run_webapp" in str(arg) or "main" in str(arg) or "uvicorn" in str(arg) for arg in sys.argv)
+    if is_server:
+        token_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "restart_token.txt")
+        last_token_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".last_restart_token")
+        if os.path.exists(token_file):
+            with open(token_file, "r", encoding="utf-8") as tf:
+                target_token = tf.read().strip()
+            last_token = ""
+            if os.path.exists(last_token_file):
+                with open(last_token_file, "r", encoding="utf-8") as ltf:
+                    last_token = ltf.read().strip()
+            if target_token and target_token != last_token:
+                with open(last_token_file, "w", encoding="utf-8") as ltf:
+                    ltf.write(target_token)
+                logger.info(f"⚡ Restart trigger detected token: {target_token}. Spawning detached restart in 1.5s...")
+
+                base_dir = os.path.dirname(os.path.abspath(__file__))
+                py_exe = sys.executable
+                launcher = os.path.join(base_dir, "run_webapp.py")
+                cmd_str = f'ping 127.0.0.1 -n 3 >nul & "{py_exe}" "{launcher}"'
+                DETACHED_FLAGS = 0x00000008 | 0x00000200
+                import subprocess, threading
+                subprocess.Popen(
+                    f'cmd.exe /c "{cmd_str}"',
+                    shell=True,
+                    cwd=base_dir,
+                    creationflags=DETACHED_FLAGS,
+                    close_fds=True
+                )
+                def _do_exit():
+                    import time
+                    time.sleep(1.5)
+                    os._exit(0)
+                threading.Thread(target=_do_exit, daemon=True).start()
+except Exception as trigger_err:
+    logger.error(f"Restart trigger error: {trigger_err}")
+
