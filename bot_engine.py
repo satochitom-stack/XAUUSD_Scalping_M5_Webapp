@@ -2958,7 +2958,14 @@ def register_trading_hours_api(app, acc_mgr):
         app.router.routes = [r for r in app.router.routes if getattr(r, "path", None) != "/api/strategy/trading_hours"]
         app.add_api_route("/api/strategy/trading_hours", get_hours, methods=["GET"])
         app.add_api_route("/api/strategy/trading_hours", post_hours, methods=["POST"])
-        REGISTRATION_DEBUG = f"Registered! Old was: {existing_info}, New total routes: {len(app.router.routes)}"
+        
+        # Invalidate / rebuild Starlette middleware stack so new routes are matched immediately in live server
+        try:
+            app.middleware_stack = app.build_middleware_stack()
+        except Exception:
+            app.middleware_stack = None
+
+        REGISTRATION_DEBUG = f"Registered! Old was: {existing_info}, New total routes: {len(app.router.routes)}, Stack Rebuilt"
         logger.info(REGISTRATION_DEBUG)
     except Exception as e:
         REGISTRATION_DEBUG = f"ERROR: {e}"

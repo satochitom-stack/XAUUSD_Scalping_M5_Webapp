@@ -826,6 +826,10 @@ async def hot_reload_modules(auth: bool = Depends(verify_token)):
                     logger.info(f"Dynamically registered route: {sig}")
             if added_routes > 0:
                 logger.info(f"Registered {added_routes} new API routes into live router")
+                try:
+                    app.middleware_stack = app.build_middleware_stack()
+                except Exception:
+                    app.middleware_stack = None
         except Exception as route_err:
             logger.warning(f"Could not synchronize routes: {route_err}")
 
