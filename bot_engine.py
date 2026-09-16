@@ -2843,21 +2843,21 @@ class GoldScalpingBot:
 # Alias for backwards compatibility
 BotEngine = GoldScalpingBot
 
+REGISTRATION_DEBUG = "Uninitialized"
+
 def register_trading_hours_api(app, acc_mgr):
     """Dynamically registers trading hours GET and POST endpoints into the running FastAPI router."""
+    global REGISTRATION_DEBUG
     if not app or not acc_mgr:
+        REGISTRATION_DEBUG = f"Failed: app={app is not None}, acc_mgr={acc_mgr is not None}"
         return
     try:
         from fastapi import Query, HTTPException, Request
         from datetime import timezone, timedelta, datetime
         import re
 
-        # Check if already registered with valid GET and POST
         routes = getattr(app, "routes", [])
-        has_get = any(getattr(r, "path", None) == "/api/strategy/trading_hours" and "GET" in getattr(r, "methods", []) for r in routes)
-        has_post = any(getattr(r, "path", None) == "/api/strategy/trading_hours" and "POST" in getattr(r, "methods", []) for r in routes)
-        if has_get and has_post:
-            return
+        existing_info = [(getattr(r, "path", None), list(getattr(r, "methods", []))) for r in routes if "trading_hours" in str(getattr(r, "path", None))]
 
         def _build_resp(inst):
             overrides = inst.strategy_cfg.get("trading_hours_overrides") or {}
@@ -2957,16 +2957,22 @@ def register_trading_hours_api(app, acc_mgr):
         app.router.routes = [r for r in app.router.routes if getattr(r, "path", None) != "/api/strategy/trading_hours"]
         app.add_api_route("/api/strategy/trading_hours", get_hours, methods=["GET"])
         app.add_api_route("/api/strategy/trading_hours", post_hours, methods=["POST"])
-        logger.info("Successfully registered /api/strategy/trading_hours routes into live FastAPI app router!")
+        REGISTRATION_DEBUG = f"Registered! Old was: {existing_info}, New total routes: {len(app.router.routes)}"
+        logger.info(REGISTRATION_DEBUG)
     except Exception as e:
-        logger.warning(f"Could not dynamically register trading_hours routes: {e}")
+        REGISTRATION_DEBUG = f"ERROR: {e}"
+        logger.warning(REGISTRATION_DEBUG)
 
 # Trigger registration on import if running under main/app
 try:
     import sys
-    for m_name in ["__main__", "main"]:
-        _mod = sys.modules.get(m_name)
+    found_mods = []
+    for m_name, _mod in list(sys.modules.items()):
         if _mod and hasattr(_mod, "app") and hasattr(_mod, "account_manager"):
+            found_mods.append(m_name)
             register_trading_hours_api(_mod.app, _mod.account_manager)
-except Exception:
-    pass
+    if not found_mods:
+        REGISTRATION_DEBUG = f"No module had app+acc_mgr in sys.modules ({list(sys.modules.keys())[:15]})"
+except Exception as sys_err:
+    REGISTRATION_DEBUG = f"Sys loop error: {sys_err}"
+

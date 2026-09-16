@@ -832,7 +832,8 @@ async def hot_reload_modules(auth: bool = Depends(verify_token)):
         return {
             "status": True,
             "message": f"Hot-reloaded bot_engine, configs, and {len(reloaded_accounts)} account instances.",
-            "accounts": reloaded_accounts
+            "accounts": reloaded_accounts,
+            "route_debug": getattr(bot_engine, "REGISTRATION_DEBUG", "No debug found")
         }
     except Exception as e:
         logger.error(f"Hot reload error: {e}")
