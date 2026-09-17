@@ -95,7 +95,17 @@
         "ict_judas_rtm_qm_enabled": true,
         "ict_silver_bullet_fvg_enabled": true,
         "ew_wave3_breaker_enabled": true,
-        "max_concurrent_setups": 6
+        "max_concurrent_setups": 6,
+        "risk_overrides": {
+          "PULLBACK_DR_EKK": 1.0,
+          "RTM_M4_CONSERVATIVE": 1.0,
+          "RTM_M6_ELITE_GROWTH": 1.0,
+          "KC_LIQUIDITY_DOMINANCE": 1.0,
+          "SMC_X_STO_H1": 1.0,
+          "EW_WAVE3_BREAKER": 1.0,
+          "ICT_JUDAS_RTM_QM": 0.5,
+          "ICT_SILVER_BULLET_FVG": 0.5
+        }
       }
     }
   ],

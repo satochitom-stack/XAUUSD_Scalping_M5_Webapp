@@ -46,11 +46,11 @@ STRATEGY_MAGIC_MAP = {
 # risk % per setup without touching code or restarting the bot - see RISK_OVERRIDE_MIN/MAX_PCT
 # and the "risk_overrides" key inside config["strategy"] read below.
 RISK_PROFILE_DEFAULTS = {
-    "PULLBACK_DR_EKK":        {"default_pct": 2.0, "mode": "STEP_UP_COMPOUNDING"},
-    "RTM_M4_CONSERVATIVE":    {"default_pct": 2.0, "mode": "STEP_UP_COMPOUNDING"},
-    "RTM_M6_ELITE_GROWTH":    {"default_pct": 2.0, "mode": "STEP_UP_COMPOUNDING"},
+    "PULLBACK_DR_EKK":        {"default_pct": 1.0, "mode": "STEP_UP_COMPOUNDING"},
+    "RTM_M4_CONSERVATIVE":    {"default_pct": 1.0, "mode": "STEP_UP_COMPOUNDING"},
+    "RTM_M6_ELITE_GROWTH":    {"default_pct": 1.0, "mode": "STEP_UP_COMPOUNDING"},
     "SMC_X_STO_H1":           {"default_pct": 1.0, "mode": "FIXED"},
-    "KC_LIQUIDITY_DOMINANCE": {"default_pct": 1.5, "mode": "STEP_UP_COMPOUNDING"},
+    "KC_LIQUIDITY_DOMINANCE": {"default_pct": 1.0, "mode": "STEP_UP_COMPOUNDING"},
     "ICT_JUDAS_RTM_QM":        {"default_pct": 0.5, "mode": "FIXED"},
     "ICT_SILVER_BULLET_FVG":   {"default_pct": 0.5, "mode": "FIXED"},
     "EW_WAVE3_BREAKER":        {"default_pct": 1.0, "mode": "FIXED"},
@@ -2131,7 +2131,7 @@ class GoldScalpingBot:
         elif strat_id == "EW_WAVE3_BREAKER":
             risk_label = "1.0% Risk"
         elif strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH", "PULLBACK_DR_EKK", "KC_LIQUIDITY_DOMINANCE"]:
-            risk_label = "Step-Up 1.5% Risk" if strat_id == "KC_LIQUIDITY_DOMINANCE" else ("Step-Up 2% Risk" if self.config.get("strategy", {}).get("enable_step_up_compounding", True) else "2.0% Risk")
+            risk_label = "Step-Up 1.0% Risk" if self.config.get("strategy", {}).get("enable_step_up_compounding", True) else "1.0% Risk"
         elif strat_id in ["NEWS_MOMENTUM_EXPANSION", "ASIAN_RANGE_SNIPER"]:
             lot_mult = 0.5  # Fixed 0.5% risk per user instruction
             risk_label = "0.5% Risk"
@@ -2271,7 +2271,7 @@ class GoldScalpingBot:
         elif strat_id == "EW_WAVE3_BREAKER":
             risk_label = "1.0% Risk"
         elif strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH", "PULLBACK_DR_EKK", "KC_LIQUIDITY_DOMINANCE"]:
-            risk_label = "Step-Up 1.5% Risk" if strat_id == "KC_LIQUIDITY_DOMINANCE" else ("Step-Up 2% Risk" if self.config.get("strategy", {}).get("enable_step_up_compounding", True) else "2.0% Risk")
+            risk_label = "Step-Up 1.0% Risk" if self.config.get("strategy", {}).get("enable_step_up_compounding", True) else "1.0% Risk"
         elif strat_id in ["NEWS_MOMENTUM_EXPANSION", "ASIAN_RANGE_SNIPER"]:
             lot_mult = 0.5  # Fixed 0.5% risk per user instruction
             risk_label = "0.5% Risk"

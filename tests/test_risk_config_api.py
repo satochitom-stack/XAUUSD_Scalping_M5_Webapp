@@ -35,11 +35,11 @@ class TestRiskProfileDefaults(unittest.TestCase):
         """Test the profile table matches the exact percentages each pillar used before this
         feature existed, so the refactor is behavior-preserving with no override set."""
         expected = {
-            "PULLBACK_DR_EKK":        (2.0, "STEP_UP_COMPOUNDING"),
-            "RTM_M4_CONSERVATIVE":    (2.0, "STEP_UP_COMPOUNDING"),
-            "RTM_M6_ELITE_GROWTH":    (2.0, "STEP_UP_COMPOUNDING"),
+            "PULLBACK_DR_EKK":        (1.0, "STEP_UP_COMPOUNDING"),
+            "RTM_M4_CONSERVATIVE":    (1.0, "STEP_UP_COMPOUNDING"),
+            "RTM_M6_ELITE_GROWTH":    (1.0, "STEP_UP_COMPOUNDING"),
             "SMC_X_STO_H1":           (1.0, "FIXED"),
-            "KC_LIQUIDITY_DOMINANCE": (1.5, "STEP_UP_COMPOUNDING"),
+            "KC_LIQUIDITY_DOMINANCE": (1.0, "STEP_UP_COMPOUNDING"),
             "TUG_OF_WAR_M15":         (0.5, "FIXED"),
         }
         for strat_id, (default_pct, mode) in expected.items():
@@ -69,10 +69,10 @@ class TestCalculateLotSizeRiskOverride(unittest.TestCase):
         self.assertAlmostEqual(lot, 0.25, places=2)
 
     def test_no_override_uses_default_percent_step_up_mode(self):
-        """Test PULLBACK_DR_EKK (STEP_UP mode, disabled here) uses its 2.0% default balance-based sizing."""
+        """Test PULLBACK_DR_EKK (STEP_UP mode, disabled here) uses its 1.0% default balance-based sizing."""
         lot = self.bot.calculate_lot_size(2.00, strat_id="PULLBACK_DR_EKK")
-        # Step-up disabled -> plain balance * 2% = 200 risk USD; 200 / (2.00*100) = 1.0 lot
-        self.assertAlmostEqual(lot, 1.0, places=2)
+        # Step-up disabled -> plain balance * 1% = 100 risk USD; 100 / (2.00*100) = 0.5 lot
+        self.assertAlmostEqual(lot, 0.5, places=2)
 
     def test_override_changes_fixed_mode_lot_size(self):
         """Test a risk_overrides entry changes TUG_OF_WAR_M15's sizing (FIXED mode)."""

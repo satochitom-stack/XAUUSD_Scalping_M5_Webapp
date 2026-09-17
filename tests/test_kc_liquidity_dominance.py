@@ -77,14 +77,14 @@ class TestKCLiquidityDominanceStrategy(unittest.TestCase):
 
     def test_risk_isolation_rules(self):
         """
-        Verify 1.5% Step-Up Compounding Risk for KC_LIQUIDITY_DOMINANCE:
-        - $10,000 balance * 1.5% = $150 risk
+        Verify 1.0% Step-Up Compounding Risk for KC_LIQUIDITY_DOMINANCE:
+        - $10,000 balance * 1.0% = $100 risk
         - $5.00 SL distance = 500 points
-        - Lot = $150 / 500 = 0.30 lot
+        - Lot = $100 / 500 = 0.20 lot
         """
         sl_dist = 5.00
         lot_kc = self.bot.calculate_lot_size(sl_dist, strat_id="KC_LIQUIDITY_DOMINANCE")
-        self.assertAlmostEqual(lot_kc, 0.30, places=2)
+        self.assertAlmostEqual(lot_kc, 0.20, places=2)
 
     def test_has_open_positions_isolation(self):
         """Verify position isolation protects KC_LIQUIDITY_DOMINANCE correctly."""

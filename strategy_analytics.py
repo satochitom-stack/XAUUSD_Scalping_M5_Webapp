@@ -33,7 +33,7 @@ class RealTradeAnalyticsManager:
             "best_session": "London & NY (14:00 - 02:00)",
             "magic_numbers": [555860, 555861, 555862, 555863],
             "avg_rr": "1:2.5",
-            "description": "กลยุทธ์จากหนังสือ #PullBack ร้อยล้าน (โดย พี่เอก / Trader Overseas): 3-Confluence (EMA 60 + Fib 38.2-61.8% + S/R Flip) + Trigger Pinbar/Engulfing แบ่งปิด TP1 1.5R กันทุน แล้วรันเทรนด์ด้วย EMA 60 Trailing Stop (ความเสี่ยง Step-Up 2.0%)"
+            "description": "กลยุทธ์จากหนังสือ #PullBack ร้อยล้าน (โดย พี่เอก / Trader Overseas): 3-Confluence (EMA 60 + Fib 38.2-61.8% + S/R Flip) + Trigger Pinbar/Engulfing แบ่งปิด TP1 1.5R กันทุน แล้วรันเทรนด์ด้วย EMA 60 Trailing Stop (ความเสี่ยง Step-Up 1.0%)"
         },
         "RTM_M4_CONSERVATIVE": {
             "id": "RTM_M4_CONSERVATIVE",
@@ -44,7 +44,7 @@ class RealTradeAnalyticsManager:
             "best_session": "London & NY (14:00 - 23:00)",
             "magic_numbers": [777004, 777014, 777024, 777034],
             "avg_rr": "1:2.0",
-            "description": "RTM Conservative QML Retest (รอราคาย่อตัวลึกทดสอบแนว QML ไม่เข้าที่ยอด | เกรด A/A+ | ความเสี่ยง Step-Up 2.0% | TP 2.0R)"
+            "description": "RTM Conservative QML Retest (รอราคาย่อตัวลึกทดสอบแนว QML ไม่เข้าที่ยอด | เกรด A/A+ | ความเสี่ยง Step-Up 1.0% | TP 2.0R)"
         },
         "RTM_M6_ELITE_GROWTH": {
             "id": "RTM_M6_ELITE_GROWTH",
@@ -55,7 +55,7 @@ class RealTradeAnalyticsManager:
             "best_session": "London & NY (14:00 - 23:00)",
             "magic_numbers": [777006, 777016, 777026, 777036],
             "avg_rr": "1:2.0",
-            "description": "RTM Elite Growth OTE Retest (รอราคาย่อลึกในโซน Fib 61.8-78.6% ลดระยะ SL | เกรด A/A+ | ความเสี่ยง Step-Up 2.0% | TP 2.0R)"
+            "description": "RTM Elite Growth OTE Retest (รอราคาย่อลึกในโซน Fib 61.8-78.6% ลดระยะ SL | เกรด A/A+ | ความเสี่ยง Step-Up 1.0% | TP 2.0R)"
         },
         "SMC_X_STO_H1": {
             "id": "SMC_X_STO_H1",
@@ -724,15 +724,15 @@ class RealTradeAnalyticsManager:
 
         # Set active status tags based on real configuration
         if "PULLBACK_DR_EKK" in setups_data:
-            setups_data["PULLBACK_DR_EKK"]["status"] = "🟢 ACTIVE (Signature Pullback Step-Up 2.0%)" if ekk_active else "⏸️ PAUSED (ปิดการทำงาน)"
+            setups_data["PULLBACK_DR_EKK"]["status"] = "🟢 ACTIVE (Signature Pullback Step-Up 1.0%)" if ekk_active else "⏸️ PAUSED (ปิดการทำงาน)"
         if "RTM_M4_CONSERVATIVE" in setups_data:
             setups_data["RTM_M4_CONSERVATIVE"]["status"] = "🟢 ACTIVE (Confluence Grade A/A+)" if m4_active else "⏸️ PAUSED (ปิดการทำงาน)"
         if "RTM_M6_ELITE_GROWTH" in setups_data:
-            setups_data["RTM_M6_ELITE_GROWTH"]["status"] = "🟢 ACTIVE (Elite Growth Step-Up 2.0%)" if m6_active else "⏸️ PAUSED (ปิดการทำงาน)"
+            setups_data["RTM_M6_ELITE_GROWTH"]["status"] = "🟢 ACTIVE (Elite Growth Step-Up 1.0%)" if m6_active else "⏸️ PAUSED (ปิดการทำงาน)"
         if "SMC_X_STO_H1" in setups_data:
             setups_data["SMC_X_STO_H1"]["status"] = "🟢 ACTIVE (Devil H1 OB+STO)" if smc_active else "⏸️ PAUSED (ปิดการทำงาน)"
         if "KC_LIQUIDITY_DOMINANCE" in setups_data:
-            setups_data["KC_LIQUIDITY_DOMINANCE"]["status"] = "🟢 ACTIVE (KC Candle Dominance Step-Up 1.5%)" if kc_active else "⏸️ PAUSED (ปิดการทำงาน)"
+            setups_data["KC_LIQUIDITY_DOMINANCE"]["status"] = "🟢 ACTIVE (KC Candle Dominance Step-Up 1.0%)" if kc_active else "⏸️ PAUSED (ปิดการทำงาน)"
         if "ICT_JUDAS_RTM_QM" in setups_data:
             setups_data["ICT_JUDAS_RTM_QM"]["status"] = "🟢 ACTIVE (Judas RTM QM 0.5%)" if judas_active else "⏸️ PAUSED (ปิดการทำงาน)"
         if "ICT_SILVER_BULLET_FVG" in setups_data:

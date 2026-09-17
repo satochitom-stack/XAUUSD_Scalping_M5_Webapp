@@ -281,24 +281,24 @@ class TestRTMEngine(unittest.TestCase):
         self.assertFalse(self.bot.active_rtm_setup["m6_filled"])
 
     def test_step_up_compounding_lot_calculation(self):
-        """Test Step-Up Compounding calculates 2% risk on tiered milestones."""
-        self.bot.config["strategy"]["risk_percent"] = 2.0
+        """Test Step-Up Compounding calculates 1% risk on tiered milestones."""
+        self.bot.config["strategy"]["risk_percent"] = 1.0
         self.bot.config["strategy"]["enable_step_up_compounding"] = True
 
-        # Tier 1 ($10,000 base) -> 2% = $200 risk. With SL dist 3.00 USD (300 pts) -> 200 / (3.0 * 100) = 0.67 Lot
+        # Tier 1 ($10,000 base) -> 1% = $100 risk. With SL dist 3.00 USD (300 pts) -> 100 / (3.0 * 100) = 0.33 Lot
         self.mock_connector.get_account_info.return_value = {"balance": 11300.0, "equity": 11350.0}
         lot_t1 = self.bot.calculate_lot_size(3.00)
-        self.assertEqual(lot_t1, 0.67)
+        self.assertEqual(lot_t1, 0.33)
 
-        # Tier 2 ($15,000 base) -> 2% = $300 risk. With SL dist 3.00 USD -> 300 / 300 = 1.00 Lot
+        # Tier 2 ($15,000 base) -> 1% = $150 risk. With SL dist 3.00 USD -> 150 / 300 = 0.50 Lot
         self.mock_connector.get_account_info.return_value = {"balance": 16500.0, "equity": 16500.0}
         lot_t2 = self.bot.calculate_lot_size(3.00)
-        self.assertEqual(lot_t2, 1.00)
+        self.assertEqual(lot_t2, 0.50)
 
-        # Tier 3 ($20,000 base) -> 2% = $400 risk. With SL dist 3.00 USD -> 400 / 300 = 1.33 Lot
+        # Tier 3 ($20,000 base) -> 1% = $200 risk. With SL dist 3.00 USD -> 200 / 300 = 0.67 Lot
         self.mock_connector.get_account_info.return_value = {"balance": 22000.0, "equity": 22000.0}
         lot_t3 = self.bot.calculate_lot_size(3.00)
-        self.assertEqual(lot_t3, 1.33)
+        self.assertEqual(lot_t3, 0.67)
 
     def test_earthetc_structural_sl_no_choke(self):
         """Test that wide structural SL (e.g. 11.50 USD) is preserved without 8.50 clamp."""
