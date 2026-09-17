@@ -707,12 +707,18 @@ async def export_trades_for_journal(
             mode=mode,
             user=user
         )
+        rebates = getattr(account_manager.analytics, "_last_rebates", None)
+        if rebates is None:
+            rebates = account_manager.analytics.fetch_rebate_history(days=days)
+        total_rebates = round(sum(r["amount"] for r in rebates), 2)
         return {
             "status": True,
             "mode": mode,
             "user": user,
             "count": len(journal_trades),
-            "trades": journal_trades
+            "trades": journal_trades,
+            "rebates": rebates,
+            "total_rebates": total_rebates
         }
     except Exception as e:
         logger.error(f"Error exporting trades for journal: {e}")
@@ -746,6 +752,17 @@ async def get_closed_trades_for_journal(
     Fetch closed trades from MT5 to record in TradeLogView in FXLOG PRO.
     """
     return await export_trades_for_journal(days=days, mode=mode, user=user)
+
+@app.get("/api/journal/rebates")
+async def get_rebates_endpoint(days: int = 90):
+    rebates = account_manager.analytics.fetch_rebate_history(days=days)
+    total_rebates = round(sum(r["amount"] for r in rebates), 2)
+    return {
+        "status": True,
+        "count": len(rebates),
+        "total_rebates": total_rebates,
+        "rebates": rebates
+    }
 
 @app.get("/api/system/version")
 async def get_system_version():

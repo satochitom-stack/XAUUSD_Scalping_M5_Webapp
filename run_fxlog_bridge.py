@@ -52,12 +52,29 @@ async def get_closed_trades(
     user: str = Query("TOM", description="Target user")
 ):
     trades = analytics.fetch_trades_for_journal(days=days, mode=mode, user=user)
+    rebates = getattr(analytics, "_last_rebates", None)
+    if rebates is None:
+        rebates = analytics.fetch_rebate_history(days=days)
+    total_rebates = round(sum(r["amount"] for r in rebates), 2)
     return {
         "status": True,
         "mode": mode,
         "user": user,
         "count": len(trades),
-        "trades": trades
+        "trades": trades,
+        "rebates": rebates,
+        "total_rebates": total_rebates
+    }
+
+@app.get("/api/journal/rebates")
+async def get_rebates_endpoint(days: int = Query(90, description="Days of history")):
+    rebates = analytics.fetch_rebate_history(days=days)
+    total_rebates = round(sum(r["amount"] for r in rebates), 2)
+    return {
+        "status": True,
+        "count": len(rebates),
+        "total_rebates": total_rebates,
+        "rebates": rebates
     }
 
 @app.get("/api/journal/export_trades")

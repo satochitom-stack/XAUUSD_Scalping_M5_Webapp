@@ -203,6 +203,37 @@ class RealTradeAnalyticsManager:
         closed_deals.sort(key=lambda x: x["time"], reverse=True)
         return closed_deals
 
+    def fetch_rebate_history(self, days: int = 90) -> List[dict]:
+        """Fetch Exness D-INTARB auto rebate transactions from MT5 deal history."""
+        rebates_list = []
+        if not MT5_AVAILABLE:
+            return rebates_list
+        try:
+            if not mt5.terminal_info():
+                mt5.initialize()
+            from_date = datetime.now() - timedelta(days=days)
+            to_date = datetime.now() + timedelta(days=1)
+            deals = mt5.history_deals_get(from_date, to_date)
+            if deals:
+                for d in deals:
+                    if (d.type == 2 or not d.symbol) and "intarb" in (d.comment or "").lower() and d.profit > 0:
+                        dt = datetime.fromtimestamp(d.time)
+                        if dt >= self.EPOCH_START_TIME:
+                            rebates_list.append({
+                                "id": f"rebate-{d.ticket}",
+                                "ticket": d.ticket,
+                                "time": dt.strftime("%Y-%m-%d %H:%M:%S"),
+                                "date": dt.strftime("%Y-%m-%d %H:%M"),
+                                "amount": round(float(d.profit), 2),
+                                "comment": d.comment or "D-INTARB-USC-INT",
+                                "type": "REBATE",
+                                "status": "COMPLETED"
+                            })
+                rebates_list.sort(key=lambda x: x["time"], reverse=True)
+        except Exception as e:
+            logger.error(f"Error fetching rebate history: {e}")
+        return rebates_list
+
     def fetch_trades_for_journal(self, days: int = 90, mode: str = "auto", user: Optional[str] = None) -> List[dict]:
         """
         Fetch closed positions from MT5 formatted specifically for FXLOG PRO (Trade Journal).
@@ -249,6 +280,25 @@ class RealTradeAnalyticsManager:
             deals = mt5.history_deals_get(from_date, to_date)
             if not deals:
                 return journal_trades
+
+            # Extract and cache Exness D-INTARB Rebates
+            rebates_cached = []
+            for d in deals:
+                if (d.type == 2 or not d.symbol) and "intarb" in (d.comment or "").lower() and d.profit > 0:
+                    dt_r = datetime.fromtimestamp(d.time)
+                    if dt_r >= self.EPOCH_START_TIME:
+                        rebates_cached.append({
+                            "id": f"rebate-{d.ticket}",
+                            "ticket": d.ticket,
+                            "time": dt_r.strftime("%Y-%m-%d %H:%M:%S"),
+                            "date": dt_r.strftime("%Y-%m-%d %H:%M"),
+                            "amount": round(float(d.profit), 2),
+                            "comment": d.comment or "D-INTARB-USC-INT",
+                            "type": "REBATE",
+                            "status": "COMPLETED"
+                        })
+            rebates_cached.sort(key=lambda x: x["time"], reverse=True)
+            self._last_rebates = rebates_cached
 
             # Group deals by position_id to pair Entry (IN) and Exit (OUT)
             positions = {}
@@ -769,9 +819,15 @@ class RealTradeAnalyticsManager:
         traded_setups = [s for s in setups_list if s["total_trades"] > 0]
         best_setup = max(traded_setups, key=lambda s: (s["winrate_pct"], s["total_profit_money"])) if traded_setups else None
 
+        rebates = self.fetch_rebate_history(days=90)
+        total_rebates = round(sum(r["amount"] for r in rebates), 2)
+
         return {
             "overview": {
                 "data_source": "100% REAL BOT DEALS (บันทึกเฉพาะไม้ที่บอทเทรดจริง)",
+                "total_rebates": total_rebates,
+                "rebates_count": len(rebates),
+                "total_growth_with_rebate": round(total_bot_profit + total_rebates, 2),
                 "total_trades": total_trades,
                 "total_wins": total_wins,
                 "total_losses": total_losses,
