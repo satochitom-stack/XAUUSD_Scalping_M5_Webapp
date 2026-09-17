@@ -35,7 +35,7 @@ class TestRiskProfileDefaults(unittest.TestCase):
         """Test the profile table matches the exact percentages each pillar used before this
         feature existed, so the refactor is behavior-preserving with no override set."""
         expected = {
-            "PULLBACK_DR_EKK":        (1.0, "STEP_UP_COMPOUNDING"),
+            "PULLBACK_DR_EKK":        (0.5, "STEP_UP_COMPOUNDING"),
             "RTM_M4_CONSERVATIVE":    (1.0, "STEP_UP_COMPOUNDING"),
             "RTM_M6_ELITE_GROWTH":    (1.0, "STEP_UP_COMPOUNDING"),
             "SMC_X_STO_H1":           (1.0, "FIXED"),
@@ -69,10 +69,10 @@ class TestCalculateLotSizeRiskOverride(unittest.TestCase):
         self.assertAlmostEqual(lot, 0.25, places=2)
 
     def test_no_override_uses_default_percent_step_up_mode(self):
-        """Test PULLBACK_DR_EKK (STEP_UP mode, disabled here) uses its 1.0% default balance-based sizing."""
+        """Test PULLBACK_DR_EKK (STEP_UP mode, disabled here) uses its 0.5% default balance-based sizing."""
         lot = self.bot.calculate_lot_size(2.00, strat_id="PULLBACK_DR_EKK")
-        # Step-up disabled -> plain balance * 1% = 100 risk USD; 100 / (2.00*100) = 0.5 lot
-        self.assertAlmostEqual(lot, 0.5, places=2)
+        # Step-up disabled -> plain balance * 0.5% = 50 risk USD; 50 / (2.00*100) = 0.25 lot
+        self.assertAlmostEqual(lot, 0.25, places=2)
 
     def test_override_changes_fixed_mode_lot_size(self):
         """Test a risk_overrides entry changes TUG_OF_WAR_M15's sizing (FIXED mode)."""
@@ -83,10 +83,10 @@ class TestCalculateLotSizeRiskOverride(unittest.TestCase):
 
     def test_override_changes_step_up_mode_lot_size(self):
         """Test a risk_overrides entry changes PULLBACK_DR_EKK's sizing (STEP_UP mode)."""
-        self.config["strategy"]["risk_overrides"] = {"PULLBACK_DR_EKK": 0.5}
+        self.config["strategy"]["risk_overrides"] = {"PULLBACK_DR_EKK": 1.0}
         lot = self.bot.calculate_lot_size(2.00, strat_id="PULLBACK_DR_EKK")
-        # Step-up disabled -> balance * 0.5% = 50 risk USD; 50 / (2.00*100) = 0.25 lot
-        self.assertAlmostEqual(lot, 0.25, places=2)
+        # Step-up disabled -> balance * 1.0% = 100 risk USD; 100 / (2.00*100) = 0.50 lot
+        self.assertAlmostEqual(lot, 0.50, places=2)
 
     def test_override_only_affects_the_targeted_strategy(self):
         """Test setting an override for one setup does not change another setup's sizing."""

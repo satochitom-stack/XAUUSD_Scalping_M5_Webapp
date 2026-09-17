@@ -46,7 +46,7 @@ STRATEGY_MAGIC_MAP = {
 # risk % per setup without touching code or restarting the bot - see RISK_OVERRIDE_MIN/MAX_PCT
 # and the "risk_overrides" key inside config["strategy"] read below.
 RISK_PROFILE_DEFAULTS = {
-    "PULLBACK_DR_EKK":        {"default_pct": 1.0, "mode": "STEP_UP_COMPOUNDING"},
+    "PULLBACK_DR_EKK":        {"default_pct": 0.5, "mode": "STEP_UP_COMPOUNDING"},
     "RTM_M4_CONSERVATIVE":    {"default_pct": 1.0, "mode": "STEP_UP_COMPOUNDING"},
     "RTM_M6_ELITE_GROWTH":    {"default_pct": 1.0, "mode": "STEP_UP_COMPOUNDING"},
     "SMC_X_STO_H1":           {"default_pct": 1.0, "mode": "FIXED"},
@@ -60,11 +60,12 @@ RISK_OVERRIDE_MIN_PCT = 0.10
 RISK_OVERRIDE_MAX_PCT = 5.00
 
 # Per-pillar trading schedule defaults: start and end hours in Thai Time (GMT+7).
-# Setups that previously traded in the Asian session (Pullback Dr. Ekk, RTM M6, SMCxSTO H1)
+# Setups that previously traded in the Asian session (RTM M6, SMCxSTO H1)
 # now start at 14:00 (London session) through 24:00 (midnight).
+# PULLBACK_DR_EKK runs 24 hours (00:00 - 24:00) with controlled 0.5% risk.
 # Users can freely customize each setup's schedule via the Web Dashboard without bot restart.
 DEFAULT_TRADING_HOURS = {
-    "PULLBACK_DR_EKK":        {"start": "14:00", "end": "24:00"},
+    "PULLBACK_DR_EKK":        {"start": "00:00", "end": "24:00"},
     "RTM_M4_CONSERVATIVE":    {"start": "14:00", "end": "24:00"},
     "RTM_M6_ELITE_GROWTH":    {"start": "14:00", "end": "24:00"},
     "SMC_X_STO_H1":           {"start": "14:00", "end": "24:00"},
@@ -2130,7 +2131,9 @@ class GoldScalpingBot:
             risk_label = "0.5% Risk"
         elif strat_id == "EW_WAVE3_BREAKER":
             risk_label = "1.0% Risk"
-        elif strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH", "PULLBACK_DR_EKK", "KC_LIQUIDITY_DOMINANCE"]:
+        elif strat_id == "PULLBACK_DR_EKK":
+            risk_label = "Step-Up 0.5% Risk" if self.config.get("strategy", {}).get("enable_step_up_compounding", True) else "0.5% Risk"
+        elif strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH", "KC_LIQUIDITY_DOMINANCE"]:
             risk_label = "Step-Up 1.0% Risk" if self.config.get("strategy", {}).get("enable_step_up_compounding", True) else "1.0% Risk"
         elif strat_id in ["NEWS_MOMENTUM_EXPANSION", "ASIAN_RANGE_SNIPER"]:
             lot_mult = 0.5  # Fixed 0.5% risk per user instruction
@@ -2270,7 +2273,9 @@ class GoldScalpingBot:
             risk_label = "0.5% Risk"
         elif strat_id == "EW_WAVE3_BREAKER":
             risk_label = "1.0% Risk"
-        elif strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH", "PULLBACK_DR_EKK", "KC_LIQUIDITY_DOMINANCE"]:
+        elif strat_id == "PULLBACK_DR_EKK":
+            risk_label = "Step-Up 0.5% Risk" if self.config.get("strategy", {}).get("enable_step_up_compounding", True) else "0.5% Risk"
+        elif strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH", "KC_LIQUIDITY_DOMINANCE"]:
             risk_label = "Step-Up 1.0% Risk" if self.config.get("strategy", {}).get("enable_step_up_compounding", True) else "1.0% Risk"
         elif strat_id in ["NEWS_MOMENTUM_EXPANSION", "ASIAN_RANGE_SNIPER"]:
             lot_mult = 0.5  # Fixed 0.5% risk per user instruction

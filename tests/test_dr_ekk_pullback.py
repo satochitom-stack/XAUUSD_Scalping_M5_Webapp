@@ -53,7 +53,7 @@ class TestDrEkkPullbackStrategy(unittest.TestCase):
         """
         Verify strict Risk Isolation according to user rules:
         - RTM M4 / M6 = 1.0% (Step-Up Compounding)
-        - PULLBACK_DR_EKK = 1.0% (Step-Up Compounding)
+        - PULLBACK_DR_EKK = 0.5% (Step-Up Compounding)
         - News / Asian = 0.5%
         - SMCxSTO = Strictly 1.0%
         """
@@ -67,9 +67,9 @@ class TestDrEkkPullbackStrategy(unittest.TestCase):
         lot_m6 = self.bot.calculate_lot_size(sl_dist, strat_id="RTM_M6_ELITE_GROWTH")
         self.assertAlmostEqual(lot_m6, 0.20, places=2)
 
-        # Test PULLBACK_DR_EKK -> 1.0% ($100 risk on $10k -> 100 / 500 = 0.20 lot)
+        # Test PULLBACK_DR_EKK -> 0.5% ($50 risk on $10k -> 50 / 500 = 0.10 lot)
         lot_pullback = self.bot.calculate_lot_size(sl_dist, strat_id="PULLBACK_DR_EKK")
-        self.assertAlmostEqual(lot_pullback, 0.20, places=2)
+        self.assertAlmostEqual(lot_pullback, 0.10, places=2)
 
         # Test News Momentum -> 0.5% ($50 risk on $10k -> 50 / 500 = 0.10 lot)
         lot_news = self.bot.calculate_lot_size(sl_dist, strat_id="NEWS_MOMENTUM_EXPANSION")

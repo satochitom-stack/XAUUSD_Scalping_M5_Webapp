@@ -35,9 +35,10 @@ class TestTradingHoursDefaults(unittest.TestCase):
             self.assertIn("end", cfg)
 
     def test_asian_setups_default_to_14_to_24(self):
-        """Verify that the 3 Asian setups are updated to trade 14:00 - 24:00 Thai time."""
-        asian_setups = ["PULLBACK_DR_EKK", "RTM_M6_ELITE_GROWTH", "SMC_X_STO_H1"]
-        for strat_id in asian_setups:
+        """Verify that RTM M6 and SMCxSTO default to 14:00 - 24:00, and PULLBACK_DR_EKK defaults to 24h."""
+        self.assertEqual(DEFAULT_TRADING_HOURS["PULLBACK_DR_EKK"]["start"], "00:00")
+        self.assertEqual(DEFAULT_TRADING_HOURS["PULLBACK_DR_EKK"]["end"], "24:00")
+        for strat_id in ["RTM_M6_ELITE_GROWTH", "SMC_X_STO_H1"]:
             cfg = DEFAULT_TRADING_HOURS[strat_id]
             self.assertEqual(cfg["start"], "14:00", f"{strat_id} start should be 14:00")
             self.assertEqual(cfg["end"], "24:00", f"{strat_id} end should be 24:00")
@@ -94,14 +95,21 @@ class TestBotEngineTradingHours(unittest.TestCase):
         self.bot = BotEngine(self.mock_connector, self.config)
 
     def test_default_hours_respected(self):
-        # PULLBACK_DR_EKK default is 14:00 - 24:00
+        # PULLBACK_DR_EKK default is 24h (00:00 - 24:00)
         in_h, reason, s, e = self.bot.is_setup_in_trading_hours("PULLBACK_DR_EKK", check_time=dtime(10, 0))
+        self.assertTrue(in_h)
+        self.assertEqual(reason, "IN_HOURS")
+        self.assertEqual(s, "00:00")
+        self.assertEqual(e, "24:00")
+
+        # RTM_M6_ELITE_GROWTH default is 14:00 - 24:00
+        in_h, reason, s, e = self.bot.is_setup_in_trading_hours("RTM_M6_ELITE_GROWTH", check_time=dtime(10, 0))
         self.assertFalse(in_h)
         self.assertIn("OUTSIDE TRADING HOURS", reason)
         self.assertEqual(s, "14:00")
         self.assertEqual(e, "24:00")
 
-        in_h, reason, _, _ = self.bot.is_setup_in_trading_hours("PULLBACK_DR_EKK", check_time=dtime(16, 0))
+        in_h, reason, _, _ = self.bot.is_setup_in_trading_hours("RTM_M6_ELITE_GROWTH", check_time=dtime(16, 0))
         self.assertTrue(in_h)
         self.assertEqual(reason, "IN_HOURS")
 

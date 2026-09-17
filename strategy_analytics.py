@@ -30,10 +30,10 @@ class RealTradeAnalyticsManager:
             "icon": "🎯",
             "category": "PULLBACK_PRO",
             "timeframe": "M5 (H1 Filter)",
-            "best_session": "London & NY (14:00 - 02:00)",
+            "best_session": "24 Hours (00:00 - 24:00)",
             "magic_numbers": [555860, 555861, 555862, 555863],
             "avg_rr": "1:2.5",
-            "description": "กลยุทธ์จากหนังสือ #PullBack ร้อยล้าน (โดย พี่เอก / Trader Overseas): 3-Confluence (EMA 60 + Fib 38.2-61.8% + S/R Flip) + Trigger Pinbar/Engulfing แบ่งปิด TP1 1.5R กันทุน แล้วรันเทรนด์ด้วย EMA 60 Trailing Stop (ความเสี่ยง Step-Up 1.0%)"
+            "description": "กลยุทธ์จากหนังสือ #PullBack ร้อยล้าน (โดย พี่เอก / Trader Overseas): 3-Confluence (EMA 60 + Fib 38.2-61.8% + S/R Flip) + Trigger Pinbar/Engulfing แบ่งปิด TP1 1.5R กันทุน แล้วรันเทรนด์ด้วย EMA 60 Trailing Stop (ความเสี่ยง Step-Up 0.5% | รัน 24 ชม.)"
         },
         "RTM_M4_CONSERVATIVE": {
             "id": "RTM_M4_CONSERVATIVE",
@@ -724,7 +724,7 @@ class RealTradeAnalyticsManager:
 
         # Set active status tags based on real configuration
         if "PULLBACK_DR_EKK" in setups_data:
-            setups_data["PULLBACK_DR_EKK"]["status"] = "🟢 ACTIVE (Signature Pullback Step-Up 1.0%)" if ekk_active else "⏸️ PAUSED (ปิดการทำงาน)"
+            setups_data["PULLBACK_DR_EKK"]["status"] = "🟢 ACTIVE (Signature Pullback Step-Up 0.5% | 24h)" if ekk_active else "⏸️ PAUSED (ปิดการทำงาน)"
         if "RTM_M4_CONSERVATIVE" in setups_data:
             setups_data["RTM_M4_CONSERVATIVE"]["status"] = "🟢 ACTIVE (Confluence Grade A/A+)" if m4_active else "⏸️ PAUSED (ปิดการทำงาน)"
         if "RTM_M6_ELITE_GROWTH" in setups_data:
