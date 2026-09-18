@@ -136,16 +136,16 @@ SETUP_PROFILES = {
     },
     "SMC_X_STO_H1": {
         "id": "SMC_X_STO_H1",
-        "name": "SMC x STO H1 Devil System",
+        "name": "SMC x STO M5 Devil System",
         "icon": "😈",
         "win_prob": 78.0,
-        "base_rr": 2.00,
+        "base_rr": 2.20,
         "min_rr": 1.50,
         "max_rr": 3.50,
         "trailing_type": "CONFLUENCE_STAGE",
         "trail_points": 280.0,
         "trail_step_points": 40.0,
-        "description": "Trend EMA 50/200 + Discount/Premium ATR + Single OB + Stoch 14,3,3"
+        "description": "Trend EMA 50/200 M15 + Discount/Premium + Single OB M5 + Stoch 14,3,3"
     },
     "ALL_CONFLUENCE": {
         "id": "ALL_CONFLUENCE",

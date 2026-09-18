@@ -4,7 +4,7 @@ Streamlined to the "Elite 5 Active Pillars" across Market Sessions:
 1. PULLBACK_DR_EKK - Signature Pullback (#PullBack ร้อยล้าน - Dr. Ekk / Trader Overseas)
 2. RTM_M4_CONSERVATIVE - RTM Quasimodo Conservative QML Retest (M15 + H1)
 3. RTM_M6_ELITE_GROWTH - RTM Quasimodo Elite Growth Institutional Retest (M15 + H1)
-4. SMC_X_STO_H1 - SMCxSTO ระบบปีศาจ H1 Swing Devil System (EMA 50/200 + Discount/Premium ATR + Single OB + Stoch)
+4. SMC_X_STO_H1 - SMCxSTO ระบบปีศาจ M5 Intra-Day Confluence (M15 Macro Trend & M5 Single OB + Stoch Trigger)
 5. KC_LIQUIDITY_DOMINANCE - KC Forex Trading: Liquidity Sweep + Candle Dominance (M5)
 """
 
@@ -457,7 +457,7 @@ class GoldScalpingBot:
         # 5. INDEPENDENT MULTI-SETUP EVALUATION & EXECUTION PIPELINE
         # -------------------------------------------------------------
         
-        # --- PILLAR 1: SMCxSTO ระบบปีศาจ H1 Devil System (Macro Trend & Single-Rule OB) ---
+        # --- PILLAR 1: SMCxSTO ระบบปีศาจ M5 Intra-Day Confluence (Macro Trend & Single-Rule OB) ---
         smc_enabled = strat_cfg.get("smc_x_sto_h1_enabled", True)
         if smc_enabled and (strat_mode in ["ALL", "SMC_X_STO_H1", "SMCXSTO", "ALCHEMIST_4", "UPGRADED_4"]):
             if not self.has_open_positions_for_setup(symbol, "SMC_X_STO_H1"):
@@ -2040,9 +2040,9 @@ class GoldScalpingBot:
         if strat_id == "NEWS_MOMENTUM_EXPANSION":
             return True, "AI Trend Trail (News Expansion)"
 
-        # 3. SMCxSTO H1 Devil System -> High R:R Runner (Trailing Stop)
+        # 3. SMCxSTO M5 Devil System -> High R:R Runner (Trailing Stop)
         if strat_id == "SMC_X_STO_H1":
-            return True, "AI Trend Trail (SMCxSTO H1 Devil System)"
+            return True, "AI Trend Trail (SMCxSTO M5 Devil System)"
 
         # 4. RTM Quasimodo Multi-Model Engine -> High R:R Runner (Trailing Stop)
         if strat_id.startswith("RTM_"):
@@ -2621,7 +2621,7 @@ class GoldScalpingBot:
                                 self.add_log(f"🛡️ [BREAK-EVEN LOCKED] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
 
                     elif is_smc_devil:
-                        # SMC H1 Devil System (Target 2.2R)
+                        # SMC M5 Devil System (Target 2.2R)
                         # Step 3: At >= 1.8R -> Lock +1.2R Profit
                         if r_profit >= 1.8:
                             target_sl = round(open_p + (initial_r * 1.2), 2)
@@ -2772,7 +2772,7 @@ class GoldScalpingBot:
                                 self.add_log(f"🛡️ [BREAK-EVEN LOCKED] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
 
                     elif is_smc_devil:
-                        # SMC H1 Devil System (Target 2.2R)
+                        # SMC M5 Devil System (Target 2.2R)
                         # Step 3: At >= 1.8R -> Lock +1.2R Profit
                         if r_profit >= 1.8:
                             target_sl = round(open_p - (initial_r * 1.2), 2)

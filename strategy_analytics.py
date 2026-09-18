@@ -59,14 +59,14 @@ class RealTradeAnalyticsManager:
         },
         "SMC_X_STO_H1": {
             "id": "SMC_X_STO_H1",
-            "name": "SMCxSTO ระบบปีศาจ (H1 Devil System)",
+            "name": "SMCxSTO ระบบปีศาจ M5 (M5 Intra-Day Confluence)",
             "icon": "😈",
             "category": "SMC_PRO",
-            "timeframe": "H1",
-            "best_session": "London & NY (14:00 - 04:00)",
+            "timeframe": "M5 (M15 Bias)",
+            "best_session": "London & NY (14:00 - 24:00)",
             "magic_numbers": [555770, 555771, 555772, 555773],
-            "avg_rr": "1:2.0",
-            "description": "ระบบ SMCxSTO กฎข้อเดียว: เทรนด์ EMA 50/200 + โซน Discount/Premium (ATR) + Order Block + Stochastic Oversold/Overbought"
+            "avg_rr": "1:2.2",
+            "description": "ระบบ SMCxSTO M5 Intra-Day: เทรนด์ใหญ่ M15 (EMA 50/200 + โซน Discount/Premium) + M5 Single-Rule Order Block/FVG + Stochastic (14,3,3) Reversal Trigger (ความเสี่ยงคงที่ 0.5% | TP 2.2R)"
         },
         "KC_LIQUIDITY_DOMINANCE": {
             "id": "KC_LIQUIDITY_DOMINANCE",
@@ -324,7 +324,7 @@ class RealTradeAnalyticsManager:
                 "PULLBACK_DR_EKK": "Signature Pullback (#PullBack ร้อยล้าน)",
                 "RTM_M4_CONSERVATIVE": "RTM Quasimodo M4 (Conservative)",
                 "RTM_M6_ELITE_GROWTH": "RTM Quasimodo M6 (Elite Growth)",
-                "SMC_X_STO_H1": "SMC x STO Devil (H1 Devil System)",
+                "SMC_X_STO_H1": "SMC x STO Devil M5 (M5 Intra-Day Confluence)",
                 "KC_LIQUIDITY_DOMINANCE": "KC Forex (Liquidity Sweep x Candle Dominance)",
                 "RETIRED_SETUPS": "เซตอัพที่เลิกใช้"
             }
@@ -778,9 +778,9 @@ class RealTradeAnalyticsManager:
         if "RTM_M4_CONSERVATIVE" in setups_data:
             setups_data["RTM_M4_CONSERVATIVE"]["status"] = "🟢 ACTIVE (Confluence Grade A/A+)" if m4_active else "⏸️ PAUSED (ปิดการทำงาน)"
         if "RTM_M6_ELITE_GROWTH" in setups_data:
-            setups_data["RTM_M6_ELITE_GROWTH"]["status"] = "🟢 ACTIVE (Elite Growth Step-Up 1.0%)" if m6_active else "⏸️ PAUSED (ปิดการทำงาน)"
+            setups_data["RTM_M6_ELITE_GROWTH"]["status"] = "🟢 ACTIVE (Elite Growth Step-Up 0.5%)" if m6_active else "⏸️ PAUSED (ปิดการทำงาน)"
         if "SMC_X_STO_H1" in setups_data:
-            setups_data["SMC_X_STO_H1"]["status"] = "🟢 ACTIVE (Devil H1 OB+STO)" if smc_active else "⏸️ PAUSED (ปิดการทำงาน)"
+            setups_data["SMC_X_STO_H1"]["status"] = "🟢 ACTIVE (Devil M5 OB+STO 0.5%)" if smc_active else "⏸️ PAUSED (ปิดการทำงาน)"
         if "KC_LIQUIDITY_DOMINANCE" in setups_data:
             setups_data["KC_LIQUIDITY_DOMINANCE"]["status"] = "🟢 ACTIVE (KC Candle Dominance Step-Up 1.0%)" if kc_active else "⏸️ PAUSED (ปิดการทำงาน)"
         if "ICT_JUDAS_RTM_QM" in setups_data:

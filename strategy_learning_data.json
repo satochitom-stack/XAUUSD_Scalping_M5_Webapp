@@ -78,7 +78,7 @@
       "active": true
     },
     "SMC_X_STO_H1": {
-      "name": "SMCxSTO ระบบปีศาจ (H1 Devil System)",
+      "name": "SMCxSTO ระบบปีศาจ M5 (M5 Intra-Day Confluence)",
       "trades": 0,
       "wins": 0,
       "losses": 0,
@@ -87,8 +87,8 @@
       "profit_factor": 1.8,
       "streak": 0,
       "weight": 1.15,
-      "base_rr": 2.0,
-      "current_dynamic_rr": 2.0,
+      "base_rr": 2.2,
+      "current_dynamic_rr": 2.2,
       "trailing_type": "CONFLUENCE_STAGE",
       "active": true
     },

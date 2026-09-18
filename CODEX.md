@@ -15,11 +15,11 @@ Only **6 active setups** are permitted to scan the market and execute new trades
 
 | Setup ID | Strategy Name | Timeframe | Trading Hours (UTC+7) | Risk Sizing | Target R:R | Exit Mechanism |
 |---|---|:---:|:---:|:---:|:---:|---|
-| `PULLBACK_DR_EKK` | Signature Pullback (#PullBack ร้อยล้าน) | M5 (H1 Filter) | 14:00 - 02:00 | 2.0% Step-Up Compounding | 1:2.5 (TP1 1.5R) | EMA 60 Pullback + Fib 38.2%-61.8% + S/R Flip + Runner |
-| `RTM_M4_CONSERVATIVE` | RTM Quasimodo M4 (Conservative) | M15 (H1 Filter) | 14:00 - 23:00 | 2.0% Step-Up Compounding | 1:2.0 | Retest QML + M5 Rejection Wick $\ge 28\%$ + BE lock at 1.0R |
-| `RTM_M6_ELITE_GROWTH` | RTM Quasimodo M6 (Elite Growth) | M15 (H1 Filter) | 14:00 - 23:00 | 2.0% Step-Up Compounding | 1:2.0 | Retest Golden Pocket 50%-65% + Rejection Wick + BE lock at 1.0R |
-| `SMC_X_STO_H1` | SMC x STO Devil System (ระบบปีศาจ) | H1 | 14:00 - 04:00 | 1.0% Fixed Risk | 1:2.0 | EMA 50/200 Trend + Discount/Premium ATR + Single OB + Stoch 14,3,3 |
-| `KC_LIQUIDITY_DOMINANCE` | KC Forex (Sweep x Candle Dominance) | M5 | 14:00 - 02:00 | 1.5% Step-Up Compounding | 1:2.0 | Liquidity Sweep 15-20 Bars + Dominance Rejection (Body $\ge 50\%$) + BE at 1.0R |
+| `PULLBACK_DR_EKK` | Signature Pullback (#PullBack ร้อยล้าน) | M5 (H1 Filter) | 24 Hours | 0.5% Step-Up Compounding | 1:2.5 (TP1 1.5R) | EMA 60 Pullback + Fib 38.2%-61.8% + S/R Flip + Runner |
+| `RTM_M4_CONSERVATIVE` | RTM Quasimodo M4 (Conservative) | M15 (H1 Filter) | 14:00 - 23:00 | 1.0% Step-Up Compounding | 1:2.0 | Retest QML + M5 Rejection Wick $\ge 28\%$ + BE lock at 1.0R |
+| `RTM_M6_ELITE_GROWTH` | RTM Quasimodo M6 (Elite Growth) | M5/M15 (H1 Filter) | 14:00 - 24:00 | 0.5% Step-Up Compounding | 1:2.2 | Retest Golden Pocket 50%-78.6% + Rejection Wick + BE lock at 1.0R |
+| `SMC_X_STO_H1` | SMC x STO Devil System M5 (ระบบปีศาจ M5) | M5 (M15 Bias) | 14:00 - 24:00 | 0.5% Fixed Risk | 1:2.2 | M15 EMA 50/200 Trend + M5 Single OB/FVG + Stoch 14,3,3 Reversal |
+| `KC_LIQUIDITY_DOMINANCE` | KC Forex (Sweep x Candle Dominance) | M5 | 14:00 - 02:00 | 1.0% Step-Up Compounding | 1:2.0 | Liquidity Sweep 15-20 Bars + Dominance Rejection (Body $\ge 50\%$) + BE at 1.0R |
 | `RETIRED_SETUPS` | เซตอัพที่เลิกใช้ (Archived) | Multi-TF | Historical Archive | None (No new orders) | N/A | Preserves all historical trade records and closed PnL |
 
 ---
