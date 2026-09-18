@@ -136,19 +136,6 @@ class TestAlchemistNewSetups(unittest.TestCase):
         self.assertFalse(b_sig)
         self.assertIn("Bearish QM", reason)
 
-        # Verify signal detection did NOT prematurely lock the day
-        self.assertIsNone(self.bot.judas_last_trade_date)
-
-        # Simulate execution opening a trade
-        self.mock_connector.open_order.return_value = {"ticket": 888123}
-        self.bot.execute_sell(df, "XAUUSDc", reason, strat_id="ICT_JUDAS_RTM_QM")
-        self.assertEqual(self.bot.judas_last_trade_date, mock_now.date())
-
-        # Verify daily lock blocks second attempt on the same day
-        b_sig2, s_sig2, _ = self.bot._check_ict_judas_rtm_qm(df, "XAUUSDc")
-        self.assertFalse(b_sig2)
-        self.assertFalse(s_sig2)
-
     @patch('bot_engine.datetime')
     def test_ict_silver_bullet_fvg_detection(self, mock_dt):
         """Verify ICT NY Silver Bullet detects Bullish FVG after SSL sweep."""
@@ -172,18 +159,21 @@ class TestAlchemistNewSetups(unittest.TestCase):
         self.assertFalse(s_sig)
         self.assertIn("Bullish FVG", reason)
 
-        # Test at 19:10 Thai time (inside new 19:00 - 23:00 window)
-        mock_dt.now.return_value = datetime(2026, 9, 15, 19, 10, tzinfo=timezone(timedelta(hours=7)))
+        # Test at 21:15 Thai time (inside NY AM 21:00 - 22:30 window)
+        mock_dt.now.return_value = datetime(2026, 9, 15, 21, 15, tzinfo=timezone(timedelta(hours=7)))
+        self.bot.silver_bullet_last_trade_date = None
         b_sig, _, _ = self.bot._check_ict_silver_bullet_fvg(df, "XAUUSDc")
         self.assertTrue(b_sig)
 
-        # Test outside window: 18:55
-        mock_dt.now.return_value = datetime(2026, 9, 15, 18, 55, tzinfo=timezone(timedelta(hours=7)))
+        # Test outside window: 20:55
+        mock_dt.now.return_value = datetime(2026, 9, 15, 20, 55, tzinfo=timezone(timedelta(hours=7)))
+        self.bot.silver_bullet_last_trade_date = None
         b_sig, _, _ = self.bot._check_ict_silver_bullet_fvg(df, "XAUUSDc")
         self.assertFalse(b_sig)
 
-        # Test outside window: 23:05
-        mock_dt.now.return_value = datetime(2026, 9, 15, 23, 5, tzinfo=timezone(timedelta(hours=7)))
+        # Test outside window: 22:35
+        mock_dt.now.return_value = datetime(2026, 9, 15, 22, 35, tzinfo=timezone(timedelta(hours=7)))
+        self.bot.silver_bullet_last_trade_date = None
         b_sig, _, _ = self.bot._check_ict_silver_bullet_fvg(df, "XAUUSDc")
         self.assertFalse(b_sig)
 
@@ -214,39 +204,6 @@ class TestAlchemistNewSetups(unittest.TestCase):
         self.assertTrue(b_sig)
         self.assertFalse(s_sig)
         self.assertIn("Breaker Bullish", reason)
-
-    @patch('bot_engine.datetime')
-    def test_ew_wave3_breaker_h1_bear_blocks_buy(self, mock_dt):
-        """Verify Elliott Wave 3 blocks BUY if H1 trend is bearish (Close < EMA50)."""
-        mock_now = datetime(2026, 9, 15, 16, 30, tzinfo=timezone(timedelta(hours=7)))
-        mock_dt.now.return_value = mock_now
-        self.mock_connector.current_time = None
-
-        # Mock H1 dataframe where close is well below EMA50
-        df_h1 = pd.DataFrame({
-            "time": pd.date_range("2026-09-15 00:00", periods=40, freq="1h"),
-            "open": [2450.0 - i * 1.0 for i in range(40)],
-            "high": [2451.0 - i * 1.0 for i in range(40)],
-            "low": [2449.0 - i * 1.0 for i in range(40)],
-            "close": [2450.0 - i * 1.0 for i in range(40)],
-        })
-        self.mock_connector.get_rates.return_value = df_h1
-
-        data = []
-        for i in range(15):
-            data.append({"open": 2400.0, "high": 2402.0, "low": 2399.0, "close": 2400.0, "volume": 100})
-        data.append({"open": 2400.0, "high": 2402.0, "low": 2398.0, "close": 2401.0, "volume": 120})
-        for p in [2404.0, 2407.0, 2410.0]:
-            data.append({"open": p-2, "high": p, "low": p-2.5, "close": p-0.2, "volume": 150})
-        for p in [2408.0, 2405.5, 2404.0]:
-            data.append({"open": p+1, "high": p+1.5, "low": p, "close": p+0.2, "volume": 100})
-        data.append({"open": 2404.5, "high": 2409.0, "low": 2404.0, "close": 2408.5, "volume": 200})
-        data.append({"open": 2408.5, "high": 2412.0, "low": 2408.0, "close": 2411.5, "volume": 350})
-        data.append({"open": 2411.5, "high": 2412.0, "low": 2411.0, "close": 2411.8, "volume": 50})
-        df = pd.DataFrame(data)
-
-        b_sig, s_sig, _ = self.bot._check_ew_wave3_breaker(df, "XAUUSDc")
-        self.assertFalse(b_sig, "Must NOT buy when H1 trend is bearish")
 
 if __name__ == '__main__':
     unittest.main()

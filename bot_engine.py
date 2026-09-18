@@ -4,7 +4,7 @@ Streamlined to the "Elite 5 Active Pillars" across Market Sessions:
 1. PULLBACK_DR_EKK - Signature Pullback (#PullBack ร้อยล้าน - Dr. Ekk / Trader Overseas)
 2. RTM_M4_CONSERVATIVE - RTM Quasimodo Conservative QML Retest (M15 + H1)
 3. RTM_M6_ELITE_GROWTH - RTM Quasimodo Elite Growth Institutional Retest (M15 + H1)
-4. SMC_X_STO_H1 - SMCxSTO ระบบปีศาจ M5 Intra-Day Confluence (M15 Macro Trend & M5 Single OB + Stoch Trigger)
+4. SMC_X_STO_H1 - SMCxSTO ระบบปีศาจ H1 Swing Devil System (EMA 50/200 + Discount/Premium ATR + Single OB + Stoch)
 5. KC_LIQUIDITY_DOMINANCE - KC Forex Trading: Liquidity Sweep + Candle Dominance (M5)
 """
 
@@ -48,8 +48,8 @@ STRATEGY_MAGIC_MAP = {
 RISK_PROFILE_DEFAULTS = {
     "PULLBACK_DR_EKK":        {"default_pct": 0.5, "mode": "STEP_UP_COMPOUNDING"},
     "RTM_M4_CONSERVATIVE":    {"default_pct": 1.0, "mode": "STEP_UP_COMPOUNDING"},
-    "RTM_M6_ELITE_GROWTH":    {"default_pct": 0.5, "mode": "STEP_UP_COMPOUNDING"},
-    "SMC_X_STO_H1":           {"default_pct": 0.5, "mode": "FIXED"},
+    "RTM_M6_ELITE_GROWTH":    {"default_pct": 1.0, "mode": "STEP_UP_COMPOUNDING"},
+    "SMC_X_STO_H1":           {"default_pct": 1.0, "mode": "FIXED"},
     "KC_LIQUIDITY_DOMINANCE": {"default_pct": 1.0, "mode": "STEP_UP_COMPOUNDING"},
     "ICT_JUDAS_RTM_QM":        {"default_pct": 0.5, "mode": "FIXED"},
     "ICT_SILVER_BULLET_FVG":   {"default_pct": 0.5, "mode": "FIXED"},
@@ -71,7 +71,7 @@ DEFAULT_TRADING_HOURS = {
     "SMC_X_STO_H1":           {"start": "14:00", "end": "24:00"},
     "KC_LIQUIDITY_DOMINANCE": {"start": "14:00", "end": "24:00"},
     "ICT_JUDAS_RTM_QM":        {"start": "14:00", "end": "17:00"},
-    "ICT_SILVER_BULLET_FVG":   {"start": "19:00", "end": "23:00"},
+    "ICT_SILVER_BULLET_FVG":   {"start": "21:00", "end": "22:30"},
     "EW_WAVE3_BREAKER":        {"start": "14:00", "end": "02:00"},
     "TUG_OF_WAR_M15":         {"start": "14:00", "end": "24:00"},
 }
@@ -146,6 +146,8 @@ class GoldScalpingBot:
         self.last_rtm_sl_time: Dict[str, float] = {"BUY": 0.0, "SELL": 0.0}
         self.last_rtm_m5_confirmed_bar = None
         self.judas_last_trade_date: Optional[object] = None
+        self.silver_bullet_last_trade_date: Optional[object] = None
+        self.last_smc_sto_h1_bar_time: Optional[object] = None
         
         mt5_cfg = self.config.get("mt5", {})
         self.magic_number = mt5_cfg.get("magic_number", 555888)
@@ -236,6 +238,8 @@ class GoldScalpingBot:
             self.daily_target_reached = False
             self.daily_max_loss_reached = False
             self.pause_until_time = 0
+            self.judas_last_trade_date = None
+            self.silver_bullet_last_trade_date = None
             self.add_log(f"📅 New trading day initialized. Base Capital: ${self.day_starting_equity:.2f}", "INFO")
 
         # Deposit or Capital Adjustment Detection (Based on actual BALANCE to ignore floating PnL swings)
@@ -457,12 +461,12 @@ class GoldScalpingBot:
         # 5. INDEPENDENT MULTI-SETUP EVALUATION & EXECUTION PIPELINE
         # -------------------------------------------------------------
         
-        # --- PILLAR 1: SMCxSTO ระบบปีศาจ M5 Intra-Day Confluence (Macro Trend & Single-Rule OB) ---
+        # --- PILLAR 1: SMCxSTO ระบบปีศาจ H1 Devil System (Macro Trend & Single-Rule OB) ---
         smc_enabled = strat_cfg.get("smc_x_sto_h1_enabled", True)
         if smc_enabled and (strat_mode in ["ALL", "SMC_X_STO_H1", "SMCXSTO", "ALCHEMIST_4", "UPGRADED_4"]):
             if not self.has_open_positions_for_setup(symbol, "SMC_X_STO_H1"):
                 if self.is_setup_in_trading_hours("SMC_X_STO_H1")[0]:
-                    b_sig, s_sig, reason = self._check_smc_x_sto_h1(symbol, df)
+                    b_sig, s_sig, reason = self._check_smc_x_sto_h1(symbol)
                     if b_sig or s_sig:
                         self._process_single_setup_signal(df, symbol, spread, "SMC_X_STO_H1", "BUY" if b_sig else "SELL", reason)
 
@@ -779,19 +783,6 @@ class GoldScalpingBot:
         if candle_range < 0.60:
             return False, False, ""
 
-        # Guard against buying at peak (Overbought) or selling at bottom (Oversold)
-        rsi = float(b1.get('rsi14', 50.0))
-        if is_uptrend and rsi > 68.0:
-            return False, False, ""
-        if is_downtrend and rsi < 32.0:
-            return False, False, ""
-
-        # Distance ceiling: entry candle must NOT be overextended away from EMA 60
-        if is_uptrend and close_p > ema60 + 1.25 * atr:
-            return False, False, ""
-        if is_downtrend and close_p < ema60 - 1.25 * atr:
-            return False, False, ""
-
         # H1 Macro Trend & Dump/Pump Shield
         h1_bull_allowed = True
         h1_bear_allowed = True
@@ -847,30 +838,22 @@ class GoldScalpingBot:
                     has_bos = swing_high_val >= (prev_res - 0.20 * atr)
 
                 if impulse_range >= 1.2 * atr and has_bos:
-                    pullback_slice = df.loc[swing_high_idx:df.index[-2], 'low']
-                    pullback_low = float(pullback_slice.min())
-                    pullback_low_idx = pullback_slice.idxmin()
-                    bars_since_pullback = len(df.loc[pullback_low_idx:df.index[-2]]) - 1
+                    pullback_low = float(df.loc[swing_high_idx:df.index[-2], 'low'].min())
+                    retrace_pct = (swing_high_val - pullback_low) / (impulse_range + 1e-9)
 
-                    # Ensure pullback is recent (within 5 bars) and price hasn't already rallied away
-                    if bars_since_pullback <= 5:
-                        retrace_pct = (swing_high_val - pullback_low) / (impulse_range + 1e-9)
+                    fib_conf = 0.35 <= retrace_pct <= 0.68
+                    ema_conf = (low_p <= ema60 + 0.35 * atr) and (high_p >= ema60 - 0.40 * atr)
 
-                        # Core rule: EMA 60 test is MANDATORY for Dr. Ekk EMA 60 Pullback
-                        ema_tested = (low_p <= ema60 + 0.35 * atr) or (float(prev_bar['low']) <= ema60 + 0.35 * atr)
+                    sr_flip_conf = False
+                    if len(prev_window) > 8:
+                        prev_res = float(prev_window['high'].max())
+                        sr_flip_conf = abs(pullback_low - prev_res) <= 0.75 * atr
 
-                        fib_conf = 0.35 <= retrace_pct <= 0.68
-
-                        sr_flip_conf = False
-                        if len(prev_window) > 8:
-                            prev_res = float(prev_window['high'].max())
-                            sr_flip_conf = abs(pullback_low - prev_res) <= 0.75 * atr
-
-                        if ema_tested and (fib_conf or sr_flip_conf):
-                            conf_score = 1 + int(fib_conf) + int(sr_flip_conf)
-                            grade = "A+" if conf_score == 3 else "A"
-                            trig_type = "Pinbar" if bullish_pinbar else "Engulfing"
-                            return True, False, f"🎯 Pullback Dr. Ekk: Bullish {trig_type} at 3-Confluence ({grade} | Fib {retrace_pct*100:.0f}% + EMA60)"
+                    conf_score = int(fib_conf) + int(ema_conf) + int(sr_flip_conf)
+                    if conf_score >= 2:
+                        grade = "A+" if conf_score == 3 else "A"
+                        trig_type = "Pinbar" if bullish_pinbar else "Engulfing"
+                        return True, False, f"🎯 Pullback Dr. Ekk: Bullish {trig_type} at 3-Confluence ({grade} | Fib {retrace_pct*100:.0f}% + EMA60)"
 
         # Bearish Pullback Evaluation
         if is_downtrend and h1_bear_allowed and (bearish_pinbar or bearish_engulfing):
@@ -888,28 +871,22 @@ class GoldScalpingBot:
                     has_bos = swing_low_val <= (prev_sup + 0.20 * atr)
 
                 if impulse_range_down >= 1.2 * atr and has_bos:
-                    pullback_slice = df.loc[swing_low_idx:df.index[-2], 'high']
-                    pullback_high = float(pullback_slice.max())
-                    pullback_high_idx = pullback_slice.idxmax()
-                    bars_since_pullback = len(df.loc[pullback_high_idx:df.index[-2]]) - 1
+                    pullback_high = float(df.loc[swing_low_idx:df.index[-2], 'high'].max())
+                    retrace_pct = (pullback_high - swing_low_val) / (impulse_range_down + 1e-9)
 
-                    if bars_since_pullback <= 5:
-                        retrace_pct = (pullback_high - swing_low_val) / (impulse_range_down + 1e-9)
+                    fib_conf = 0.35 <= retrace_pct <= 0.68
+                    ema_conf = (high_p >= ema60 - 0.35 * atr) and (low_p <= ema60 + 0.40 * atr)
 
-                        ema_tested = (high_p >= ema60 - 0.35 * atr) or (float(prev_bar['high']) >= ema60 - 0.35 * atr)
+                    sr_flip_conf = False
+                    if len(prev_window) > 8:
+                        prev_sup = float(prev_window['low'].min())
+                        sr_flip_conf = abs(pullback_high - prev_sup) <= 0.75 * atr
 
-                        fib_conf = 0.35 <= retrace_pct <= 0.68
-
-                        sr_flip_conf = False
-                        if len(prev_window) > 8:
-                            prev_sup = float(prev_window['low'].min())
-                            sr_flip_conf = abs(pullback_high - prev_sup) <= 0.75 * atr
-
-                        if ema_tested and (fib_conf or sr_flip_conf):
-                            conf_score = 1 + int(fib_conf) + int(sr_flip_conf)
-                            grade = "A+" if conf_score == 3 else "A"
-                            trig_type = "Pinbar" if bearish_pinbar else "Engulfing"
-                            return False, True, f"🎯 Pullback Dr. Ekk: Bearish {trig_type} at 3-Confluence ({grade} | Fib {retrace_pct*100:.0f}% + EMA60)"
+                    conf_score = int(fib_conf) + int(ema_conf) + int(sr_flip_conf)
+                    if conf_score >= 2:
+                        grade = "A+" if conf_score == 3 else "A"
+                        trig_type = "Pinbar" if bearish_pinbar else "Engulfing"
+                        return False, True, f"🎯 Pullback Dr. Ekk: Bearish {trig_type} at 3-Confluence ({grade} | Fib {retrace_pct*100:.0f}% + EMA60)"
 
         return False, False, ""
 
@@ -1150,7 +1127,7 @@ class GoldScalpingBot:
             df_h1_copy = df_h1.copy()
             df_h1_copy['ema50'] = df_h1_copy['close'].ewm(span=50, adjust=False).mean()
             df_h1_copy['ema200'] = df_h1_copy['close'].ewm(span=200, adjust=False).mean()
-            h1_last = df_h1_copy.iloc[-2] if len(df_h1_copy) >= 2 else df_h1_copy.iloc[-1]
+            h1_last = df_h1_copy.iloc[-1]
             h1_c = float(h1_last['close'])
             h1_e50 = float(h1_last['ema50'])
             h1_e200 = float(h1_last['ema200'])
@@ -1181,6 +1158,8 @@ class GoldScalpingBot:
                     near_qml = abs(float(b1['high']) - qml_price) <= (0.70 * m5_atr)
                     rejection = (float(b1['close']) < float(b1['open'])) or (((float(b1['high']) - max(float(b1['open']), float(b1['close']))) / (float(b1['high']) - float(b1['low']) + 1e-9)) >= 0.25)
                     if near_qml and rejection:
+                        if curr_date is not None:
+                            self.judas_last_trade_date = curr_date
                         return False, True, f"🎯 ICT Judas RTM Bearish QM (Asia High Swept {recent_high:.2f} + QML {qml_price:.2f})"
 
         # 6. Bullish Judas QM (BUY):
@@ -1203,6 +1182,8 @@ class GoldScalpingBot:
                     near_qml = abs(float(b1['low']) - qml_price) <= (0.70 * m5_atr)
                     rejection = (float(b1['close']) > float(b1['open'])) or (((min(float(b1['open']), float(b1['close'])) - float(b1['low'])) / (float(b1['high']) - float(b1['low']) + 1e-9)) >= 0.25)
                     if near_qml and rejection:
+                        if curr_date is not None:
+                            self.judas_last_trade_date = curr_date
                         return True, False, f"🎯 ICT Judas RTM Bullish QM (Asia Low Swept {recent_low:.2f} + QML {qml_price:.2f})"
 
         return False, False, ""
@@ -1210,12 +1191,14 @@ class GoldScalpingBot:
 
     def _check_ict_silver_bullet_fvg(self, df: pd.DataFrame, symbol: str = "XAUUSD") -> Tuple[bool, bool, str]:
         """
-        🔫 ICT NY Silver Bullet & FVG Imbalance (M5, NY AM Killzone 19:00 - 23:00 Thai Time)
+        🔫 ICT NY Silver Bullet & FVG Imbalance (M5, NY AM Killzone 21:00 - 22:30 Thai Time)
         Synthesis of:
-        - Time Window: 19:00 - 23:00 Thai Time (High liquidity US session)
+        - Time Window: 21:00 - 22:30 Thai Time (True NY AM institutional killzone)
+        - Daily Limit: Max 1 trade per day (One Bullet Per Day rule)
+        - Macro Trend: Aligned with H1 EMA 50 to filter out aggressive counter-trend traps
         - Liquidity Run: Sweep of short-term High/Low of last 15-20 bars
-        - Market Structure Shift (MSS) with Displacement candle (Body >= 52%)
-        - Fair Value Gap (FVG): 3-bar imbalance (BISI/SIBI)
+        - Market Structure Shift (MSS) with Displacement candle (Body >= 50%)
+        - Fair Value Gap (FVG): Institutional imbalance (min gap >= max(1.20, 0.40 * ATR))
         - Consequent Encroachment (50% FVG retest) entry trigger
         """
         if len(df) < 30:
@@ -1228,10 +1211,32 @@ class GoldScalpingBot:
             th_tz = timezone(timedelta(hours=7))
             now_time = datetime.now(th_tz).time()
 
-        # Trading hours window (Default NY AM Session: 19:00 - 23:00 Thai Time)
+        # 1. Trading hours window (Default NY AM Session: 21:00 - 22:30 Thai Time)
         in_hours, _, _, _ = self.is_setup_in_trading_hours("ICT_SILVER_BULLET_FVG", now_time)
         if not in_hours:
             return False, False, ""
+
+        # 2. Daily Lock: Max 1 Silver Bullet trade per day
+        th_tz = timezone(timedelta(hours=7))
+        curr_date = getattr(now_time, "date", None)
+        if curr_date is None:
+            curr_date = datetime.now(th_tz).date()
+        if curr_date is not None and getattr(self, "silver_bullet_last_trade_date", None) == curr_date:
+            return False, False, ""
+
+        # 3. Macro H1 Trend Filter (Prevent Counter-Trend FVG Traps)
+        h1_bull_allowed, h1_bear_allowed = True, True
+        if self.connector:
+            try:
+                df_h1 = self.connector.get_rates(symbol, "H1", 55)
+                if df_h1 is not None and not df_h1.empty and len(df_h1) >= 30:
+                    df_h1['ema50'] = df_h1['close'].ewm(span=50, adjust=False).mean()
+                    h1_close = float(df_h1['close'].iloc[-2])
+                    h1_ema50 = float(df_h1['ema50'].iloc[-2])
+                    h1_bull_allowed = h1_close >= (h1_ema50 - 1.00)
+                    h1_bear_allowed = h1_close <= (h1_ema50 + 1.00)
+            except Exception:
+                pass
 
         hl = df['high'] - df['low']
         hc = (df['high'] - df['close'].shift()).abs()
@@ -1240,7 +1245,8 @@ class GoldScalpingBot:
         m5_atr = float(tr.rolling(window=14).mean().iloc[-2]) if len(df) >= 15 else 2.0
         if math.isnan(m5_atr) or m5_atr <= 0: m5_atr = 2.0
 
-        min_fvg_size = max(0.50, 0.20 * m5_atr)
+        # Institutional FVG Minimum Size on Gold (at least $1.20 or 0.40 * ATR)
+        min_fvg_size = max(1.20, 0.40 * m5_atr)
 
         b_anchor = df.iloc[-4]
         b_disp = df.iloc[-3]
@@ -1260,25 +1266,29 @@ class GoldScalpingBot:
         pool_low = float(df['low'].iloc[-20:-4].min())
 
         # 1. Bullish Silver Bullet FVG (BUY):
-        if disp_c > disp_o:
-            swept_ssl = float(df['low'].iloc[-10:-2].min()) <= pool_low + 0.15
+        if h1_bull_allowed and disp_c > disp_o:
+            swept_ssl = float(df['low'].iloc[-12:-2].min()) <= pool_low + 0.20
             bar1_h = float(b_anchor['high'])
             fvg_gap = float(b_disp['close']) - bar1_h
             if swept_ssl and fvg_gap >= min_fvg_size:
                 fvg_midpoint = bar1_h + (fvg_gap * 0.50)
                 retested = float(b_trig['low']) <= fvg_midpoint + 0.35 and float(b_trig['close']) >= bar1_h - 0.25
                 if retested:
+                    if curr_date is not None:
+                        self.silver_bullet_last_trade_date = curr_date
                     return True, False, f"🔫 ICT NY Silver Bullet Bullish FVG (SSL Swept + FVG 50% CE @ {fvg_midpoint:.2f})"
 
         # 2. Bearish Silver Bullet FVG (SELL):
-        if disp_c < disp_o:
-            swept_bsl = float(df['high'].iloc[-10:-2].max()) >= pool_high - 0.15
+        if h1_bear_allowed and disp_c < disp_o:
+            swept_bsl = float(df['high'].iloc[-12:-2].max()) >= pool_high - 0.20
             bar1_l = float(b_anchor['low'])
             fvg_gap = bar1_l - float(b_disp['close'])
             if swept_bsl and fvg_gap >= min_fvg_size:
                 fvg_midpoint = bar1_l - (fvg_gap * 0.50)
                 retested = float(b_trig['high']) >= fvg_midpoint - 0.35 and float(b_trig['close']) <= bar1_l + 0.25
                 if retested:
+                    if curr_date is not None:
+                        self.silver_bullet_last_trade_date = curr_date
                     return False, True, f"🔫 ICT NY Silver Bullet Bearish FVG (BSL Swept + FVG 50% CE @ {fvg_midpoint:.2f})"
 
         return False, False, ""
@@ -1307,231 +1317,221 @@ class GoldScalpingBot:
         if not in_hours:
             return False, False, ""
 
-        # H1 Macro Trend Alignment Filter
-        h1_bull_allowed = True
-        h1_bear_allowed = True
-        if self.connector:
-            try:
-                df_h1 = self.connector.get_rates(symbol, "H1", 60)
-                if df_h1 is not None and not df_h1.empty and len(df_h1) >= 25:
-                    df_h1['ema50'] = df_h1['close'].ewm(span=50, adjust=False).mean()
-                    h1_close = float(df_h1['close'].iloc[-2])
-                    h1_ema50 = float(df_h1['ema50'].iloc[-2])
-                    h1_bull_allowed = (h1_close >= h1_ema50 - 1.50)
-                    h1_bear_allowed = (h1_close <= h1_ema50 + 1.50)
-            except Exception:
-                pass
-
         b1 = df.iloc[-2]  # Trigger bar (last closed bar)
         b2 = df.iloc[-3]
-
-        atr = float(b1.get('atr14', b1.get('atr', 2.50)))
-        # Minimum Wave 1 distance: must be a significant structural impulse, not random micro-fluctuation ($2 was too small)
-        min_wave1_dist = max(5.00, 1.5 * atr)
 
         median_price = (df['high'] + df['low']) / 2.0
         ewo = median_price.rolling(window=5).mean() - median_price.rolling(window=34).mean()
         curr_ewo = float(ewo.iloc[-2]) if len(ewo) >= 35 else 0.0
         prev_ewo = float(ewo.iloc[-3]) if len(ewo) >= 35 else 0.0
 
-        # Dynamic lookback window up to 60 bars (approx 5 hours) to capture genuine macro swing
-        lb = min(len(df), 60)
-
         # BUY (Bullish Wave 3):
-        if h1_bull_allowed:
-            p0_search_end = max(6, lb // 4)
-            p0_subset = df['low'].iloc[-lb : -p0_search_end]
-            if len(p0_subset) >= 5:
-                p0_idx = int(p0_subset.argmin()) + (len(df) - lb)
-                p0_low = float(df['low'].iloc[p0_idx])
+        p0_idx = int(df['low'].iloc[-25:-10].argmin()) + (len(df) - 25)
+        p0_low = float(df['low'].iloc[p0_idx])
 
-                p1_subset = df.iloc[p0_idx + 1 : -3]
-                if len(p1_subset) >= 3:
-                    p1_idx = int(p1_subset['high'].argmax()) + (p0_idx + 1)
-                    p1_high = float(p1_subset['high'].max())
+        p1_subset = df.iloc[p0_idx + 1 : -4]
+        if len(p1_subset) >= 3:
+            p1_idx = int(p1_subset['high'].argmax()) + (p0_idx + 1)
+            p1_high = float(p1_subset['high'].max())
 
-                    p2_subset = df.iloc[p1_idx + 1 : -1]
-                    if len(p2_subset) >= 2:
-                        p2_low = float(p2_subset['low'].min())
-                        wave1_dist = p1_high - p0_low
-                        wave2_retrace = p1_high - p2_low
+            p2_subset = df.iloc[p1_idx + 1 : -1]
+            if len(p2_subset) >= 2:
+                p2_low = float(p2_subset['low'].min())
+                wave1_dist = p1_high - p0_low
+                wave2_retrace = p1_high - p2_low
 
-                        # Rule 1 check: P2 > P0 (Never retrace 100%)
-                        if wave1_dist >= min_wave1_dist and p2_low > p0_low:
-                            retrace_ratio = wave2_retrace / wave1_dist
-                            if 0.25 <= retrace_ratio <= 0.80:
-                                # Breakout: b1 closed above Wave 1 High
-                                if float(b1['close']) > p1_high and float(b2['close']) <= p1_high + 0.50:
-                                    if curr_ewo >= 0.0 or curr_ewo >= prev_ewo:
-                                        self._ew_wave2_sl = p2_low - 0.50
-                                        return True, False, f"🌊 Elliott Wave 3 Breaker Bullish (W1 Top {p1_high:.2f} Broken | Tactical SL @ W2 Low {p2_low:.2f} | H1 Bull Bias)"
+                # Rule 1 check: P2 > P0 (Never retrace 100%)
+                if wave1_dist >= 2.00 and p2_low > p0_low:
+                    retrace_ratio = wave2_retrace / wave1_dist
+                    if 0.25 <= retrace_ratio <= 0.80:
+                        # Breakout: b1 closed above Wave 1 High
+                        if float(b1['close']) > p1_high and float(b2['close']) <= p1_high + 0.50:
+                            if curr_ewo >= 0.0 or curr_ewo >= prev_ewo:
+                                return True, False, f"🌊 Elliott Wave 3 Breaker Bullish (W1 Top {p1_high:.2f} Broken | Tactical SL @ W2 Low {p2_low:.2f})"
 
         # SELL (Bearish Wave 3):
-        if h1_bear_allowed:
-            p0_sell_search_end = max(6, lb // 4)
-            p0_sell_subset = df['high'].iloc[-lb : -p0_sell_search_end]
-            if len(p0_sell_subset) >= 5:
-                p0_sell_idx = int(p0_sell_subset.argmax()) + (len(df) - lb)
-                p0_high = float(df['high'].iloc[p0_sell_idx])
+        p0_sell_idx = int(df['high'].iloc[-25:-10].argmax()) + (len(df) - 25)
+        p0_high = float(df['high'].iloc[p0_sell_idx])
 
-                p1_sell_subset = df.iloc[p0_sell_idx + 1 : -3]
-                if len(p1_sell_subset) >= 3:
-                    p1_sell_idx = int(p1_sell_subset['low'].argmin()) + (p0_sell_idx + 1)
-                    p1_sell_low = float(p1_sell_subset['low'].min())
+        p1_sell_subset = df.iloc[p0_sell_idx + 1 : -4]
+        if len(p1_sell_subset) >= 3:
+            p1_sell_idx = int(p1_sell_subset['low'].argmin()) + (p0_sell_idx + 1)
+            p1_sell_low = float(p1_sell_subset['low'].min())
 
-                    p2_sell_subset = df.iloc[p1_sell_idx + 1 : -1]
-                    if len(p2_sell_subset) >= 2:
-                        p2_sell_high = float(p2_sell_subset['high'].max())
-                        wave1_dist = p0_high - p1_sell_low
-                        wave2_retrace = p2_sell_high - p1_sell_low
+            p2_sell_subset = df.iloc[p1_sell_idx + 1 : -1]
+            if len(p2_sell_subset) >= 2:
+                p2_sell_high = float(p2_sell_subset['high'].max())
+                wave1_dist = p0_high - p1_sell_low
+                wave2_retrace = p2_sell_high - p1_sell_low
 
-                        if wave1_dist >= min_wave1_dist and p2_sell_high < p0_high:
-                            retrace_ratio = wave2_retrace / wave1_dist
-                            if 0.25 <= retrace_ratio <= 0.80:
-                                if float(b1['close']) < p1_sell_low and float(b2['close']) >= p1_sell_low - 0.50:
-                                    if curr_ewo <= 0.0 or curr_ewo <= prev_ewo:
-                                        self._ew_wave2_sl = p2_sell_high + 0.50
-                                        return False, True, f"🌊 Elliott Wave 3 Breaker Bearish (W1 Bottom {p1_sell_low:.2f} Broken | Tactical SL @ W2 High {p2_sell_high:.2f} | H1 Bear Bias)"
+                if wave1_dist >= 2.00 and p2_sell_high < p0_high:
+                    retrace_ratio = wave2_retrace / wave1_dist
+                    if 0.25 <= retrace_ratio <= 0.80:
+                        if float(b1['close']) < p1_sell_low and float(b2['close']) >= p1_sell_low - 0.50:
+                            if curr_ewo <= 0.0 or curr_ewo <= prev_ewo:
+                                return False, True, f"🌊 Elliott Wave 3 Breaker Bearish (W1 Bottom {p1_sell_low:.2f} Broken | Tactical SL @ W2 High {p2_sell_high:.2f})"
 
         return False, False, ""
 
-    def _check_smc_x_sto_h1(self, symbol: str, rates: Optional[pd.DataFrame] = None) -> Tuple[bool, bool, str]:
+    def _check_smc_x_sto_h1(self, symbol: str) -> Tuple[bool, bool, str]:
         """
-        😈 SMCxSTO ระบบปีศาจ M5 Intra-Day Smart Money Confluence:
-        1. Macro Bias (M15): EMA 50 vs EMA 200 trend alignment + Discount/Premium Equilibrium.
-        2. M5 Single-Rule Order Block:
-           - Buy OB: Last bearish M5 candle before bullish displacement & FVG in Discount Zone.
-           - Sell OB: Last bullish M5 candle before bearish displacement & FVG in Premium Zone.
-        3. Precision Trigger: M5 Stochastic (14, 3, 3) Oversold (<= 28) / Overbought (>= 72) reversal cross + Rejection candle.
-        4. Tactical SL: Under/Over the M5 Order Block extreme with ATR buffer (clamped $3.50 - $7.00, Target 2.2R).
+        😈 SMCxSTO ระบบปีศาจ (H1 Devil System by SMC by Bossz):
+        1. Trend Filter: EMA 50 & EMA 200 on H1 (Uptrend: EMA 50 > EMA 200, Downtrend: EMA 50 < EMA 200).
+        2. Pullback Filter: Uses ATR 14 to verify deep pullback >= 1.0x ATR into Discount/Premium zone.
+        3. Single-Rule Order Block:
+           - Buy OB: Last bearish candle before the bullish expansion that led to recent swing high.
+           - Sell OB: Last bullish candle before the bearish expansion that led to recent swing low.
+        4. Entry Trigger: Stochastic (14, 3, 3) Oversold (<= 28) / Overbought (>= 72) reversal cross.
         """
         try:
-            df_m5 = rates if (rates is not None and not rates.empty) else self.connector.get_rates(symbol, "M5", 80)
-            if df_m5 is None or df_m5.empty or len(df_m5) < 35:
+            df_h1 = self.connector.get_rates(symbol, "H1", 60)
+            if df_h1 is None or df_h1.empty or len(df_h1) < 35:
                 return False, False, ""
 
-            df_m15 = self.connector.get_rates(symbol, "M15", 50)
-            if df_m15 is None or df_m15.empty or len(df_m15) < 25:
-                return False, False, ""
-
-            m5_bar_time = df_m5['time'].iloc[-2]
-            # 0. M5 Bar Lock: Max 1 evaluation per closed M5 candle
-            if getattr(self, 'last_smc_sto_m5_bar_time', None) == m5_bar_time:
+            h1_bar_time = str(df_h1['time'].iloc[-2])
+            # 0. H1 Bar Lock: Strictly evaluate ONCE per H1 bar close
+            if getattr(self, 'last_smc_sto_h1_bar_time', None) == h1_bar_time:
                 return False, False, ""
 
             in_hours, _, _, _ = self.is_setup_in_trading_hours("SMC_X_STO_H1")
             if not in_hours:
                 return False, False, ""
 
-            # 1. Macro Trend & Equilibrium on M15
-            df_m15_c = df_m15.copy()
-            df_m15_c['ema50'] = df_m15_c['close'].ewm(span=50, adjust=False).mean()
-            df_m15_c['ema200'] = df_m15_c['close'].ewm(span=200, adjust=False).mean()
+            # Indicators on H1
+            df_h1['ema50'] = df_h1['close'].ewm(span=50, adjust=False).mean()
+            df_h1['ema200'] = df_h1['close'].ewm(span=200, adjust=False).mean()
 
-            m15_close = float(df_m15_c['close'].iloc[-2])
-            m15_ema50 = float(df_m15_c['ema50'].iloc[-2])
-            m15_ema200 = float(df_m15_c['ema200'].iloc[-2])
+            # ATR 14
+            high_low = df_h1['high'] - df_h1['low']
+            high_close = (df_h1['high'] - df_h1['close'].shift()).abs()
+            low_close = (df_h1['low'] - df_h1['close'].shift()).abs()
+            tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+            df_h1['atr14'] = tr.rolling(window=14).mean()
 
-            is_uptrend = (m15_close >= m15_ema50 - 1.50) and (m15_ema50 >= m15_ema200 - 2.0)
-            is_downtrend = (m15_close <= m15_ema50 + 1.50) and (m15_ema50 <= m15_ema200 + 2.0)
+            # Stochastic (14, 3, 3)
+            low14 = df_h1['low'].rolling(window=14).min()
+            high14 = df_h1['high'].rolling(window=14).max()
+            k_fast = 100 * ((df_h1['close'] - low14) / (high14 - low14 + 1e-9))
+            df_h1['stoch_k'] = k_fast.rolling(window=3).mean()
+            df_h1['stoch_d'] = df_h1['stoch_k'].rolling(window=3).mean()
 
-            m15_high = float(df_m15_c['high'].iloc[-25:-1].max())
-            m15_low = float(df_m15_c['low'].iloc[-25:-1].min())
-            m15_mid = (m15_high + m15_low) / 2.0
+            b1 = df_h1.iloc[-2]  # Last closed H1 candle
+            b2 = df_h1.iloc[-3]  # Previous H1 candle
+            curr_atr = float(b1['atr14']) if not pd.isna(b1['atr14']) else 5.0
 
-            # 2. Indicators on M5
-            df_m5_c = df_m5.copy()
-            hl = df_m5_c['high'] - df_m5_c['low']
-            hc = (df_m5_c['high'] - df_m5_c['close'].shift()).abs()
-            lc = (df_m5_c['low'] - df_m5_c['close'].shift()).abs()
-            tr = pd.concat([hl, hc, lc], axis=1).max(axis=1)
-            df_m5_c['atr14'] = tr.rolling(window=14).mean()
-            curr_atr = float(df_m5_c['atr14'].iloc[-2]) if not pd.isna(df_m5_c['atr14'].iloc[-2]) else 2.50
+            is_uptrend = (float(b1['ema50']) > float(b1['ema200']))
+            is_downtrend = (float(b1['ema50']) < float(b1['ema200']))
 
-            low14 = df_m5_c['low'].rolling(window=14).min()
-            high14 = df_m5_c['high'].rolling(window=14).max()
-            k_fast = 100 * ((df_m5_c['close'] - low14) / (high14 - low14 + 1e-9))
-            df_m5_c['stoch_k'] = k_fast.rolling(window=3).mean()
-            df_m5_c['stoch_d'] = df_m5_c['stoch_k'].rolling(window=3).mean()
-
-            b1 = df_m5_c.iloc[-2]  # Last closed M5 candle
-            b2 = df_m5_c.iloc[-3]  # Previous M5 candle
-            curr_k = float(b1['stoch_k'])
-            curr_d = float(b1['stoch_d'])
-            prev_k = float(b2['stoch_k'])
-            prev_d = float(b2['stoch_d'])
-
-            lookback = df_m5_c.iloc[-18:-2] # Lookback for M5 Order Block
+            lookback = df_h1.iloc[-22:-2] # Lookback for swing and OB
 
             # --- BULLISH (BUY) SETUP ---
-            if is_uptrend and float(b1['close']) <= (m15_mid + 0.50 * curr_atr):
-                valid_ob = None
-                for i in range(len(lookback) - 3, -1, -1):
-                    c0 = lookback.iloc[i]
-                    c1 = lookback.iloc[i+1]
-                    c2 = lookback.iloc[i+2]
-                    # c0 is bearish (OB candidate) followed by strong bullish expansion
-                    if c0['close'] < c0['open'] and c1['close'] > c1['open']:
-                        fvg_gap = float(c2['low']) - float(c0['high'])
-                        has_fvg = fvg_gap >= 0.15 or (float(c1['close']) - float(c0['high'])) >= (0.50 * curr_atr)
-                        if has_fvg:
-                            valid_ob = c0
-                            break
+            if is_uptrend:
+                swing_high = float(lookback['high'].max())
+                pullback_dist = swing_high - float(b1['low'])
+                
+                # Check 1: Must pull back at least 1.0x ATR from swing high (Discount Zone)
+                if pullback_dist >= (1.0 * curr_atr):
+                    # Check 2: Single-Rule Bullish Order Block WITH FVG Imbalance / Displacement
+                    # Search lookback for last bearish candle followed by strong expansion and FVG
+                    valid_ob = None
+                    for i in range(len(lookback) - 3, -1, -1):
+                        c0 = lookback.iloc[i]
+                        c1 = lookback.iloc[i+1]
+                        c2 = lookback.iloc[i+2]
+                        # c0 is bearish (OB candidate)
+                        if c0['close'] < c0['open']:
+                            # c1 is bullish expansion (displacement)
+                            if c1['close'] > c1['open']:
+                                fvg_gap = float(c2['low']) - float(c0['high'])
+                                # Valid if genuine FVG gap or displacement expansion
+                                has_fvg = fvg_gap >= 0.20 or (float(c1['close']) - float(c0['high'])) >= (0.65 * curr_atr)
+                                if has_fvg:
+                                    valid_ob = {
+                                        "low": float(c0['low']),
+                                        "high": float(c0['high']),
+                                        "fvg_high": max(float(c2['low']), float(c1['close'])),
+                                        "has_fvg": fvg_gap >= 0.20
+                                    }
+                                    break
+                    
+                    if valid_ob:
+                        ob_low = valid_ob["low"]
+                        ob_high = valid_ob["high"]
+                        fvg_zone_high = valid_ob["fvg_high"]
+                        
+                        # Price tested the Order Block or FVG zone
+                        price_in_ob = (float(b1['low']) <= (max(ob_high, fvg_zone_high) + 0.3 * curr_atr)) and (float(b1['close']) >= (ob_low - 0.2 * curr_atr))
+                        
+                        if price_in_ob:
+                            # Liquidity Sweep / Lower Wick Rejection Confirmation:
+                            # Ensure sell-side liquidity was swept (price dipped below previous candle low or pierced OB)
+                            # AND showed rejection with lower wick >= 25% of candle range
+                            candle_range = max(float(b1['high']) - float(b1['low']), 0.1)
+                            lower_wick = min(float(b1['open']), float(b1['close'])) - float(b1['low'])
+                            has_rejection = (lower_wick / candle_range) >= 0.25 or (float(b1['low']) < float(b2['low']))
 
-                if valid_ob is not None:
-                    ob_low = float(valid_ob['low'])
-                    ob_high = float(valid_ob['high'])
-                    price_in_ob = (float(b1['low']) <= ob_high + 0.35 * curr_atr) and (float(b1['close']) >= ob_low - 0.25 * curr_atr)
-
-                    if price_in_ob:
-                        candle_range = max(float(b1['high']) - float(b1['low']), 0.1)
-                        lower_wick = min(float(b1['open']), float(b1['close'])) - float(b1['low'])
-                        has_rejection = (lower_wick / candle_range >= 0.25) or (float(b1['close']) > float(b1['open']))
-                        was_oversold = (prev_k <= 28) or (curr_k <= 30)
-                        stoch_cross_up = (curr_k > curr_d) and (prev_k <= prev_d or (curr_k - curr_d) >= 1.0)
-
-                        if was_oversold and stoch_cross_up and has_rejection:
-                            sl = ob_low - max(1.00, 0.35 * curr_atr)
-                            self._smc_ob_sl = sl
-                            self.last_smc_sto_m5_bar_time = m5_bar_time
-                            return True, False, f"😈 SMCxSTO M5: Discount OB ({ob_low:.2f}-{ob_high:.2f}) + Stoch Oversold Cross (BUY)"
+                            # Check 3: Stochastic Trigger (Oversold <= 28 and %K cross above %D)
+                            was_oversold = (float(b2['stoch_k']) <= 28) or (float(b1['stoch_k']) <= 30)
+                            stoch_cross_up = (float(b1['stoch_k']) > float(b1['stoch_d'])) and (float(b2['stoch_k']) <= float(b2['stoch_d']))
+                            
+                            if was_oversold and stoch_cross_up and (float(b1['close']) > float(b1['open'])) and has_rejection:
+                                self.last_smc_sto_h1_bar_time = h1_bar_time
+                                return True, False, "😈 SMCxSTO: H1 Discount OB + FVG Imbalance Rebound (BUY)"
 
             # --- BEARISH (SELL) SETUP ---
-            if is_downtrend and float(b1['close']) >= (m15_mid - 0.50 * curr_atr):
-                valid_ob = None
-                for i in range(len(lookback) - 3, -1, -1):
-                    c0 = lookback.iloc[i]
-                    c1 = lookback.iloc[i+1]
-                    c2 = lookback.iloc[i+2]
-                    # c0 is bullish (OB candidate) followed by strong bearish expansion
-                    if c0['close'] > c0['open'] and c1['close'] < c1['open']:
-                        fvg_gap = float(c0['low']) - float(c2['high'])
-                        has_fvg = fvg_gap >= 0.15 or (float(c0['low']) - float(c1['close'])) >= (0.50 * curr_atr)
-                        if has_fvg:
-                            valid_ob = c0
-                            break
+            if is_downtrend:
+                swing_low = float(lookback['low'].min())
+                pullback_dist = float(b1['high']) - swing_low
+                
+                # Check 1: Must rally at least 1.0x ATR from swing low (Premium Zone)
+                if pullback_dist >= (1.0 * curr_atr):
+                    # Check 2: Single-Rule Bearish Order Block WITH FVG Imbalance / Displacement
+                    valid_ob = None
+                    for i in range(len(lookback) - 3, -1, -1):
+                        c0 = lookback.iloc[i]
+                        c1 = lookback.iloc[i+1]
+                        c2 = lookback.iloc[i+2]
+                        # c0 is bullish (OB candidate)
+                        if c0['close'] > c0['open']:
+                            # c1 is bearish expansion (displacement)
+                            if c1['close'] < c1['open']:
+                                fvg_gap = float(c0['low']) - float(c2['high'])
+                                has_fvg = fvg_gap >= 0.20 or (float(c0['low']) - float(c1['close'])) >= (0.65 * curr_atr)
+                                if has_fvg:
+                                    valid_ob = {
+                                        "low": float(c0['low']),
+                                        "high": float(c0['high']),
+                                        "fvg_low": min(float(c2['high']), float(c1['close'])),
+                                        "has_fvg": fvg_gap >= 0.20
+                                    }
+                                    break
+                    
+                    if valid_ob:
+                        ob_low = valid_ob["low"]
+                        ob_high = valid_ob["high"]
+                        fvg_zone_low = valid_ob["fvg_low"]
+                        
+                        # Price tested the Order Block or FVG zone
+                        price_in_ob = (float(b1['high']) >= (min(ob_low, fvg_zone_low) - 0.3 * curr_atr)) and (float(b1['close']) <= (ob_high + 0.2 * curr_atr))
+                        
+                        if price_in_ob:
+                            # Liquidity Sweep / Upper Wick Rejection Confirmation:
+                            candle_range = max(float(b1['high']) - float(b1['low']), 0.1)
+                            upper_wick = float(b1['high']) - max(float(b1['open']), float(b1['close']))
+                            has_rejection = (upper_wick / candle_range) >= 0.25 or (float(b1['high']) > float(b2['high']))
 
-                if valid_ob is not None:
-                    ob_low = float(valid_ob['low'])
-                    ob_high = float(valid_ob['high'])
-                    price_in_ob = (float(b1['high']) >= ob_low - 0.35 * curr_atr) and (float(b1['close']) <= ob_high + 0.25 * curr_atr)
-
-                    if price_in_ob:
-                        candle_range = max(float(b1['high']) - float(b1['low']), 0.1)
-                        upper_wick = float(b1['high']) - max(float(b1['open']), float(b1['close']))
-                        has_rejection = (upper_wick / candle_range >= 0.25) or (float(b1['close']) < float(b1['open']))
-                        was_overbought = (prev_k >= 72) or (curr_k >= 70)
-                        stoch_cross_down = (curr_k < curr_d) and (prev_k >= prev_d or (curr_d - curr_k) >= 1.0)
-
-                        if was_overbought and stoch_cross_down and has_rejection:
-                            sl = ob_high + max(1.00, 0.35 * curr_atr)
-                            self._smc_ob_sl = sl
-                            self.last_smc_sto_m5_bar_time = m5_bar_time
-                            return False, True, f"😈 SMCxSTO M5: Premium OB ({ob_low:.2f}-{ob_high:.2f}) + Stoch Overbought Cross (SELL)"
+                            # Check 3: Stochastic Trigger (Overbought >= 72 and %K cross below %D)
+                            was_overbought = (float(b2['stoch_k']) >= 72) or (float(b1['stoch_k']) >= 70)
+                            stoch_cross_down = (float(b1['stoch_k']) < float(b1['stoch_d'])) and (float(b2['stoch_k']) >= float(b2['stoch_d']))
+                            
+                            if was_overbought and stoch_cross_down and (float(b1['close']) < float(b1['open'])) and has_rejection:
+                                self.last_smc_sto_h1_bar_time = h1_bar_time
+                                return False, True, "😈 SMCxSTO: H1 Premium OB + FVG Imbalance Rebound (SELL)"
 
         except Exception as e:
-            logger.error(f"Error evaluating SMCxSTO M5 strategy: {e}")
+            logger.error(f"Error evaluating SMCxSTO H1 strategy: {e}")
 
+        self.last_smc_sto_h1_bar_time = h1_bar_time
         return False, False, ""
 
     def _check_rtm_confluence_m15(self, symbol: str) -> dict:
@@ -1807,31 +1807,28 @@ class GoldScalpingBot:
             self.add_log(f"🛡️ [RTM COOLDOWN ACTIVE] {action} paused ({cooldown_rem:.0f}s left) after recent Stop Loss to prevent stop hunt sweep", "WARNING")
             return
 
-        # 2. Register active RTM setup for Pullback Duo (M4 and M6)
-        strat_cfg = self.config.get("strategy", {})
-        m4_enabled = strat_cfg.get("rtm_m4_enabled", True)
-        m6_enabled = strat_cfg.get("rtm_m6_enabled", True)
-        if (m4_enabled or m6_enabled) and (rtm_mode in ["ALL", "MODEL_4", "MODEL_6", "PULLBACK_DUO"]):
-            self.active_rtm_setup = {
-                "action": action,
-                "grade": grade,
-                "score": score,
-                "sl": sl,
-                "reason": reason,
-                "qml_price": sig.get("qml_price", 0.0),
-                "mpl_price": sig.get("mpl_price", sig.get("qml_price", 0.0)),
-                "head_extreme": sig.get("head_extreme", 0.0),
-                "break_level": sig.get("break_level", 0.0),
-                "signal_close": sig.get("signal_close", 0.0),
-                "curr_atr": sig.get("curr_atr", 3.5),
-                "created_time": time.time(),
-                "expiry_time": time.time() + (45 * 60), # 45 minutes
-                "rtm_mode": rtm_mode,
-                "m4_filled": False,
-                "m6_filled": False,
-                "is_ftb": sig.get("is_ftb", True)
-            }
-            self.add_log(f"⏳ [RTM PULLBACK DUO QUEUE] Staggered monitoring active for M4 & M6 | QML: {sig.get('qml_price', 0.0):.2f} MPL: {sig.get('mpl_price', 0.0):.2f}", "INFO")
+        # 2. Register active RTM setup for staggered entries (M4 & M6 only)
+        self.active_rtm_setup = {
+            "action": action,
+            "grade": grade,
+            "score": score,
+            "sl": sl,
+            "reason": reason,
+            "qml_price": sig.get("qml_price", 0.0),
+            "mpl_price": sig.get("mpl_price", sig.get("qml_price", 0.0)),
+            "head_extreme": sig.get("head_extreme", 0.0),
+            "break_level": sig.get("break_level", 0.0),
+            "signal_close": sig.get("signal_close", 0.0),
+            "curr_atr": sig.get("curr_atr", 3.5),
+            "created_time": time.time(),
+            "expiry_time": time.time() + (45 * 60), # 45 minutes
+            "rtm_mode": rtm_mode,
+            "m4_filled": False,
+            "m6_filled": False,
+            "is_ftb": sig.get("is_ftb", True)
+        }
+
+        self.add_log(f"⏳ [RTM PULLBACK DUO QUEUE] Staggered monitoring active for M4 (QML/MPL Retest) & M6 (OTE Zone) | QML: {sig.get('qml_price', 0.0):.2f} MPL: {sig.get('mpl_price', 0.0):.2f}", "INFO")
 
     def _pass_rtm_ai_quality_gate(self, rates_m5: pd.DataFrame, symbol: str, strat_id: str, action: str, base_lot_m: float) -> Tuple[bool, dict]:
         """
@@ -1840,12 +1837,7 @@ class GoldScalpingBot:
         2. Evaluates RealTimeStrategyOptimizer dynamic parameters (streak, cooldown).
         3. Returns (is_allowed, opt_params) with combined lot_multiplier and dynamic tp_ratio.
         """
-        m_info = self.connector.get_market_info(symbol)
-        sp = m_info.get("spread", 20.0) if isinstance(m_info, dict) else 20.0
-        try:
-            spread = float(sp)
-        except (TypeError, ValueError):
-            spread = 20.0
+        spread = self.connector.get_market_info(symbol).get("spread", 20.0)
         score_res = self.scorer.evaluate_market_confluence(rates_m5, spread, strat_id)
         if not score_res.get("is_allowed", True):
             self.scorer.record_filtered_trade(strat_id, score_res)
@@ -1984,16 +1976,16 @@ class GoldScalpingBot:
                         b_closed = rates_m5.iloc[-2] if len(rates_m5) >= 2 else rates_m5.iloc[-1]
                         c_rng = max(float(b_closed['high']) - float(b_closed['low']), 0.1)
                         if action == "BUY":
-                            # Institutional Golden Pocket Sweet Spot: Fib 50.0% - 68.0%
+                            # Institutional Golden Pocket Sweet Spot: 50.0% - 65.0%
                             ote_high = break_level - (0.50 * impulse_range)
-                            ote_low = break_level - (0.68 * impulse_range)
+                            ote_low = break_level - (0.65 * impulse_range)
                             in_zone = (ote_low - 0.50) <= bid <= (ote_high + 0.50) and bid >= sl + 1.0
                             lower_wick = min(float(b_closed['open']), float(b_closed['close'])) - float(b_closed['low'])
                             rejection_ok = ((lower_wick / c_rng) >= 0.28) or (float(b_closed['close']) > float(b_closed['open'])) or (bid > float(b_closed['high']))
                             is_m6_ote = in_zone and rejection_ok
                         elif action == "SELL":
                             ote_low = break_level + (0.50 * impulse_range)
-                            ote_high = break_level + (0.68 * impulse_range)
+                            ote_high = break_level + (0.65 * impulse_range)
                             in_zone = (ote_low - 0.50) <= ask <= (ote_high + 0.50) and ask <= sl - 1.0
                             upper_wick = float(b_closed['high']) - max(float(b_closed['open']), float(b_closed['close']))
                             rejection_ok = ((upper_wick / c_rng) >= 0.28) or (float(b_closed['close']) < float(b_closed['open'])) or (ask < float(b_closed['low']))
@@ -2004,11 +1996,11 @@ class GoldScalpingBot:
                     passed, opt = self._pass_rtm_ai_quality_gate(rates_m5, symbol, "RTM_M6_ELITE_GROWTH", action, lot_m)
                     if passed:
                         opt["custom_sl"] = sl
-                        dynamic_tp = opt.get("tp_ratio", 2.2)
+                        dynamic_tp = opt.get("tp_ratio", 2.0)
                         if action == "BUY":
-                            self.execute_buy(rates_m5, symbol, f"👑 RTM M6 (Golden Pocket Retest Fib 50-68% [{grade}] @ {curr_price:.2f} | Dynamic {dynamic_tp}R)", opt_params=opt, strat_id="RTM_M6_ELITE_GROWTH")
+                            self.execute_buy(rates_m5, symbol, f"👑 RTM M6 (Golden Pocket Retest Fib 50-65% [{grade}] @ {curr_price:.2f} | Dynamic {dynamic_tp}R)", opt_params=opt, strat_id="RTM_M6_ELITE_GROWTH")
                         else:
-                            self.execute_sell(rates_m5, symbol, f"👑 RTM M6 (Golden Pocket Retest Fib 50-68% [{grade}] @ {curr_price:.2f} | Dynamic {dynamic_tp}R)", opt_params=opt, strat_id="RTM_M6_ELITE_GROWTH")
+                            self.execute_sell(rates_m5, symbol, f"👑 RTM M6 (Golden Pocket Retest Fib 50-65% [{grade}] @ {curr_price:.2f} | Dynamic {dynamic_tp}R)", opt_params=opt, strat_id="RTM_M6_ELITE_GROWTH")
                         setup["m6_filled"] = True
                         self.add_log(f"👑 [RTM M6 FILLED] Elite Growth OTE Golden Pocket executed @ {curr_price:.2f} (Grade {grade} | TP: {dynamic_tp}R | LotMult: {opt.get('lot_multiplier', 1.0):.2f}x)", "SUCCESS")
 
@@ -2036,9 +2028,9 @@ class GoldScalpingBot:
         if strat_id == "NEWS_MOMENTUM_EXPANSION":
             return True, "AI Trend Trail (News Expansion)"
 
-        # 3. SMCxSTO M5 Devil System -> High R:R Runner (Trailing Stop)
+        # 3. SMCxSTO H1 Devil System -> High R:R Runner (Trailing Stop)
         if strat_id == "SMC_X_STO_H1":
-            return True, "AI Trend Trail (SMCxSTO M5 Devil System)"
+            return True, "AI Trend Trail (SMCxSTO H1 Devil System)"
 
         # 4. RTM Quasimodo Multi-Model Engine -> High R:R Runner (Trailing Stop)
         if strat_id.startswith("RTM_"):
@@ -2071,40 +2063,17 @@ class GoldScalpingBot:
             if sl_dist > 5.00: sl = ask - 5.00; sl_dist = 5.00
             tp2 = ask + (sl_dist * 1.2)
         elif strat_id == "SMC_X_STO_H1" or "SMCxSTO" in reason or "STO" in reason:
-            atr = float(df['atr14'].iloc[-2]) if 'atr14' in df else (float(df['atr'].iloc[-2]) if 'atr' in df else 2.50)
-            custom_sl = getattr(self, "_smc_ob_sl", None) or opt.get("custom_sl")
-            if custom_sl is not None and custom_sl < ask:
-                sl = float(custom_sl)
-                sl_dist = ask - sl
+            df_h1 = self.connector.get_rates(symbol, "H1", 35)
+            if not df_h1.empty and len(df_h1) >= 15:
+                ob_low = float(df_h1['low'].iloc[-15:-1].min())
             else:
-                lowest_low = float(df['low'].iloc[-15:-1].min())
-                sl_buffer = max(1.00, 0.35 * atr) * sl_mult
-                sl = lowest_low - sl_buffer
-                sl_dist = ask - sl
-            if sl_dist < 3.50: sl = ask - 3.50; sl_dist = 3.50
-            if sl_dist > 7.00: sl = ask - 7.00; sl_dist = 7.00
-            target_rr = opt.get("tp_ratio", 2.2)
-            tp2 = ask + (sl_dist * target_rr)
-            self._smc_ob_sl = None
-        elif strat_id == "RTM_M6_ELITE_GROWTH":
-            atr = float(df['atr14'].iloc[-2]) if 'atr14' in df else (float(df['atr'].iloc[-2]) if 'atr' in df else 2.50)
-            custom_sl = opt.get("custom_sl")
-            custom_tp = opt.get("custom_tp")
-            if custom_sl and custom_sl < ask:
-                sl = float(custom_sl)
-                sl_dist = ask - sl
-            else:
-                lowest_low = float(df['low'].iloc[-15:-1].min())
-                sl_buffer = max(1.00, 0.35 * atr) * sl_mult
-                sl = lowest_low - sl_buffer
-                sl_dist = ask - sl
-            if sl_dist < 3.50: sl = ask - 3.50; sl_dist = 3.50
-            if sl_dist > 7.50: sl = ask - 7.50; sl_dist = 7.50
-            target_rr = opt.get("tp_ratio", 2.2)
-            if custom_tp and custom_tp > ask:
-                tp2 = float(custom_tp)
-            else:
-                tp2 = ask + (sl_dist * target_rr)
+                ob_low = float(df['low'].iloc[-30:-1].min())
+            sl_buffer = 0.80 * sl_mult
+            sl = ob_low - sl_buffer
+            sl_dist = ask - sl
+            if sl_dist < 4.50: sl = ask - 4.50; sl_dist = 4.50
+            if sl_dist > 18.00: sl = ask - 18.00; sl_dist = 18.00
+            tp2 = ask + (sl_dist * 2.2)
         elif strat_id.startswith("RTM_") or "RTM" in reason:
             custom_sl = opt.get("custom_sl")
             custom_tp = opt.get("custom_tp")
@@ -2128,12 +2097,11 @@ class GoldScalpingBot:
             lowest_low = float(df['low'].iloc[-12:-1].min())
             ema60_val = float(df['ema60'].iloc[-2]) if 'ema60' in df else lowest_low
             structural_ref = min(lowest_low, ema60_val)
-            atr = float(df['atr14'].iloc[-2]) if 'atr14' in df else (float(df['atr'].iloc[-2]) if 'atr' in df else 2.50)
-            sl_buffer = max(1.00, 0.40 * atr) * sl_mult
+            sl_buffer = 0.50 * sl_mult
             sl = structural_ref - sl_buffer
             sl_dist = ask - sl
-            if sl_dist < 3.50: sl = ask - 3.50; sl_dist = 3.50
-            if sl_dist > 7.50: sl = ask - 7.50; sl_dist = 7.50
+            if sl_dist < 2.50: sl = ask - 2.50; sl_dist = 2.50
+            if sl_dist > 12.00: sl = ask - 12.00; sl_dist = 12.00
             target_rr = opt.get("tp_ratio", 2.5)
             tp2 = ask + (sl_dist * target_rr)
         elif strat_id == "KC_LIQUIDITY_DOMINANCE":
@@ -2156,29 +2124,22 @@ class GoldScalpingBot:
             tp2 = ask + (sl_dist * target_rr)
         elif strat_id == "ICT_SILVER_BULLET_FVG":
             lowest_low = float(df['low'].iloc[-8:-1].min())
-            sl_buffer = 0.35 * sl_mult
+            sl_buffer = 0.45 * sl_mult
             sl = lowest_low - sl_buffer
             sl_dist = ask - sl
-            if sl_dist < 1.80: sl = ask - 1.80; sl_dist = 1.80
-            if sl_dist > 8.00: sl = ask - 8.00; sl_dist = 8.00
+            if sl_dist < 2.50: sl = ask - 2.50; sl_dist = 2.50
+            if sl_dist > 9.00: sl = ask - 9.00; sl_dist = 9.00
             target_rr = opt.get("tp_ratio", 1.5)
             tp2 = ask + (sl_dist * target_rr)
         elif strat_id == "EW_WAVE3_BREAKER":
-            atr = float(df['atr14'].iloc[-2]) if 'atr14' in df else (float(df['atr'].iloc[-2]) if 'atr' in df else 2.50)
-            sl_buffer = max(0.80, 0.35 * atr) * sl_mult
-            custom_sl = getattr(self, "_ew_wave2_sl", None)
-            if custom_sl is not None and custom_sl < ask:
-                sl = float(custom_sl)
-                sl_dist = ask - sl
-            else:
-                lowest_low = float(df['low'].iloc[-16:-1].min())
-                sl = lowest_low - sl_buffer
-                sl_dist = ask - sl
-            if sl_dist < 3.00: sl = ask - 3.00; sl_dist = 3.00
-            if sl_dist > 8.50: sl = ask - 8.50; sl_dist = 8.50
-            target_rr = opt.get("tp_ratio", 2.2)
+            lowest_low = float(df['low'].iloc[-8:-1].min())
+            sl_buffer = 0.40 * sl_mult
+            sl = lowest_low - sl_buffer
+            sl_dist = ask - sl
+            if sl_dist < 2.50: sl = ask - 2.50; sl_dist = 2.50
+            if sl_dist > 12.00: sl = ask - 12.00; sl_dist = 12.00
+            target_rr = opt.get("tp_ratio", 2.5)
             tp2 = ask + (sl_dist * target_rr)
-            self._ew_wave2_sl = None
         else:
             # News Momentum Expansion / Default (EarthETC Structural SL)
             if len(df) >= 15:
@@ -2200,34 +2161,25 @@ class GoldScalpingBot:
             if sl_dist > 18.00: sl = ask - 18.00; sl_dist = 18.00  # EarthETC: wide structural room, no arbitrary 7.00 choke
             tp2 = ask + (sl_dist * 1.8)
 
-        if strat_id in ["ICT_JUDAS_RTM_QM", "ICT_SILVER_BULLET_FVG", "SMC_X_STO_H1"]:
+        if strat_id in ["ICT_JUDAS_RTM_QM", "ICT_SILVER_BULLET_FVG"]:
             risk_label = "0.5% Risk"
         elif strat_id == "EW_WAVE3_BREAKER":
             risk_label = "1.0% Risk"
         elif strat_id == "PULLBACK_DR_EKK":
             risk_label = "Step-Up 0.5% Risk" if self.config.get("strategy", {}).get("enable_step_up_compounding", True) else "0.5% Risk"
-        elif strat_id == "RTM_M6_ELITE_GROWTH":
-            risk_label = "Step-Up 0.5% Risk" if self.config.get("strategy", {}).get("enable_step_up_compounding", True) else "0.5% Risk"
-        elif strat_id in ["RTM_M4_CONSERVATIVE", "KC_LIQUIDITY_DOMINANCE"]:
+        elif strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH", "KC_LIQUIDITY_DOMINANCE"]:
             risk_label = "Step-Up 1.0% Risk" if self.config.get("strategy", {}).get("enable_step_up_compounding", True) else "1.0% Risk"
         elif strat_id in ["NEWS_MOMENTUM_EXPANSION", "ASIAN_RANGE_SNIPER"]:
             lot_mult = 0.5  # Fixed 0.5% risk per user instruction
             risk_label = "0.5% Risk"
         else:
-            risk_label = "0.5% Risk"
+            risk_label = "1.0% Risk"
 
         total_lot = self.calculate_lot_size(sl_dist, lot_mult=lot_mult, strat_id=strat_id)
 
         # Single Position Plan across Setups
         res1 = self.connector.open_order(symbol, "BUY", total_lot, sl, tp2, magic_p1, f"Gold_{strat_id[:8]}")
         t1 = res1.get("ticket", 0) if isinstance(res1, dict) else 0
-        if t1 > 0 and strat_id == "ICT_JUDAS_RTM_QM":
-            sim_time = getattr(self.connector, "current_time", None)
-            if sim_time is not None and hasattr(sim_time, "date") and not hasattr(sim_time, "_mock_return_value"):
-                self.judas_last_trade_date = sim_time.date()
-            else:
-                th_tz = timezone(timedelta(hours=7))
-                self.judas_last_trade_date = datetime.now(th_tz).date()
         self.benchmark_tracker.register_trade(t1, 0, symbol, "BUY", ask, sl, total_lot, strat_id)
         self.add_log(f"🟢 [BUY OPENED] [{strat_id}] {reason} | Single {risk_label}: TP {tp2:.2f} (+{abs(tp2-ask)*100:.0f} pts) / SL {sl:.2f} (-{sl_dist*100:.0f} pts) | Lot: {total_lot}", "SUCCESS")
         if self.notifier:
@@ -2253,40 +2205,17 @@ class GoldScalpingBot:
             if sl_dist > 5.00: sl = bid + 5.00; sl_dist = 5.00
             tp2 = bid - (sl_dist * 1.2)
         elif strat_id == "SMC_X_STO_H1" or "SMCxSTO" in reason or "STO" in reason:
-            atr = float(df['atr14'].iloc[-2]) if 'atr14' in df else (float(df['atr'].iloc[-2]) if 'atr' in df else 2.50)
-            custom_sl = getattr(self, "_smc_ob_sl", None) or opt.get("custom_sl")
-            if custom_sl is not None and custom_sl > bid:
-                sl = float(custom_sl)
-                sl_dist = sl - bid
+            df_h1 = self.connector.get_rates(symbol, "H1", 35)
+            if not df_h1.empty and len(df_h1) >= 15:
+                ob_high = float(df_h1['high'].iloc[-15:-1].max())
             else:
-                highest_high = float(df['high'].iloc[-15:-1].max())
-                sl_buffer = max(1.00, 0.35 * atr) * sl_mult
-                sl = highest_high + sl_buffer
-                sl_dist = sl - bid
-            if sl_dist < 3.50: sl = bid + 3.50; sl_dist = 3.50
-            if sl_dist > 7.00: sl = bid + 7.00; sl_dist = 7.00
-            target_rr = opt.get("tp_ratio", 2.2)
-            tp2 = bid - (sl_dist * target_rr)
-            self._smc_ob_sl = None
-        elif strat_id == "RTM_M6_ELITE_GROWTH":
-            atr = float(df['atr14'].iloc[-2]) if 'atr14' in df else (float(df['atr'].iloc[-2]) if 'atr' in df else 2.50)
-            custom_sl = opt.get("custom_sl")
-            custom_tp = opt.get("custom_tp")
-            if custom_sl and custom_sl > bid:
-                sl = float(custom_sl)
-                sl_dist = sl - bid
-            else:
-                highest_high = float(df['high'].iloc[-15:-1].max())
-                sl_buffer = max(1.00, 0.35 * atr) * sl_mult
-                sl = highest_high + sl_buffer
-                sl_dist = sl - bid
-            if sl_dist < 3.50: sl = bid + 3.50; sl_dist = 3.50
-            if sl_dist > 7.50: sl = bid + 7.50; sl_dist = 7.50
-            target_rr = opt.get("tp_ratio", 2.2)
-            if custom_tp and custom_tp < bid:
-                tp2 = float(custom_tp)
-            else:
-                tp2 = bid - (sl_dist * target_rr)
+                ob_high = float(df['high'].iloc[-30:-1].max())
+            sl_buffer = 0.80 * sl_mult
+            sl = ob_high + sl_buffer
+            sl_dist = sl - bid
+            if sl_dist < 4.50: sl = bid + 4.50; sl_dist = 4.50
+            if sl_dist > 18.00: sl = bid + 18.00; sl_dist = 18.00
+            tp2 = bid - (sl_dist * 2.2)
         elif strat_id.startswith("RTM_") or "RTM" in reason:
             custom_sl = opt.get("custom_sl")
             custom_tp = opt.get("custom_tp")
@@ -2310,12 +2239,11 @@ class GoldScalpingBot:
             highest_high = float(df['high'].iloc[-12:-1].max())
             ema60_val = float(df['ema60'].iloc[-2]) if 'ema60' in df else highest_high
             structural_ref = max(highest_high, ema60_val)
-            atr = float(df['atr14'].iloc[-2]) if 'atr14' in df else (float(df['atr'].iloc[-2]) if 'atr' in df else 2.50)
-            sl_buffer = max(1.00, 0.40 * atr) * sl_mult
+            sl_buffer = 0.50 * sl_mult
             sl = structural_ref + sl_buffer
             sl_dist = sl - bid
-            if sl_dist < 3.50: sl = bid + 3.50; sl_dist = 3.50
-            if sl_dist > 7.50: sl = bid + 7.50; sl_dist = 7.50
+            if sl_dist < 2.50: sl = bid + 2.50; sl_dist = 2.50
+            if sl_dist > 12.00: sl = bid + 12.00; sl_dist = 12.00
             target_rr = opt.get("tp_ratio", 2.5)
             tp2 = bid - (sl_dist * target_rr)
         elif strat_id == "KC_LIQUIDITY_DOMINANCE":
@@ -2338,29 +2266,22 @@ class GoldScalpingBot:
             tp2 = bid - (sl_dist * target_rr)
         elif strat_id == "ICT_SILVER_BULLET_FVG":
             highest_high = float(df['high'].iloc[-8:-1].max())
-            sl_buffer = 0.35 * sl_mult
+            sl_buffer = 0.45 * sl_mult
             sl = highest_high + sl_buffer
             sl_dist = sl - bid
-            if sl_dist < 1.80: sl = bid + 1.80; sl_dist = 1.80
-            if sl_dist > 8.00: sl = bid + 8.00; sl_dist = 8.00
+            if sl_dist < 2.50: sl = bid + 2.50; sl_dist = 2.50
+            if sl_dist > 9.00: sl = bid + 9.00; sl_dist = 9.00
             target_rr = opt.get("tp_ratio", 1.5)
             tp2 = bid - (sl_dist * target_rr)
         elif strat_id == "EW_WAVE3_BREAKER":
-            atr = float(df['atr14'].iloc[-2]) if 'atr14' in df else (float(df['atr'].iloc[-2]) if 'atr' in df else 2.50)
-            sl_buffer = max(0.80, 0.35 * atr) * sl_mult
-            custom_sl = getattr(self, "_ew_wave2_sl", None)
-            if custom_sl is not None and custom_sl > bid:
-                sl = float(custom_sl)
-                sl_dist = sl - bid
-            else:
-                highest_high = float(df['high'].iloc[-16:-1].max())
-                sl = highest_high + sl_buffer
-                sl_dist = sl - bid
-            if sl_dist < 3.00: sl = bid + 3.00; sl_dist = 3.00
-            if sl_dist > 8.50: sl = bid + 8.50; sl_dist = 8.50
-            target_rr = opt.get("tp_ratio", 2.2)
+            highest_high = float(df['high'].iloc[-8:-1].max())
+            sl_buffer = 0.40 * sl_mult
+            sl = highest_high + sl_buffer
+            sl_dist = sl - bid
+            if sl_dist < 2.50: sl = bid + 2.50; sl_dist = 2.50
+            if sl_dist > 12.00: sl = bid + 12.00; sl_dist = 12.00
+            target_rr = opt.get("tp_ratio", 2.5)
             tp2 = bid - (sl_dist * target_rr)
-            self._ew_wave2_sl = None
         else:
             # News Momentum Expansion / Default (EarthETC Structural SL)
             if len(df) >= 15:
@@ -2382,34 +2303,25 @@ class GoldScalpingBot:
             if sl_dist > 18.00: sl = bid + 18.00; sl_dist = 18.00  # EarthETC: wide structural room, no arbitrary 7.00 choke
             tp2 = bid - (sl_dist * 1.8)
 
-        if strat_id in ["ICT_JUDAS_RTM_QM", "ICT_SILVER_BULLET_FVG", "SMC_X_STO_H1"]:
+        if strat_id in ["ICT_JUDAS_RTM_QM", "ICT_SILVER_BULLET_FVG"]:
             risk_label = "0.5% Risk"
         elif strat_id == "EW_WAVE3_BREAKER":
             risk_label = "1.0% Risk"
         elif strat_id == "PULLBACK_DR_EKK":
             risk_label = "Step-Up 0.5% Risk" if self.config.get("strategy", {}).get("enable_step_up_compounding", True) else "0.5% Risk"
-        elif strat_id == "RTM_M6_ELITE_GROWTH":
-            risk_label = "Step-Up 0.5% Risk" if self.config.get("strategy", {}).get("enable_step_up_compounding", True) else "0.5% Risk"
-        elif strat_id in ["RTM_M4_CONSERVATIVE", "KC_LIQUIDITY_DOMINANCE"]:
+        elif strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH", "KC_LIQUIDITY_DOMINANCE"]:
             risk_label = "Step-Up 1.0% Risk" if self.config.get("strategy", {}).get("enable_step_up_compounding", True) else "1.0% Risk"
         elif strat_id in ["NEWS_MOMENTUM_EXPANSION", "ASIAN_RANGE_SNIPER"]:
             lot_mult = 0.5  # Fixed 0.5% risk per user instruction
             risk_label = "0.5% Risk"
         else:
-            risk_label = "0.5% Risk"
+            risk_label = "1.0% Risk"
 
         total_lot = self.calculate_lot_size(sl_dist, lot_mult=lot_mult, strat_id=strat_id)
 
         # Single Position Plan across Setups (News=0.5%, Others=1.0%)
         res1 = self.connector.open_order(symbol, "SELL", total_lot, sl, tp2, magic_p1, f"Gold_{strat_id[:8]}")
         t1 = res1.get("ticket", 0) if isinstance(res1, dict) else 0
-        if t1 > 0 and strat_id == "ICT_JUDAS_RTM_QM":
-            sim_time = getattr(self.connector, "current_time", None)
-            if sim_time is not None and hasattr(sim_time, "date") and not hasattr(sim_time, "_mock_return_value"):
-                self.judas_last_trade_date = sim_time.date()
-            else:
-                th_tz = timezone(timedelta(hours=7))
-                self.judas_last_trade_date = datetime.now(th_tz).date()
         self.benchmark_tracker.register_trade(t1, 0, symbol, "SELL", bid, sl, total_lot, strat_id)
         self.add_log(f"🔴 [SELL OPENED] [{strat_id}] {reason} | Single {risk_label}: TP {tp2:.2f} (+{abs(bid-tp2)*100:.0f} pts) / SL {sl:.2f} (-{sl_dist*100:.0f} pts) | Lot: {total_lot}", "SUCCESS")
         if self.notifier:
@@ -2631,7 +2543,7 @@ class GoldScalpingBot:
                                 self.add_log(f"🛡️ [BREAK-EVEN LOCKED] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
 
                     elif is_smc_devil:
-                        # SMC M5 Devil System (Target 2.2R)
+                        # SMC H1 Devil System (Target 2.2R)
                         # Step 3: At >= 1.8R -> Lock +1.2R Profit
                         if r_profit >= 1.8:
                             target_sl = round(open_p + (initial_r * 1.2), 2)
@@ -2782,7 +2694,7 @@ class GoldScalpingBot:
                                 self.add_log(f"🛡️ [BREAK-EVEN LOCKED] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
 
                     elif is_smc_devil:
-                        # SMC M5 Devil System (Target 2.2R)
+                        # SMC H1 Devil System (Target 2.2R)
                         # Step 3: At >= 1.8R -> Lock +1.2R Profit
                         if r_profit >= 1.8:
                             target_sl = round(open_p - (initial_r * 1.2), 2)

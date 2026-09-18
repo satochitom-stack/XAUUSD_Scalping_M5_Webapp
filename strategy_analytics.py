@@ -59,14 +59,14 @@ class RealTradeAnalyticsManager:
         },
         "SMC_X_STO_H1": {
             "id": "SMC_X_STO_H1",
-            "name": "SMCxSTO ระบบปีศาจ M5 (M5 Intra-Day Confluence)",
+            "name": "SMCxSTO ระบบปีศาจ (H1 Devil System)",
             "icon": "😈",
             "category": "SMC_PRO",
-            "timeframe": "M5 (M15 Bias)",
-            "best_session": "London & NY (14:00 - 24:00)",
+            "timeframe": "H1",
+            "best_session": "London & NY (14:00 - 04:00)",
             "magic_numbers": [555770, 555771, 555772, 555773],
-            "avg_rr": "1:2.2",
-            "description": "ระบบ SMCxSTO M5 Intra-Day: เทรนด์ใหญ่ M15 (EMA 50/200 + โซน Discount/Premium) + M5 Single-Rule Order Block/FVG + Stochastic (14,3,3) Reversal Trigger (ความเสี่ยงคงที่ 0.5% | TP 2.2R)"
+            "avg_rr": "1:2.0",
+            "description": "ระบบ SMCxSTO กฎข้อเดียว: เทรนด์ EMA 50/200 + โซน Discount/Premium (ATR) + Order Block + Stochastic Oversold/Overbought"
         },
         "KC_LIQUIDITY_DOMINANCE": {
             "id": "KC_LIQUIDITY_DOMINANCE",
@@ -96,7 +96,7 @@ class RealTradeAnalyticsManager:
             "icon": "🔫",
             "category": "ICT_PRECISION",
             "timeframe": "M5",
-            "best_session": "NY Session & Silver Bullet (19:00 - 23:00)",
+            "best_session": "NY AM Silver Bullet (21:00 - 22:30)",
             "magic_numbers": [555920, 555921, 555922, 555923],
             "avg_rr": "1:2.0",
             "description": "ICT 2022 Silver Bullet Model: ดักจังหวะ Liquidity Sweep 15-20 แท่ง เกิด Market Structure Shift (MSS) พร้อมแท่ง Displacement ทิ้งรอย FVG แล้วเข้าที่ 50% Consequent Encroachment (ความเสี่ยง 0.5% | TP 2.0R)"
@@ -324,7 +324,7 @@ class RealTradeAnalyticsManager:
                 "PULLBACK_DR_EKK": "Signature Pullback (#PullBack ร้อยล้าน)",
                 "RTM_M4_CONSERVATIVE": "RTM Quasimodo M4 (Conservative)",
                 "RTM_M6_ELITE_GROWTH": "RTM Quasimodo M6 (Elite Growth)",
-                "SMC_X_STO_H1": "SMC x STO Devil M5 (M5 Intra-Day Confluence)",
+                "SMC_X_STO_H1": "SMC x STO Devil (H1 Devil System)",
                 "KC_LIQUIDITY_DOMINANCE": "KC Forex (Liquidity Sweep x Candle Dominance)",
                 "RETIRED_SETUPS": "เซตอัพที่เลิกใช้"
             }
@@ -778,9 +778,9 @@ class RealTradeAnalyticsManager:
         if "RTM_M4_CONSERVATIVE" in setups_data:
             setups_data["RTM_M4_CONSERVATIVE"]["status"] = "🟢 ACTIVE (Confluence Grade A/A+)" if m4_active else "⏸️ PAUSED (ปิดการทำงาน)"
         if "RTM_M6_ELITE_GROWTH" in setups_data:
-            setups_data["RTM_M6_ELITE_GROWTH"]["status"] = "🟢 ACTIVE (Elite Growth Step-Up 0.5%)" if m6_active else "⏸️ PAUSED (ปิดการทำงาน)"
+            setups_data["RTM_M6_ELITE_GROWTH"]["status"] = "🟢 ACTIVE (Elite Growth Step-Up 1.0%)" if m6_active else "⏸️ PAUSED (ปิดการทำงาน)"
         if "SMC_X_STO_H1" in setups_data:
-            setups_data["SMC_X_STO_H1"]["status"] = "🟢 ACTIVE (Devil M5 OB+STO 0.5%)" if smc_active else "⏸️ PAUSED (ปิดการทำงาน)"
+            setups_data["SMC_X_STO_H1"]["status"] = "🟢 ACTIVE (Devil H1 OB+STO)" if smc_active else "⏸️ PAUSED (ปิดการทำงาน)"
         if "KC_LIQUIDITY_DOMINANCE" in setups_data:
             setups_data["KC_LIQUIDITY_DOMINANCE"]["status"] = "🟢 ACTIVE (KC Candle Dominance Step-Up 1.0%)" if kc_active else "⏸️ PAUSED (ปิดการทำงาน)"
         if "ICT_JUDAS_RTM_QM" in setups_data:
