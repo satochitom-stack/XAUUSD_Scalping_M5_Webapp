@@ -1150,7 +1150,7 @@ class GoldScalpingBot:
             df_h1_copy = df_h1.copy()
             df_h1_copy['ema50'] = df_h1_copy['close'].ewm(span=50, adjust=False).mean()
             df_h1_copy['ema200'] = df_h1_copy['close'].ewm(span=200, adjust=False).mean()
-            h1_last = df_h1_copy.iloc[-1]
+            h1_last = df_h1_copy.iloc[-2] if len(df_h1_copy) >= 2 else df_h1_copy.iloc[-1]
             h1_c = float(h1_last['close'])
             h1_e50 = float(h1_last['ema50'])
             h1_e200 = float(h1_last['ema200'])
@@ -1181,8 +1181,6 @@ class GoldScalpingBot:
                     near_qml = abs(float(b1['high']) - qml_price) <= (0.70 * m5_atr)
                     rejection = (float(b1['close']) < float(b1['open'])) or (((float(b1['high']) - max(float(b1['open']), float(b1['close']))) / (float(b1['high']) - float(b1['low']) + 1e-9)) >= 0.25)
                     if near_qml and rejection:
-                        if curr_date is not None:
-                            self.judas_last_trade_date = curr_date
                         return False, True, f"🎯 ICT Judas RTM Bearish QM (Asia High Swept {recent_high:.2f} + QML {qml_price:.2f})"
 
         # 6. Bullish Judas QM (BUY):
@@ -1205,8 +1203,6 @@ class GoldScalpingBot:
                     near_qml = abs(float(b1['low']) - qml_price) <= (0.70 * m5_atr)
                     rejection = (float(b1['close']) > float(b1['open'])) or (((min(float(b1['open']), float(b1['close'])) - float(b1['low'])) / (float(b1['high']) - float(b1['low']) + 1e-9)) >= 0.25)
                     if near_qml and rejection:
-                        if curr_date is not None:
-                            self.judas_last_trade_date = curr_date
                         return True, False, f"🎯 ICT Judas RTM Bullish QM (Asia Low Swept {recent_low:.2f} + QML {qml_price:.2f})"
 
         return False, False, ""
@@ -1988,19 +1984,19 @@ class GoldScalpingBot:
                         b_closed = rates_m5.iloc[-2] if len(rates_m5) >= 2 else rates_m5.iloc[-1]
                         c_rng = max(float(b_closed['high']) - float(b_closed['low']), 0.1)
                         if action == "BUY":
-                            # Institutional Golden Pocket Sweet Spot: Fib 50.0% - 78.6% or QML retest
+                            # Institutional Golden Pocket Sweet Spot: Fib 50.0% - 68.0%
                             ote_high = break_level - (0.50 * impulse_range)
-                            ote_low = break_level - (0.786 * impulse_range)
-                            in_zone = ((ote_low - 0.50) <= bid <= (ote_high + 0.50) or abs(bid - qml_price) <= (0.75 * curr_atr) or bid <= qml_price + 0.80) and bid >= sl + 1.0
+                            ote_low = break_level - (0.68 * impulse_range)
+                            in_zone = (ote_low - 0.50) <= bid <= (ote_high + 0.50) and bid >= sl + 1.0
                             lower_wick = min(float(b_closed['open']), float(b_closed['close'])) - float(b_closed['low'])
-                            rejection_ok = ((lower_wick / c_rng) >= 0.25) or (float(b_closed['close']) > float(b_closed['open'])) or (bid > float(b_closed['high']))
+                            rejection_ok = ((lower_wick / c_rng) >= 0.28) or (float(b_closed['close']) > float(b_closed['open'])) or (bid > float(b_closed['high']))
                             is_m6_ote = in_zone and rejection_ok
                         elif action == "SELL":
                             ote_low = break_level + (0.50 * impulse_range)
-                            ote_high = break_level + (0.786 * impulse_range)
-                            in_zone = ((ote_low - 0.50) <= ask <= (ote_high + 0.50) or abs(ask - qml_price) <= (0.75 * curr_atr) or ask >= qml_price - 0.80) and ask <= sl - 1.0
+                            ote_high = break_level + (0.68 * impulse_range)
+                            in_zone = (ote_low - 0.50) <= ask <= (ote_high + 0.50) and ask <= sl - 1.0
                             upper_wick = float(b_closed['high']) - max(float(b_closed['open']), float(b_closed['close']))
-                            rejection_ok = ((upper_wick / c_rng) >= 0.25) or (float(b_closed['close']) < float(b_closed['open'])) or (ask < float(b_closed['low']))
+                            rejection_ok = ((upper_wick / c_rng) >= 0.28) or (float(b_closed['close']) < float(b_closed['open'])) or (ask < float(b_closed['low']))
                             is_m6_ote = in_zone and rejection_ok
 
                 if is_m6_ote and self._check_rtm_clustering(symbol, curr_price, min_gap=1.50):
@@ -2010,9 +2006,9 @@ class GoldScalpingBot:
                         opt["custom_sl"] = sl
                         dynamic_tp = opt.get("tp_ratio", 2.2)
                         if action == "BUY":
-                            self.execute_buy(rates_m5, symbol, f"👑 RTM M6 (Golden Pocket Retest Fib 50-78.6% [{grade}] @ {curr_price:.2f} | Dynamic {dynamic_tp}R)", opt_params=opt, strat_id="RTM_M6_ELITE_GROWTH")
+                            self.execute_buy(rates_m5, symbol, f"👑 RTM M6 (Golden Pocket Retest Fib 50-68% [{grade}] @ {curr_price:.2f} | Dynamic {dynamic_tp}R)", opt_params=opt, strat_id="RTM_M6_ELITE_GROWTH")
                         else:
-                            self.execute_sell(rates_m5, symbol, f"👑 RTM M6 (Golden Pocket Retest Fib 50-78.6% [{grade}] @ {curr_price:.2f} | Dynamic {dynamic_tp}R)", opt_params=opt, strat_id="RTM_M6_ELITE_GROWTH")
+                            self.execute_sell(rates_m5, symbol, f"👑 RTM M6 (Golden Pocket Retest Fib 50-68% [{grade}] @ {curr_price:.2f} | Dynamic {dynamic_tp}R)", opt_params=opt, strat_id="RTM_M6_ELITE_GROWTH")
                         setup["m6_filled"] = True
                         self.add_log(f"👑 [RTM M6 FILLED] Elite Growth OTE Golden Pocket executed @ {curr_price:.2f} (Grade {grade} | TP: {dynamic_tp}R | LotMult: {opt.get('lot_multiplier', 1.0):.2f}x)", "SUCCESS")
 
@@ -2225,6 +2221,13 @@ class GoldScalpingBot:
         # Single Position Plan across Setups
         res1 = self.connector.open_order(symbol, "BUY", total_lot, sl, tp2, magic_p1, f"Gold_{strat_id[:8]}")
         t1 = res1.get("ticket", 0) if isinstance(res1, dict) else 0
+        if t1 > 0 and strat_id == "ICT_JUDAS_RTM_QM":
+            sim_time = getattr(self.connector, "current_time", None)
+            if sim_time is not None and hasattr(sim_time, "date") and not hasattr(sim_time, "_mock_return_value"):
+                self.judas_last_trade_date = sim_time.date()
+            else:
+                th_tz = timezone(timedelta(hours=7))
+                self.judas_last_trade_date = datetime.now(th_tz).date()
         self.benchmark_tracker.register_trade(t1, 0, symbol, "BUY", ask, sl, total_lot, strat_id)
         self.add_log(f"🟢 [BUY OPENED] [{strat_id}] {reason} | Single {risk_label}: TP {tp2:.2f} (+{abs(tp2-ask)*100:.0f} pts) / SL {sl:.2f} (-{sl_dist*100:.0f} pts) | Lot: {total_lot}", "SUCCESS")
         if self.notifier:
@@ -2400,6 +2403,13 @@ class GoldScalpingBot:
         # Single Position Plan across Setups (News=0.5%, Others=1.0%)
         res1 = self.connector.open_order(symbol, "SELL", total_lot, sl, tp2, magic_p1, f"Gold_{strat_id[:8]}")
         t1 = res1.get("ticket", 0) if isinstance(res1, dict) else 0
+        if t1 > 0 and strat_id == "ICT_JUDAS_RTM_QM":
+            sim_time = getattr(self.connector, "current_time", None)
+            if sim_time is not None and hasattr(sim_time, "date") and not hasattr(sim_time, "_mock_return_value"):
+                self.judas_last_trade_date = sim_time.date()
+            else:
+                th_tz = timezone(timedelta(hours=7))
+                self.judas_last_trade_date = datetime.now(th_tz).date()
         self.benchmark_tracker.register_trade(t1, 0, symbol, "SELL", bid, sl, total_lot, strat_id)
         self.add_log(f"🔴 [SELL OPENED] [{strat_id}] {reason} | Single {risk_label}: TP {tp2:.2f} (+{abs(bid-tp2)*100:.0f} pts) / SL {sl:.2f} (-{sl_dist*100:.0f} pts) | Lot: {total_lot}", "SUCCESS")
         if self.notifier:

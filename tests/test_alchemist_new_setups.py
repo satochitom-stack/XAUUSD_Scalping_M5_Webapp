@@ -136,6 +136,19 @@ class TestAlchemistNewSetups(unittest.TestCase):
         self.assertFalse(b_sig)
         self.assertIn("Bearish QM", reason)
 
+        # Verify signal detection did NOT prematurely lock the day
+        self.assertIsNone(self.bot.judas_last_trade_date)
+
+        # Simulate execution opening a trade
+        self.mock_connector.open_order.return_value = {"ticket": 888123}
+        self.bot.execute_sell(df, "XAUUSDc", reason, strat_id="ICT_JUDAS_RTM_QM")
+        self.assertEqual(self.bot.judas_last_trade_date, mock_now.date())
+
+        # Verify daily lock blocks second attempt on the same day
+        b_sig2, s_sig2, _ = self.bot._check_ict_judas_rtm_qm(df, "XAUUSDc")
+        self.assertFalse(b_sig2)
+        self.assertFalse(s_sig2)
+
     @patch('bot_engine.datetime')
     def test_ict_silver_bullet_fvg_detection(self, mock_dt):
         """Verify ICT NY Silver Bullet detects Bullish FVG after SSL sweep."""
