@@ -1367,6 +1367,7 @@ class GoldScalpingBot:
                                 # Breakout: b1 closed above Wave 1 High
                                 if float(b1['close']) > p1_high and float(b2['close']) <= p1_high + 0.50:
                                     if curr_ewo >= 0.0 or curr_ewo >= prev_ewo:
+                                        self._ew_wave2_sl = p2_low - 0.50
                                         return True, False, f"🌊 Elliott Wave 3 Breaker Bullish (W1 Top {p1_high:.2f} Broken | Tactical SL @ W2 Low {p2_low:.2f} | H1 Bull Bias)"
 
         # SELL (Bearish Wave 3):
@@ -1393,6 +1394,7 @@ class GoldScalpingBot:
                             if 0.25 <= retrace_ratio <= 0.80:
                                 if float(b1['close']) < p1_sell_low and float(b2['close']) >= p1_sell_low - 0.50:
                                     if curr_ewo <= 0.0 or curr_ewo <= prev_ewo:
+                                        self._ew_wave2_sl = p2_sell_high + 0.50
                                         return False, True, f"🌊 Elliott Wave 3 Breaker Bearish (W1 Bottom {p1_sell_low:.2f} Broken | Tactical SL @ W2 High {p2_sell_high:.2f} | H1 Bear Bias)"
 
         return False, False, ""
@@ -2120,11 +2122,12 @@ class GoldScalpingBot:
             lowest_low = float(df['low'].iloc[-12:-1].min())
             ema60_val = float(df['ema60'].iloc[-2]) if 'ema60' in df else lowest_low
             structural_ref = min(lowest_low, ema60_val)
-            sl_buffer = 0.50 * sl_mult
+            atr = float(df['atr14'].iloc[-2]) if 'atr14' in df else (float(df['atr'].iloc[-2]) if 'atr' in df else 2.50)
+            sl_buffer = max(1.00, 0.40 * atr) * sl_mult
             sl = structural_ref - sl_buffer
             sl_dist = ask - sl
-            if sl_dist < 2.50: sl = ask - 2.50; sl_dist = 2.50
-            if sl_dist > 12.00: sl = ask - 12.00; sl_dist = 12.00
+            if sl_dist < 3.50: sl = ask - 3.50; sl_dist = 3.50
+            if sl_dist > 7.50: sl = ask - 7.50; sl_dist = 7.50
             target_rr = opt.get("tp_ratio", 2.5)
             tp2 = ask + (sl_dist * target_rr)
         elif strat_id == "KC_LIQUIDITY_DOMINANCE":
@@ -2155,14 +2158,21 @@ class GoldScalpingBot:
             target_rr = opt.get("tp_ratio", 1.5)
             tp2 = ask + (sl_dist * target_rr)
         elif strat_id == "EW_WAVE3_BREAKER":
-            lowest_low = float(df['low'].iloc[-8:-1].min())
-            sl_buffer = 0.40 * sl_mult
-            sl = lowest_low - sl_buffer
-            sl_dist = ask - sl
-            if sl_dist < 2.50: sl = ask - 2.50; sl_dist = 2.50
-            if sl_dist > 12.00: sl = ask - 12.00; sl_dist = 12.00
-            target_rr = opt.get("tp_ratio", 2.5)
+            atr = float(df['atr14'].iloc[-2]) if 'atr14' in df else (float(df['atr'].iloc[-2]) if 'atr' in df else 2.50)
+            sl_buffer = max(0.80, 0.35 * atr) * sl_mult
+            custom_sl = getattr(self, "_ew_wave2_sl", None)
+            if custom_sl is not None and custom_sl < ask:
+                sl = float(custom_sl)
+                sl_dist = ask - sl
+            else:
+                lowest_low = float(df['low'].iloc[-16:-1].min())
+                sl = lowest_low - sl_buffer
+                sl_dist = ask - sl
+            if sl_dist < 3.00: sl = ask - 3.00; sl_dist = 3.00
+            if sl_dist > 8.50: sl = ask - 8.50; sl_dist = 8.50
+            target_rr = opt.get("tp_ratio", 2.2)
             tp2 = ask + (sl_dist * target_rr)
+            self._ew_wave2_sl = None
         else:
             # News Momentum Expansion / Default (EarthETC Structural SL)
             if len(df) >= 15:
@@ -2262,11 +2272,12 @@ class GoldScalpingBot:
             highest_high = float(df['high'].iloc[-12:-1].max())
             ema60_val = float(df['ema60'].iloc[-2]) if 'ema60' in df else highest_high
             structural_ref = max(highest_high, ema60_val)
-            sl_buffer = 0.50 * sl_mult
+            atr = float(df['atr14'].iloc[-2]) if 'atr14' in df else (float(df['atr'].iloc[-2]) if 'atr' in df else 2.50)
+            sl_buffer = max(1.00, 0.40 * atr) * sl_mult
             sl = structural_ref + sl_buffer
             sl_dist = sl - bid
-            if sl_dist < 2.50: sl = bid + 2.50; sl_dist = 2.50
-            if sl_dist > 12.00: sl = bid + 12.00; sl_dist = 12.00
+            if sl_dist < 3.50: sl = bid + 3.50; sl_dist = 3.50
+            if sl_dist > 7.50: sl = bid + 7.50; sl_dist = 7.50
             target_rr = opt.get("tp_ratio", 2.5)
             tp2 = bid - (sl_dist * target_rr)
         elif strat_id == "KC_LIQUIDITY_DOMINANCE":
@@ -2297,14 +2308,21 @@ class GoldScalpingBot:
             target_rr = opt.get("tp_ratio", 1.5)
             tp2 = bid - (sl_dist * target_rr)
         elif strat_id == "EW_WAVE3_BREAKER":
-            highest_high = float(df['high'].iloc[-8:-1].max())
-            sl_buffer = 0.40 * sl_mult
-            sl = highest_high + sl_buffer
-            sl_dist = sl - bid
-            if sl_dist < 2.50: sl = bid + 2.50; sl_dist = 2.50
-            if sl_dist > 12.00: sl = bid + 12.00; sl_dist = 12.00
-            target_rr = opt.get("tp_ratio", 2.5)
+            atr = float(df['atr14'].iloc[-2]) if 'atr14' in df else (float(df['atr'].iloc[-2]) if 'atr' in df else 2.50)
+            sl_buffer = max(0.80, 0.35 * atr) * sl_mult
+            custom_sl = getattr(self, "_ew_wave2_sl", None)
+            if custom_sl is not None and custom_sl > bid:
+                sl = float(custom_sl)
+                sl_dist = sl - bid
+            else:
+                highest_high = float(df['high'].iloc[-16:-1].max())
+                sl = highest_high + sl_buffer
+                sl_dist = sl - bid
+            if sl_dist < 3.00: sl = bid + 3.00; sl_dist = 3.00
+            if sl_dist > 8.50: sl = bid + 8.50; sl_dist = 8.50
+            target_rr = opt.get("tp_ratio", 2.2)
             tp2 = bid - (sl_dist * target_rr)
+            self._ew_wave2_sl = None
         else:
             # News Momentum Expansion / Default (EarthETC Structural SL)
             if len(df) >= 15:
