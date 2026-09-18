@@ -37,8 +37,8 @@ class TestRiskProfileDefaults(unittest.TestCase):
         expected = {
             "PULLBACK_DR_EKK":        (0.5, "STEP_UP_COMPOUNDING"),
             "RTM_M4_CONSERVATIVE":    (1.0, "STEP_UP_COMPOUNDING"),
-            "RTM_M6_ELITE_GROWTH":    (1.0, "STEP_UP_COMPOUNDING"),
-            "SMC_X_STO_H1":           (1.0, "FIXED"),
+            "RTM_M6_ELITE_GROWTH":    (0.5, "STEP_UP_COMPOUNDING"),
+            "SMC_X_STO_H1":           (0.5, "FIXED"),
             "KC_LIQUIDITY_DOMINANCE": (1.0, "STEP_UP_COMPOUNDING"),
             "TUG_OF_WAR_M15":         (0.5, "FIXED"),
         }
@@ -92,8 +92,8 @@ class TestCalculateLotSizeRiskOverride(unittest.TestCase):
         """Test setting an override for one setup does not change another setup's sizing."""
         self.config["strategy"]["risk_overrides"] = {"TUG_OF_WAR_M15": 2.0}
         lot_smc = self.bot.calculate_lot_size(2.00, strat_id="SMC_X_STO_H1")
-        # SMC_X_STO_H1 has no override -> stays at its 1.0% default = 100 risk USD -> 0.5 lot
-        self.assertAlmostEqual(lot_smc, 0.5, places=2)
+        # SMC_X_STO_H1 has no override -> stays at its 0.5% default = 50 risk USD -> 0.25 lot
+        self.assertAlmostEqual(lot_smc, 0.25, places=2)
 
     def test_override_above_max_is_clamped(self):
         """Test an out-of-range override (e.g. reaching config.json through another path) is

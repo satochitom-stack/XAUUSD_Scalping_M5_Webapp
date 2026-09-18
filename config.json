@@ -99,9 +99,9 @@
         "risk_overrides": {
           "PULLBACK_DR_EKK": 0.5,
           "RTM_M4_CONSERVATIVE": 1.0,
-          "RTM_M6_ELITE_GROWTH": 1.0,
+          "RTM_M6_ELITE_GROWTH": 0.5,
           "KC_LIQUIDITY_DOMINANCE": 1.0,
-          "SMC_X_STO_H1": 1.0,
+          "SMC_X_STO_H1": 0.5,
           "EW_WAVE3_BREAKER": 1.0,
           "ICT_JUDAS_RTM_QM": 0.5,
           "ICT_SILVER_BULLET_FVG": 0.5

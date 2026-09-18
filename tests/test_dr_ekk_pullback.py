@@ -52,10 +52,11 @@ class TestDrEkkPullbackStrategy(unittest.TestCase):
     def test_risk_isolation_rules(self):
         """
         Verify strict Risk Isolation according to user rules:
-        - RTM M4 / M6 = 1.0% (Step-Up Compounding)
+        - RTM M4 = 1.0% (Step-Up Compounding)
+        - RTM M6 = 0.5% (Step-Up Compounding)
         - PULLBACK_DR_EKK = 0.5% (Step-Up Compounding)
         - News / Asian = 0.5%
-        - SMCxSTO = Strictly 1.0%
+        - SMCxSTO = Strictly 0.5%
         """
         sl_dist = 5.00  # $5.00 SL distance = 500 points
         
@@ -63,9 +64,9 @@ class TestDrEkkPullbackStrategy(unittest.TestCase):
         lot_m4 = self.bot.calculate_lot_size(sl_dist, strat_id="RTM_M4_CONSERVATIVE")
         self.assertAlmostEqual(lot_m4, 0.20, places=2)
 
-        # Test RTM M6 -> 1.0% ($100 risk on $10k -> 100 / 500 = 0.20 lot)
+        # Test RTM M6 -> 0.5% ($50 risk on $10k -> 50 / 500 = 0.10 lot)
         lot_m6 = self.bot.calculate_lot_size(sl_dist, strat_id="RTM_M6_ELITE_GROWTH")
-        self.assertAlmostEqual(lot_m6, 0.20, places=2)
+        self.assertAlmostEqual(lot_m6, 0.10, places=2)
 
         # Test PULLBACK_DR_EKK -> 0.5% ($50 risk on $10k -> 50 / 500 = 0.10 lot)
         lot_pullback = self.bot.calculate_lot_size(sl_dist, strat_id="PULLBACK_DR_EKK")
@@ -79,9 +80,9 @@ class TestDrEkkPullbackStrategy(unittest.TestCase):
         lot_asian = self.bot.calculate_lot_size(sl_dist, strat_id="ASIAN_RANGE_SNIPER")
         self.assertAlmostEqual(lot_asian, 0.10, places=2)
 
-        # Test SMC_X_STO_H1 -> Strictly 1.0% ($100 risk on $10k -> 100 / 500 = 0.20 lot)
+        # Test SMC_X_STO_H1 -> Strictly 0.5% ($50 risk on $10k -> 50 / 500 = 0.10 lot)
         lot_smc = self.bot.calculate_lot_size(sl_dist, strat_id="SMC_X_STO_H1")
-        self.assertAlmostEqual(lot_smc, 0.20, places=2)
+        self.assertAlmostEqual(lot_smc, 0.10, places=2)
 
     def test_analytics_deal_classification(self):
         """Verify StrategyAnalytics classifies PULLBACK_DR_EKK deals accurately."""
