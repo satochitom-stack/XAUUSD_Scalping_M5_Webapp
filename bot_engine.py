@@ -779,6 +779,19 @@ class GoldScalpingBot:
         if candle_range < 0.60:
             return False, False, ""
 
+        # Guard against buying at peak (Overbought) or selling at bottom (Oversold)
+        rsi = float(b1.get('rsi14', 50.0))
+        if is_uptrend and rsi > 68.0:
+            return False, False, ""
+        if is_downtrend and rsi < 32.0:
+            return False, False, ""
+
+        # Distance ceiling: entry candle must NOT be overextended away from EMA 60
+        if is_uptrend and close_p > ema60 + 1.25 * atr:
+            return False, False, ""
+        if is_downtrend and close_p < ema60 - 1.25 * atr:
+            return False, False, ""
+
         # H1 Macro Trend & Dump/Pump Shield
         h1_bull_allowed = True
         h1_bear_allowed = True
@@ -834,22 +847,30 @@ class GoldScalpingBot:
                     has_bos = swing_high_val >= (prev_res - 0.20 * atr)
 
                 if impulse_range >= 1.2 * atr and has_bos:
-                    pullback_low = float(df.loc[swing_high_idx:df.index[-2], 'low'].min())
-                    retrace_pct = (swing_high_val - pullback_low) / (impulse_range + 1e-9)
+                    pullback_slice = df.loc[swing_high_idx:df.index[-2], 'low']
+                    pullback_low = float(pullback_slice.min())
+                    pullback_low_idx = pullback_slice.idxmin()
+                    bars_since_pullback = len(df.loc[pullback_low_idx:df.index[-2]]) - 1
 
-                    fib_conf = 0.35 <= retrace_pct <= 0.68
-                    ema_conf = (low_p <= ema60 + 0.35 * atr) and (high_p >= ema60 - 0.40 * atr)
+                    # Ensure pullback is recent (within 5 bars) and price hasn't already rallied away
+                    if bars_since_pullback <= 5:
+                        retrace_pct = (swing_high_val - pullback_low) / (impulse_range + 1e-9)
 
-                    sr_flip_conf = False
-                    if len(prev_window) > 8:
-                        prev_res = float(prev_window['high'].max())
-                        sr_flip_conf = abs(pullback_low - prev_res) <= 0.75 * atr
+                        # Core rule: EMA 60 test is MANDATORY for Dr. Ekk EMA 60 Pullback
+                        ema_tested = (low_p <= ema60 + 0.35 * atr) or (float(prev_bar['low']) <= ema60 + 0.35 * atr)
 
-                    conf_score = int(fib_conf) + int(ema_conf) + int(sr_flip_conf)
-                    if conf_score >= 2:
-                        grade = "A+" if conf_score == 3 else "A"
-                        trig_type = "Pinbar" if bullish_pinbar else "Engulfing"
-                        return True, False, f"🎯 Pullback Dr. Ekk: Bullish {trig_type} at 3-Confluence ({grade} | Fib {retrace_pct*100:.0f}% + EMA60)"
+                        fib_conf = 0.35 <= retrace_pct <= 0.68
+
+                        sr_flip_conf = False
+                        if len(prev_window) > 8:
+                            prev_res = float(prev_window['high'].max())
+                            sr_flip_conf = abs(pullback_low - prev_res) <= 0.75 * atr
+
+                        if ema_tested and (fib_conf or sr_flip_conf):
+                            conf_score = 1 + int(fib_conf) + int(sr_flip_conf)
+                            grade = "A+" if conf_score == 3 else "A"
+                            trig_type = "Pinbar" if bullish_pinbar else "Engulfing"
+                            return True, False, f"🎯 Pullback Dr. Ekk: Bullish {trig_type} at 3-Confluence ({grade} | Fib {retrace_pct*100:.0f}% + EMA60)"
 
         # Bearish Pullback Evaluation
         if is_downtrend and h1_bear_allowed and (bearish_pinbar or bearish_engulfing):
@@ -867,22 +888,28 @@ class GoldScalpingBot:
                     has_bos = swing_low_val <= (prev_sup + 0.20 * atr)
 
                 if impulse_range_down >= 1.2 * atr and has_bos:
-                    pullback_high = float(df.loc[swing_low_idx:df.index[-2], 'high'].max())
-                    retrace_pct = (pullback_high - swing_low_val) / (impulse_range_down + 1e-9)
+                    pullback_slice = df.loc[swing_low_idx:df.index[-2], 'high']
+                    pullback_high = float(pullback_slice.max())
+                    pullback_high_idx = pullback_slice.idxmax()
+                    bars_since_pullback = len(df.loc[pullback_high_idx:df.index[-2]]) - 1
 
-                    fib_conf = 0.35 <= retrace_pct <= 0.68
-                    ema_conf = (high_p >= ema60 - 0.35 * atr) and (low_p <= ema60 + 0.40 * atr)
+                    if bars_since_pullback <= 5:
+                        retrace_pct = (pullback_high - swing_low_val) / (impulse_range_down + 1e-9)
 
-                    sr_flip_conf = False
-                    if len(prev_window) > 8:
-                        prev_sup = float(prev_window['low'].min())
-                        sr_flip_conf = abs(pullback_high - prev_sup) <= 0.75 * atr
+                        ema_tested = (high_p >= ema60 - 0.35 * atr) or (float(prev_bar['high']) >= ema60 - 0.35 * atr)
 
-                    conf_score = int(fib_conf) + int(ema_conf) + int(sr_flip_conf)
-                    if conf_score >= 2:
-                        grade = "A+" if conf_score == 3 else "A"
-                        trig_type = "Pinbar" if bearish_pinbar else "Engulfing"
-                        return False, True, f"🎯 Pullback Dr. Ekk: Bearish {trig_type} at 3-Confluence ({grade} | Fib {retrace_pct*100:.0f}% + EMA60)"
+                        fib_conf = 0.35 <= retrace_pct <= 0.68
+
+                        sr_flip_conf = False
+                        if len(prev_window) > 8:
+                            prev_sup = float(prev_window['low'].min())
+                            sr_flip_conf = abs(pullback_high - prev_sup) <= 0.75 * atr
+
+                        if ema_tested and (fib_conf or sr_flip_conf):
+                            conf_score = 1 + int(fib_conf) + int(sr_flip_conf)
+                            grade = "A+" if conf_score == 3 else "A"
+                            trig_type = "Pinbar" if bearish_pinbar else "Engulfing"
+                            return False, True, f"🎯 Pullback Dr. Ekk: Bearish {trig_type} at 3-Confluence ({grade} | Fib {retrace_pct*100:.0f}% + EMA60)"
 
         return False, False, ""
 
@@ -1284,59 +1311,89 @@ class GoldScalpingBot:
         if not in_hours:
             return False, False, ""
 
+        # H1 Macro Trend Alignment Filter
+        h1_bull_allowed = True
+        h1_bear_allowed = True
+        if self.connector:
+            try:
+                df_h1 = self.connector.get_rates(symbol, "H1", 60)
+                if df_h1 is not None and not df_h1.empty and len(df_h1) >= 25:
+                    df_h1['ema50'] = df_h1['close'].ewm(span=50, adjust=False).mean()
+                    h1_close = float(df_h1['close'].iloc[-2])
+                    h1_ema50 = float(df_h1['ema50'].iloc[-2])
+                    h1_bull_allowed = (h1_close >= h1_ema50 - 1.50)
+                    h1_bear_allowed = (h1_close <= h1_ema50 + 1.50)
+            except Exception:
+                pass
+
         b1 = df.iloc[-2]  # Trigger bar (last closed bar)
         b2 = df.iloc[-3]
+
+        atr = float(b1.get('atr14', b1.get('atr', 2.50)))
+        # Minimum Wave 1 distance: must be a significant structural impulse, not random micro-fluctuation ($2 was too small)
+        min_wave1_dist = max(5.00, 1.5 * atr)
 
         median_price = (df['high'] + df['low']) / 2.0
         ewo = median_price.rolling(window=5).mean() - median_price.rolling(window=34).mean()
         curr_ewo = float(ewo.iloc[-2]) if len(ewo) >= 35 else 0.0
         prev_ewo = float(ewo.iloc[-3]) if len(ewo) >= 35 else 0.0
 
+        # Dynamic lookback window up to 60 bars (approx 5 hours) to capture genuine macro swing
+        lb = min(len(df), 60)
+
         # BUY (Bullish Wave 3):
-        p0_idx = int(df['low'].iloc[-25:-10].argmin()) + (len(df) - 25)
-        p0_low = float(df['low'].iloc[p0_idx])
+        if h1_bull_allowed:
+            p0_search_end = max(6, lb // 4)
+            p0_subset = df['low'].iloc[-lb : -p0_search_end]
+            if len(p0_subset) >= 5:
+                p0_idx = int(p0_subset.argmin()) + (len(df) - lb)
+                p0_low = float(df['low'].iloc[p0_idx])
 
-        p1_subset = df.iloc[p0_idx + 1 : -4]
-        if len(p1_subset) >= 3:
-            p1_idx = int(p1_subset['high'].argmax()) + (p0_idx + 1)
-            p1_high = float(p1_subset['high'].max())
+                p1_subset = df.iloc[p0_idx + 1 : -3]
+                if len(p1_subset) >= 3:
+                    p1_idx = int(p1_subset['high'].argmax()) + (p0_idx + 1)
+                    p1_high = float(p1_subset['high'].max())
 
-            p2_subset = df.iloc[p1_idx + 1 : -1]
-            if len(p2_subset) >= 2:
-                p2_low = float(p2_subset['low'].min())
-                wave1_dist = p1_high - p0_low
-                wave2_retrace = p1_high - p2_low
+                    p2_subset = df.iloc[p1_idx + 1 : -1]
+                    if len(p2_subset) >= 2:
+                        p2_low = float(p2_subset['low'].min())
+                        wave1_dist = p1_high - p0_low
+                        wave2_retrace = p1_high - p2_low
 
-                # Rule 1 check: P2 > P0 (Never retrace 100%)
-                if wave1_dist >= 2.00 and p2_low > p0_low:
-                    retrace_ratio = wave2_retrace / wave1_dist
-                    if 0.25 <= retrace_ratio <= 0.80:
-                        # Breakout: b1 closed above Wave 1 High
-                        if float(b1['close']) > p1_high and float(b2['close']) <= p1_high + 0.50:
-                            if curr_ewo >= 0.0 or curr_ewo >= prev_ewo:
-                                return True, False, f"🌊 Elliott Wave 3 Breaker Bullish (W1 Top {p1_high:.2f} Broken | Tactical SL @ W2 Low {p2_low:.2f})"
+                        # Rule 1 check: P2 > P0 (Never retrace 100%)
+                        if wave1_dist >= min_wave1_dist and p2_low > p0_low:
+                            retrace_ratio = wave2_retrace / wave1_dist
+                            if 0.25 <= retrace_ratio <= 0.80:
+                                # Breakout: b1 closed above Wave 1 High
+                                if float(b1['close']) > p1_high and float(b2['close']) <= p1_high + 0.50:
+                                    if curr_ewo >= 0.0 or curr_ewo >= prev_ewo:
+                                        return True, False, f"🌊 Elliott Wave 3 Breaker Bullish (W1 Top {p1_high:.2f} Broken | Tactical SL @ W2 Low {p2_low:.2f} | H1 Bull Bias)"
 
         # SELL (Bearish Wave 3):
-        p0_sell_idx = int(df['high'].iloc[-25:-10].argmax()) + (len(df) - 25)
-        p0_high = float(df['high'].iloc[p0_sell_idx])
+        if h1_bear_allowed:
+            p0_sell_search_end = max(6, lb // 4)
+            p0_sell_subset = df['high'].iloc[-lb : -p0_sell_search_end]
+            if len(p0_sell_subset) >= 5:
+                p0_sell_idx = int(p0_sell_subset.argmax()) + (len(df) - lb)
+                p0_high = float(df['high'].iloc[p0_sell_idx])
 
-        p1_sell_subset = df.iloc[p0_sell_idx + 1 : -4]
-        if len(p1_sell_subset) >= 3:
-            p1_sell_idx = int(p1_sell_subset['low'].argmin()) + (p0_sell_idx + 1)
-            p1_sell_low = float(p1_sell_subset['low'].min())
+                p1_sell_subset = df.iloc[p0_sell_idx + 1 : -3]
+                if len(p1_sell_subset) >= 3:
+                    p1_sell_idx = int(p1_sell_subset['low'].argmin()) + (p0_sell_idx + 1)
+                    p1_sell_low = float(p1_sell_subset['low'].min())
 
-            p2_sell_subset = df.iloc[p1_sell_idx + 1 : -1]
-            if len(p2_sell_subset) >= 2:
-                p2_sell_high = float(p2_sell_subset['high'].max())
-                wave1_dist = p0_high - p1_sell_low
-                wave2_retrace = p2_sell_high - p1_sell_low
+                    p2_sell_subset = df.iloc[p1_sell_idx + 1 : -1]
+                    if len(p2_sell_subset) >= 2:
+                        p2_sell_high = float(p2_sell_subset['high'].max())
+                        wave1_dist = p0_high - p1_sell_low
+                        wave2_retrace = p2_sell_high - p1_sell_low
 
-                if wave1_dist >= 2.00 and p2_sell_high < p0_high:
-                    retrace_ratio = wave2_retrace / wave1_dist
-                    if 0.25 <= retrace_ratio <= 0.80:
-                        if float(b1['close']) < p1_sell_low and float(b2['close']) >= p1_sell_low - 0.50:
-                            if curr_ewo <= 0.0 or curr_ewo <= prev_ewo:
-                                return False, True, f"🌊 Elliott Wave 3 Breaker Bearish (W1 Bottom {p1_sell_low:.2f} Broken | Tactical SL @ W2 High {p2_sell_high:.2f})"
+                        if wave1_dist >= min_wave1_dist and p2_sell_high < p0_high:
+                            retrace_ratio = wave2_retrace / wave1_dist
+                            if 0.25 <= retrace_ratio <= 0.80:
+                                if float(b1['close']) < p1_sell_low and float(b2['close']) >= p1_sell_low - 0.50:
+                                    if curr_ewo <= 0.0 or curr_ewo <= prev_ewo:
+                                        return False, True, f"🌊 Elliott Wave 3 Breaker Bearish (W1 Bottom {p1_sell_low:.2f} Broken | Tactical SL @ W2 High {p2_sell_high:.2f} | H1 Bear Bias)"
 
         return False, False, ""
 

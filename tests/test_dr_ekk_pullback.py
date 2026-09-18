@@ -188,6 +188,54 @@ class TestDrEkkPullbackStrategy(unittest.TestCase):
         self.assertLessEqual(called_sl, round(2400.0 - 4.0 * 0.8, 2))  # at least the +0.8R minimum lock
         self.assertEqual(called_tp, 2390.0)
 
+    def test_pullback_dr_ekk_blocks_peak_overbought_and_exhaustion(self):
+        """Verify _check_pullback_dr_ekk blocks entries when price is overbought (RSI > 68)
+        or extended too far above EMA 60 (Distance > 1.25 * ATR)."""
+        dates = pd.date_range("2026-09-08 10:00", periods=50, freq="5min")
+        prices = [2400.0 + i * 0.20 for i in range(50)]
+        df = pd.DataFrame({
+            "datetime": dates,
+            "open": prices,
+            "high": [p + 0.40 for p in prices],
+            "low": [p - 0.40 for p in prices],
+            "close": prices
+        })
+        df['ema60'] = 2400.0  # EMA60 is far below
+        df['ema150'] = 2390.0
+        df['atr14'] = 2.0
+        # Trigger candle at the peak: close is 2410.0 (10 dollars = 5.0x ATR above EMA60!)
+        df.loc[df.index[-2], 'close'] = 2410.0
+        df.loc[df.index[-2], 'high'] = 2410.5
+        df.loc[df.index[-2], 'low'] = 2409.0
+        df.loc[df.index[-2], 'open'] = 2408.0
+        df.loc[df.index[-2], 'rsi14'] = 75.0  # Overbought peak
+
+        b_sig, s_sig, _ = self.bot._check_pullback_dr_ekk(df)
+        self.assertFalse(b_sig, "Must NOT buy at overbought peak / extended distance above EMA60")
+
+    def test_pullback_dr_ekk_requires_mandatory_ema60_touch(self):
+        """Verify _check_pullback_dr_ekk blocks buy if low did not test EMA 60 zone."""
+        dates = pd.date_range("2026-09-08 10:00", periods=50, freq="5min")
+        prices = [2400.0 + i * 0.20 for i in range(50)]
+        df = pd.DataFrame({
+            "datetime": dates,
+            "open": prices,
+            "high": [p + 0.40 for p in prices],
+            "low": [p - 0.40 for p in prices],
+            "close": prices
+        })
+        df['ema60'] = 2405.0
+        df['ema150'] = 2400.0
+        df['atr14'] = 2.0
+        # Trigger candle low is at 2407.5, which is > 2405.0 + 0.35 * 2.0 (2405.70)
+        df.loc[df.index[-2], 'low'] = 2407.5
+        df.loc[df.index[-3], 'low'] = 2407.5
+        df.loc[df.index[-2], 'close'] = 2408.0
+        df.loc[df.index[-2], 'rsi14'] = 55.0
+
+        b_sig, _, _ = self.bot._check_pullback_dr_ekk(df)
+        self.assertFalse(b_sig, "Must NOT buy if EMA 60 zone is not tested by low of entry/prev candle")
+
 
 if __name__ == "__main__":
     unittest.main()
