@@ -70,5 +70,9 @@ echo.
 echo [2/2] Freeing port 8000 and starting WebApp Server & Bot Engine...
 for /f "tokens=5" %%a in ('netstat -aon ^| findstr :8000') do taskkill /F /PID %%a >nul 2>&1
 %PY_CMD% run_webapp.py
+if %ERRORLEVEL% NEQ 0 (
+    echo.
+    echo [ERROR] WebApp stopped unexpectedly with code %ERRORLEVEL%.
+    pause
+)
 
-pause
