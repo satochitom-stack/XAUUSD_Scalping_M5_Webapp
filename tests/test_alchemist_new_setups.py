@@ -205,5 +205,83 @@ class TestAlchemistNewSetups(unittest.TestCase):
         self.assertFalse(s_sig)
         self.assertIn("Breaker Bullish", reason)
 
+    @patch('bot_engine.datetime')
+    def test_ew_wave3_breaker_h1_trend_filter(self, mock_dt):
+        """Verify Item 2: EW Wave 3 BUY is blocked when H1 trend is Bearish, allowed when Bullish."""
+        mock_now = datetime(2026, 9, 15, 16, 30, tzinfo=timezone(timedelta(hours=7)))
+        mock_dt.now.return_value = mock_now
+        self.mock_connector.current_time = None
+
+        data = []
+        for i in range(15):
+            data.append({"open": 2400.0, "high": 2402.0, "low": 2399.0, "close": 2400.0, "volume": 100})
+        data.append({"open": 2400.0, "high": 2402.0, "low": 2398.0, "close": 2401.0, "volume": 120})
+        for p in [2404.0, 2407.0, 2410.0]:
+            data.append({"open": p-2, "high": p, "low": p-2.5, "close": p-0.2, "volume": 150})
+        for p in [2408.0, 2405.5, 2404.0]:
+            data.append({"open": p+1, "high": p+1.5, "low": p, "close": p+0.2, "volume": 100})
+        data.append({"open": 2404.5, "high": 2409.0, "low": 2404.0, "close": 2408.5, "volume": 200})
+        data.append({"open": 2408.5, "high": 2412.0, "low": 2408.0, "close": 2411.5, "volume": 350})
+        data.append({"open": 2411.5, "high": 2412.0, "low": 2411.0, "close": 2411.8, "volume": 50})
+        df_m5 = pd.DataFrame(data)
+
+        # 1. Bearish H1 data (falling prices: EMA50 < EMA200)
+        h1_bear_closes = [2500.0 - i * 2.0 for i in range(40)]
+        df_h1_bear = pd.DataFrame({
+            'time': pd.date_range("2026-09-01", periods=40, freq="1h"),
+            'open': h1_bear_closes,
+            'high': [c + 1.0 for c in h1_bear_closes],
+            'low': [c - 1.0 for c in h1_bear_closes],
+            'close': h1_bear_closes
+        })
+        self.mock_connector.get_rates.return_value = df_h1_bear
+        self.bot._h1_macro_trend_cache.clear()
+
+        # Wave 3 BUY must be BLOCKED because H1 is Bearish
+        b_sig, s_sig, reason = self.bot._check_ew_wave3_breaker(df_m5, "XAUUSDc")
+        self.assertFalse(b_sig, "Wave 3 BUY should be blocked during H1 Bearish trend")
+
+        # 2. Bullish H1 data (rising prices: EMA50 > EMA200)
+        h1_bull_closes = [2300.0 + i * 2.0 for i in range(40)]
+        df_h1_bull = pd.DataFrame({
+            'time': pd.date_range("2026-09-01", periods=40, freq="1h"),
+            'open': h1_bull_closes,
+            'high': [c + 1.0 for c in h1_bull_closes],
+            'low': [c - 1.0 for c in h1_bull_closes],
+            'close': h1_bull_closes
+        })
+        self.mock_connector.get_rates.return_value = df_h1_bull
+        self.bot._h1_macro_trend_cache.clear()
+
+        # Wave 3 BUY must be ALLOWED because H1 is Bullish
+        b_sig, s_sig, reason = self.bot._check_ew_wave3_breaker(df_m5, "XAUUSDc")
+        self.assertTrue(b_sig, "Wave 3 BUY should be allowed during H1 Bullish trend")
+
+    def test_master_trend_rule_blocks_counter_trend_orders(self):
+        """Verify Item 1: _process_single_setup_signal blocks orders counter to H1 trend."""
+        df_m5 = pd.DataFrame({
+            'time': pd.date_range("2026-09-15", periods=30, freq="5min"),
+            'open': [2400.0]*30, 'high': [2405.0]*30, 'low': [2395.0]*30, 'close': [2400.0]*30,
+            'tick_volume': [100]*30
+        })
+
+        # Mock Bullish H1 trend
+        self.bot.get_h1_macro_trend = MagicMock(return_value=1) # Bullish
+        self.bot.execute_sell = MagicMock()
+        self.bot.execute_buy = MagicMock()
+
+        # Try to execute SELL during Bullish H1 trend -> MUST BE BLOCKED
+        self.bot._process_single_setup_signal(df_m5, "XAUUSDc", 20.0, "EW_WAVE3_BREAKER", "SELL", "Bearish signal")
+        self.assertEqual(self.bot.execute_sell.call_count, 0)
+        self.assertIn("TREND BLOCKED", self.bot.latest_trend)
+
+        # Mock Bearish H1 trend
+        self.bot.get_h1_macro_trend = MagicMock(return_value=-1) # Bearish
+
+        # Try to execute BUY during Bearish H1 trend -> MUST BE BLOCKED
+        self.bot._process_single_setup_signal(df_m5, "XAUUSDc", 20.0, "PULLBACK_DR_EKK", "BUY", "Bullish signal")
+        self.assertEqual(self.bot.execute_buy.call_count, 0)
+        self.assertIn("TREND BLOCKED", self.bot.latest_trend)
+
 if __name__ == '__main__':
     unittest.main()

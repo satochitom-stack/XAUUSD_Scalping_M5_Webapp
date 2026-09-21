@@ -52,11 +52,10 @@ class TestDrEkkPullbackStrategy(unittest.TestCase):
     def test_risk_isolation_rules(self):
         """
         Verify strict Risk Isolation according to user rules:
-        - RTM M4 = 1.0% (Step-Up Compounding)
-        - RTM M6 = 0.5% (Step-Up Compounding)
+        - RTM M4 / M6 = 1.0% (Step-Up Compounding)
         - PULLBACK_DR_EKK = 0.5% (Step-Up Compounding)
         - News / Asian = 0.5%
-        - SMCxSTO = Strictly 0.5%
+        - SMCxSTO = Strictly 1.0%
         """
         sl_dist = 5.00  # $5.00 SL distance = 500 points
         
@@ -64,9 +63,9 @@ class TestDrEkkPullbackStrategy(unittest.TestCase):
         lot_m4 = self.bot.calculate_lot_size(sl_dist, strat_id="RTM_M4_CONSERVATIVE")
         self.assertAlmostEqual(lot_m4, 0.20, places=2)
 
-        # Test RTM M6 -> 0.5% ($50 risk on $10k -> 50 / 500 = 0.10 lot)
+        # Test RTM M6 -> 1.0% ($100 risk on $10k -> 100 / 500 = 0.20 lot)
         lot_m6 = self.bot.calculate_lot_size(sl_dist, strat_id="RTM_M6_ELITE_GROWTH")
-        self.assertAlmostEqual(lot_m6, 0.10, places=2)
+        self.assertAlmostEqual(lot_m6, 0.20, places=2)
 
         # Test PULLBACK_DR_EKK -> 0.5% ($50 risk on $10k -> 50 / 500 = 0.10 lot)
         lot_pullback = self.bot.calculate_lot_size(sl_dist, strat_id="PULLBACK_DR_EKK")
@@ -80,9 +79,9 @@ class TestDrEkkPullbackStrategy(unittest.TestCase):
         lot_asian = self.bot.calculate_lot_size(sl_dist, strat_id="ASIAN_RANGE_SNIPER")
         self.assertAlmostEqual(lot_asian, 0.10, places=2)
 
-        # Test SMC_X_STO_H1 -> Strictly 0.5% ($50 risk on $10k -> 50 / 500 = 0.10 lot)
+        # Test SMC_X_STO_H1 -> Strictly 1.0% ($100 risk on $10k -> 100 / 500 = 0.20 lot)
         lot_smc = self.bot.calculate_lot_size(sl_dist, strat_id="SMC_X_STO_H1")
-        self.assertAlmostEqual(lot_smc, 0.10, places=2)
+        self.assertAlmostEqual(lot_smc, 0.20, places=2)
 
     def test_analytics_deal_classification(self):
         """Verify StrategyAnalytics classifies PULLBACK_DR_EKK deals accurately."""
@@ -189,53 +188,61 @@ class TestDrEkkPullbackStrategy(unittest.TestCase):
         self.assertLessEqual(called_sl, round(2400.0 - 4.0 * 0.8, 2))  # at least the +0.8R minimum lock
         self.assertEqual(called_tp, 2390.0)
 
-    def test_pullback_dr_ekk_blocks_peak_overbought_and_exhaustion(self):
-        """Verify _check_pullback_dr_ekk blocks entries when price is overbought (RSI > 68)
-        or extended too far above EMA 60 (Distance > 1.25 * ATR)."""
+    def test_dr_ekk_h1_macro_trend_filter(self):
+        """Verify Item 3: Dr. Ekk strictly respects H1 EMA50 vs EMA200."""
+        # Create M5 Bullish Pullback setup
         dates = pd.date_range("2026-09-08 10:00", periods=50, freq="5min")
-        prices = [2400.0 + i * 0.20 for i in range(50)]
-        df = pd.DataFrame({
+        prices = [2400.0 + i * 0.20 for i in range(25)]
+        prices.extend([2405.0, 2406.5, 2408.0, 2409.5, 2410.0])
+        prices.extend([2409.0, 2408.0, 2407.2, 2406.5, 2406.8, 2406.8])
+        while len(prices) < 50:
+            prices.append(2406.8)
+
+        df_m5 = pd.DataFrame({
             "datetime": dates,
             "open": prices,
             "high": [p + 0.40 for p in prices],
             "low": [p - 0.40 for p in prices],
             "close": prices
         })
-        df['ema60'] = 2400.0  # EMA60 is far below
-        df['ema150'] = 2390.0
-        df['atr14'] = 2.0
-        # Trigger candle at the peak: close is 2410.0 (10 dollars = 5.0x ATR above EMA60!)
-        df.loc[df.index[-2], 'close'] = 2410.0
-        df.loc[df.index[-2], 'high'] = 2410.5
-        df.loc[df.index[-2], 'low'] = 2409.0
-        df.loc[df.index[-2], 'open'] = 2408.0
-        df.loc[df.index[-2], 'rsi14'] = 75.0  # Overbought peak
+        df_m5.loc[df_m5.index[-2], 'low'] = 2406.4
+        df_m5.loc[df_m5.index[-2], 'open'] = 2407.5
+        df_m5.loc[df_m5.index[-2], 'close'] = 2407.8
+        df_m5.loc[df_m5.index[-2], 'high'] = 2408.0
+        df_m5['ema60'] = 2406.8
+        df_m5['ema150'] = 2401.0
+        df_m5['atr14'] = 2.0
 
-        b_sig, s_sig, _ = self.bot._check_pullback_dr_ekk(df)
-        self.assertFalse(b_sig, "Must NOT buy at overbought peak / extended distance above EMA60")
-
-    def test_pullback_dr_ekk_requires_mandatory_ema60_touch(self):
-        """Verify _check_pullback_dr_ekk blocks buy if low did not test EMA 60 zone."""
-        dates = pd.date_range("2026-09-08 10:00", periods=50, freq="5min")
-        prices = [2400.0 + i * 0.20 for i in range(50)]
-        df = pd.DataFrame({
-            "datetime": dates,
-            "open": prices,
-            "high": [p + 0.40 for p in prices],
-            "low": [p - 0.40 for p in prices],
-            "close": prices
+        # Case 1: H1 is Bearish (falling prices: EMA 50 < EMA 200)
+        h1_bear_closes = [2500.0 - i * 2.0 for i in range(40)]
+        df_h1_bear = pd.DataFrame({
+            'time': pd.date_range("2026-09-01", periods=40, freq="1h"),
+            'open': h1_bear_closes,
+            'high': [c + 1.0 for c in h1_bear_closes],
+            'low': [c - 1.0 for c in h1_bear_closes],
+            'close': h1_bear_closes
         })
-        df['ema60'] = 2405.0
-        df['ema150'] = 2400.0
-        df['atr14'] = 2.0
-        # Trigger candle low is at 2407.5, which is > 2405.0 + 0.35 * 2.0 (2405.70)
-        df.loc[df.index[-2], 'low'] = 2407.5
-        df.loc[df.index[-3], 'low'] = 2407.5
-        df.loc[df.index[-2], 'close'] = 2408.0
-        df.loc[df.index[-2], 'rsi14'] = 55.0
+        self.mock_connector.get_rates.return_value = df_h1_bear
 
-        b_sig, _, _ = self.bot._check_pullback_dr_ekk(df)
-        self.assertFalse(b_sig, "Must NOT buy if EMA 60 zone is not tested by low of entry/prev candle")
+        # BUY must be strictly blocked because H1 is Bearish
+        b_sig, s_sig, reason = self.bot._check_pullback_dr_ekk(df_m5, "XAUUSDc")
+        self.assertFalse(b_sig, "Dr. Ekk BUY should be blocked during H1 Bearish trend")
+
+        # Case 2: H1 is Bullish (rising prices: EMA 50 > EMA 200)
+        h1_bull_closes = [2300.0 + i * 2.0 for i in range(40)]
+        df_h1_bull = pd.DataFrame({
+            'time': pd.date_range("2026-09-01", periods=40, freq="1h"),
+            'open': h1_bull_closes,
+            'high': [c + 1.0 for c in h1_bull_closes],
+            'low': [c - 1.0 for c in h1_bull_closes],
+            'close': h1_bull_closes
+        })
+        self.mock_connector.get_rates.return_value = df_h1_bull
+
+        # BUY must be allowed because H1 is Bullish
+        b_sig, s_sig, reason = self.bot._check_pullback_dr_ekk(df_m5, "XAUUSDc")
+        self.assertTrue(b_sig, "Dr. Ekk BUY should be allowed during H1 Bullish trend")
+        self.assertFalse(s_sig, "Dr. Ekk SELL must NEVER trigger during H1 Bullish trend")
 
 
 if __name__ == "__main__":

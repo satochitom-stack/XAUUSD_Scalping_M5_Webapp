@@ -148,6 +148,7 @@ class GoldScalpingBot:
         self.judas_last_trade_date: Optional[object] = None
         self.silver_bullet_last_trade_date: Optional[object] = None
         self.last_smc_sto_h1_bar_time: Optional[object] = None
+        self._h1_macro_trend_cache: Dict[str, dict] = {}
         
         mt5_cfg = self.config.get("mt5", {})
         self.magic_number = mt5_cfg.get("magic_number", 555888)
@@ -314,6 +315,52 @@ class GoldScalpingBot:
             reason = f"OUTSIDE TRADING HOURS ({now_t.strftime('%H:%M')} not in {start_str}-{end_str} Thai Time)"
             return False, reason, start_str, end_str
         return True, "IN_HOURS", start_str, end_str
+
+    def get_h1_macro_trend(self, symbol: str = "XAUUSD") -> int:
+        """
+        Master Trend Rule (Item 1):
+        Enforces a unified Higher Timeframe (H1) trend alignment across all active setups using H1 EMA 50 vs EMA 200.
+        Returns:
+            +1 : Bullish (EMA 50 > EMA 200) -> Only BUY signals permitted
+            -1 : Bearish (EMA 50 < EMA 200) -> Only SELL signals permitted
+             0 : Neutral / Indeterminate / No H1 data (fallback: allows testing & unconstrained)
+        """
+        if not self.connector or not hasattr(self.connector, "get_rates"):
+            return 0
+
+        # Fast cache check (15s) to avoid repeated MT5 IPC fetches within the same tick/iteration
+        now_ts = time.time()
+        cached = getattr(self, "_h1_macro_trend_cache", {}).get(symbol)
+        if cached and (now_ts - cached.get("time", 0.0) < 15.0):
+            return cached.get("trend", 0)
+
+        try:
+            df_h1 = self.connector.get_rates(symbol, "H1", 60)
+            if df_h1 is None or not isinstance(df_h1, pd.DataFrame) or df_h1.empty or len(df_h1) < 25:
+                return 0
+
+            df_h1 = df_h1.copy()
+            df_h1['ema50'] = df_h1['close'].ewm(span=50, adjust=False).mean()
+            df_h1['ema200'] = df_h1['close'].ewm(span=200, adjust=False).mean()
+
+            b_idx = -2 if len(df_h1) >= 2 else -1
+            e50 = float(df_h1['ema50'].iloc[b_idx])
+            e200 = float(df_h1['ema200'].iloc[b_idx])
+
+            if e50 > e200:
+                trend = 1
+            elif e50 < e200:
+                trend = -1
+            else:
+                trend = 0
+
+            if not hasattr(self, "_h1_macro_trend_cache"):
+                self._h1_macro_trend_cache = {}
+            self._h1_macro_trend_cache[symbol] = {"time": now_ts, "trend": trend}
+            return trend
+        except Exception as e:
+            logger.debug(f"Error evaluating H1 macro trend for {symbol}: {e}")
+            return 0
 
     def run_iteration(self):
         """Called periodically by AccountManager to evaluate strategy."""
@@ -540,6 +587,17 @@ class GoldScalpingBot:
         if not in_hours:
             self.add_log(f"⏰ [HOURS GUARD] {strat_key} ({action_type}) Skipped | {h_reason}", "INFO")
             self.latest_trend = f"WAITING ({strat_key}: Outside {s_t}-{e_t})"
+            return
+
+        # 0.1 Evaluate Master Trend Rule (Item 1: H1 EMA 50 vs EMA 200 alignment)
+        h1_macro_trend = self.get_h1_macro_trend(symbol)
+        if h1_macro_trend == 1 and action_type == "SELL":
+            self.add_log(f"🛡️ [MASTER TREND FILTER] {strat_key} (SELL) Blocked | H1 Macro Trend is BULLISH (EMA 50 > EMA 200)", "WARNING")
+            self.latest_trend = f"TREND BLOCKED ({strat_key}: SELL blocked by H1 Bull Trend)"
+            return
+        elif h1_macro_trend == -1 and action_type == "BUY":
+            self.add_log(f"🛡️ [MASTER TREND FILTER] {strat_key} (BUY) Blocked | H1 Macro Trend is BEARISH (EMA 50 < EMA 200)", "WARNING")
+            self.latest_trend = f"TREND BLOCKED ({strat_key}: BUY blocked by H1 Bear Trend)"
             return
 
         # 1. Evaluate Market Regime & Liquidity Filter Score (0 - 100)
@@ -783,24 +841,29 @@ class GoldScalpingBot:
         if candle_range < 0.60:
             return False, False, ""
 
-        # H1 Macro Trend & Dump/Pump Shield
+        # H1 Macro Trend & Dump/Pump Shield (Item 3: Tighten Dr. Ekk with strict H1 EMA 50 vs EMA 200)
         h1_bull_allowed = True
         h1_bear_allowed = True
         if self.connector:
             try:
-                df_h1 = self.connector.get_rates(symbol, "H1", 50)
-                if df_h1 is not None and not df_h1.empty and len(df_h1) >= 25:
+                df_h1 = self.connector.get_rates(symbol, "H1", 60)
+                if df_h1 is not None and isinstance(df_h1, pd.DataFrame) and not df_h1.empty and len(df_h1) >= 25:
+                    df_h1 = df_h1.copy()
                     df_h1['ema50'] = df_h1['close'].ewm(span=50, adjust=False).mean()
-                    h1_c = float(df_h1['close'].iloc[-2])
+                    df_h1['ema200'] = df_h1['close'].ewm(span=200, adjust=False).mean()
                     h1_ema50 = float(df_h1['ema50'].iloc[-2])
+                    h1_ema200 = float(df_h1['ema200'].iloc[-2])
                     h1_b1 = df_h1.iloc[-2]
                     h1_range = float(h1_b1['high']) - float(h1_b1['low'])
                     h1_body = abs(float(h1_b1['close']) - float(h1_b1['open']))
                     is_h1_bear_dump = (float(h1_b1['close']) < float(h1_b1['open'])) and (h1_body >= 0.55 * h1_range) and (h1_range >= 12.0)
                     is_h1_bull_pump = (float(h1_b1['close']) > float(h1_b1['open'])) and (h1_body >= 0.55 * h1_range) and (h1_range >= 12.0)
                     
-                    h1_bull_allowed = (h1_c >= h1_ema50 - 2.00) and not is_h1_bear_dump
-                    h1_bear_allowed = (h1_c <= h1_ema50 + 2.00) and not is_h1_bull_pump
+                    # Strict H1 EMA 50 vs EMA 200 alignment (Item 3)
+                    # Bullish Trend: EMA 50 > EMA 200 -> only BUY allowed
+                    # Bearish Trend: EMA 50 < EMA 200 -> only SELL allowed
+                    h1_bull_allowed = (h1_ema50 > h1_ema200) and not is_h1_bear_dump
+                    h1_bear_allowed = (h1_ema50 < h1_ema200) and not is_h1_bull_pump
             except Exception:
                 pass
 
@@ -981,24 +1044,22 @@ class GoldScalpingBot:
         if m5_atr <= 0:
             m5_atr = 2.0
 
-        # SMC Macro Trend Alignment via H1 EMA50
+        # SMC Macro Trend Alignment via H1 EMA 50 vs EMA 200 (Item 1)
         h1_bull_allowed = True
         h1_bear_allowed = True
         if self.connector:
             try:
                 df_h1 = self.connector.get_rates(symbol, "H1", 60)
-                if isinstance(df_h1, pd.DataFrame) and not df_h1.empty and len(df_h1) >= 50:
-                    h1_ema50 = df_h1['close'].ewm(span=50, adjust=False).mean()
-                    h1_close = float(df_h1['close'].iloc[-2])
-                    h1_ema50_now = float(h1_ema50.iloc[-2])
-                    h1_ema50_prev = float(h1_ema50.iloc[-7])
-                    h1_slope = h1_ema50_now - h1_ema50_prev
+                if isinstance(df_h1, pd.DataFrame) and not df_h1.empty and len(df_h1) >= 25:
+                    df_h1 = df_h1.copy()
+                    df_h1['ema50'] = df_h1['close'].ewm(span=50, adjust=False).mean()
+                    df_h1['ema200'] = df_h1['close'].ewm(span=200, adjust=False).mean()
+                    h1_ema50_now = float(df_h1['ema50'].iloc[-2])
+                    h1_ema200_now = float(df_h1['ema200'].iloc[-2])
 
-                    is_h1_strong_downtrend = (h1_close < h1_ema50_now) and (h1_slope < -0.40)
-                    is_h1_strong_uptrend = (h1_close > h1_ema50_now) and (h1_slope > 0.40)
-
-                    h1_bull_allowed = not is_h1_strong_downtrend
-                    h1_bear_allowed = not is_h1_strong_uptrend
+                    # Aligned with Master Trend Rule: H1 EMA 50 vs EMA 200
+                    h1_bull_allowed = (h1_ema50_now >= h1_ema200_now)
+                    h1_bear_allowed = (h1_ema50_now <= h1_ema200_now)
             except Exception:
                 pass
 
@@ -1123,16 +1184,15 @@ class GoldScalpingBot:
 
         h1_bull = True
         h1_bear = True
-        if df_h1 is not None and not df_h1.empty and len(df_h1) >= 20:
+        if df_h1 is not None and isinstance(df_h1, pd.DataFrame) and not df_h1.empty and len(df_h1) >= 20:
             df_h1_copy = df_h1.copy()
             df_h1_copy['ema50'] = df_h1_copy['close'].ewm(span=50, adjust=False).mean()
             df_h1_copy['ema200'] = df_h1_copy['close'].ewm(span=200, adjust=False).mean()
             h1_last = df_h1_copy.iloc[-1]
-            h1_c = float(h1_last['close'])
             h1_e50 = float(h1_last['ema50'])
             h1_e200 = float(h1_last['ema200'])
-            h1_bull = (h1_e50 >= h1_e200) or (h1_c >= h1_e50)
-            h1_bear = (h1_e50 <= h1_e200) or (h1_c <= h1_e50)
+            h1_bull = (h1_e50 >= h1_e200)
+            h1_bear = (h1_e50 <= h1_e200)
 
         recent_bars = df.iloc[-18:-1]
         recent_high = float(recent_bars['high'].max())
@@ -1224,17 +1284,19 @@ class GoldScalpingBot:
         if curr_date is not None and getattr(self, "silver_bullet_last_trade_date", None) == curr_date:
             return False, False, ""
 
-        # 3. Macro H1 Trend Filter (Prevent Counter-Trend FVG Traps)
+        # 3. Macro H1 Trend Filter (Prevent Counter-Trend FVG Traps via H1 EMA 50 vs EMA 200)
         h1_bull_allowed, h1_bear_allowed = True, True
         if self.connector:
             try:
-                df_h1 = self.connector.get_rates(symbol, "H1", 55)
-                if df_h1 is not None and not df_h1.empty and len(df_h1) >= 30:
+                df_h1 = self.connector.get_rates(symbol, "H1", 60)
+                if df_h1 is not None and isinstance(df_h1, pd.DataFrame) and not df_h1.empty and len(df_h1) >= 25:
+                    df_h1 = df_h1.copy()
                     df_h1['ema50'] = df_h1['close'].ewm(span=50, adjust=False).mean()
-                    h1_close = float(df_h1['close'].iloc[-2])
+                    df_h1['ema200'] = df_h1['close'].ewm(span=200, adjust=False).mean()
                     h1_ema50 = float(df_h1['ema50'].iloc[-2])
-                    h1_bull_allowed = h1_close >= (h1_ema50 - 1.00)
-                    h1_bear_allowed = h1_close <= (h1_ema50 + 1.00)
+                    h1_ema200 = float(df_h1['ema200'].iloc[-2])
+                    h1_bull_allowed = (h1_ema50 >= h1_ema200)
+                    h1_bear_allowed = (h1_ema50 <= h1_ema200)
             except Exception:
                 pass
 
@@ -1325,51 +1387,58 @@ class GoldScalpingBot:
         curr_ewo = float(ewo.iloc[-2]) if len(ewo) >= 35 else 0.0
         prev_ewo = float(ewo.iloc[-3]) if len(ewo) >= 35 else 0.0
 
+        # Macro H1 Trend Filter (Item 2: Elliott Wave 3 H1 EMA 50 vs EMA 200 alignment)
+        h1_macro_trend = self.get_h1_macro_trend(symbol)
+        can_buy = (h1_macro_trend != -1)   # When H1 is Bearish (-1), block BUY
+        can_sell = (h1_macro_trend != 1)   # When H1 is Bullish (+1), block SELL
+
         # BUY (Bullish Wave 3):
-        p0_idx = int(df['low'].iloc[-25:-10].argmin()) + (len(df) - 25)
-        p0_low = float(df['low'].iloc[p0_idx])
+        if can_buy:
+            p0_idx = int(df['low'].iloc[-25:-10].argmin()) + (len(df) - 25)
+            p0_low = float(df['low'].iloc[p0_idx])
 
-        p1_subset = df.iloc[p0_idx + 1 : -4]
-        if len(p1_subset) >= 3:
-            p1_idx = int(p1_subset['high'].argmax()) + (p0_idx + 1)
-            p1_high = float(p1_subset['high'].max())
+            p1_subset = df.iloc[p0_idx + 1 : -4]
+            if len(p1_subset) >= 3:
+                p1_idx = int(p1_subset['high'].argmax()) + (p0_idx + 1)
+                p1_high = float(p1_subset['high'].max())
 
-            p2_subset = df.iloc[p1_idx + 1 : -1]
-            if len(p2_subset) >= 2:
-                p2_low = float(p2_subset['low'].min())
-                wave1_dist = p1_high - p0_low
-                wave2_retrace = p1_high - p2_low
+                p2_subset = df.iloc[p1_idx + 1 : -1]
+                if len(p2_subset) >= 2:
+                    p2_low = float(p2_subset['low'].min())
+                    wave1_dist = p1_high - p0_low
+                    wave2_retrace = p1_high - p2_low
 
-                # Rule 1 check: P2 > P0 (Never retrace 100%)
-                if wave1_dist >= 2.00 and p2_low > p0_low:
-                    retrace_ratio = wave2_retrace / wave1_dist
-                    if 0.25 <= retrace_ratio <= 0.80:
-                        # Breakout: b1 closed above Wave 1 High
-                        if float(b1['close']) > p1_high and float(b2['close']) <= p1_high + 0.50:
-                            if curr_ewo >= 0.0 or curr_ewo >= prev_ewo:
-                                return True, False, f"🌊 Elliott Wave 3 Breaker Bullish (W1 Top {p1_high:.2f} Broken | Tactical SL @ W2 Low {p2_low:.2f})"
+                    # Rule 1 check: P2 > P0 (Never retrace 100%)
+                    if wave1_dist >= 2.00 and p2_low > p0_low:
+                        retrace_ratio = wave2_retrace / wave1_dist
+                        if 0.25 <= retrace_ratio <= 0.80:
+                            # Breakout: b1 closed above Wave 1 High
+                            if float(b1['close']) > p1_high and float(b2['close']) <= p1_high + 0.50:
+                                if curr_ewo >= 0.0 or curr_ewo >= prev_ewo:
+                                    return True, False, f"🌊 Elliott Wave 3 Breaker Bullish (W1 Top {p1_high:.2f} Broken | Tactical SL @ W2 Low {p2_low:.2f})"
 
         # SELL (Bearish Wave 3):
-        p0_sell_idx = int(df['high'].iloc[-25:-10].argmax()) + (len(df) - 25)
-        p0_high = float(df['high'].iloc[p0_sell_idx])
+        if can_sell:
+            p0_sell_idx = int(df['high'].iloc[-25:-10].argmax()) + (len(df) - 25)
+            p0_high = float(df['high'].iloc[p0_sell_idx])
 
-        p1_sell_subset = df.iloc[p0_sell_idx + 1 : -4]
-        if len(p1_sell_subset) >= 3:
-            p1_sell_idx = int(p1_sell_subset['low'].argmin()) + (p0_sell_idx + 1)
-            p1_sell_low = float(p1_sell_subset['low'].min())
+            p1_sell_subset = df.iloc[p0_sell_idx + 1 : -4]
+            if len(p1_sell_subset) >= 3:
+                p1_sell_idx = int(p1_sell_subset['low'].argmin()) + (p0_sell_idx + 1)
+                p1_sell_low = float(p1_sell_subset['low'].min())
 
-            p2_sell_subset = df.iloc[p1_sell_idx + 1 : -1]
-            if len(p2_sell_subset) >= 2:
-                p2_sell_high = float(p2_sell_subset['high'].max())
-                wave1_dist = p0_high - p1_sell_low
-                wave2_retrace = p2_sell_high - p1_sell_low
+                p2_sell_subset = df.iloc[p1_sell_idx + 1 : -1]
+                if len(p2_sell_subset) >= 2:
+                    p2_sell_high = float(p2_sell_subset['high'].max())
+                    wave1_dist = p0_high - p1_sell_low
+                    wave2_retrace = p2_sell_high - p1_sell_low
 
-                if wave1_dist >= 2.00 and p2_sell_high < p0_high:
-                    retrace_ratio = wave2_retrace / wave1_dist
-                    if 0.25 <= retrace_ratio <= 0.80:
-                        if float(b1['close']) < p1_sell_low and float(b2['close']) >= p1_sell_low - 0.50:
-                            if curr_ewo <= 0.0 or curr_ewo <= prev_ewo:
-                                return False, True, f"🌊 Elliott Wave 3 Breaker Bearish (W1 Bottom {p1_sell_low:.2f} Broken | Tactical SL @ W2 High {p2_sell_high:.2f})"
+                    if wave1_dist >= 2.00 and p2_sell_high < p0_high:
+                        retrace_ratio = wave2_retrace / wave1_dist
+                        if 0.25 <= retrace_ratio <= 0.80:
+                            if float(b1['close']) < p1_sell_low and float(b2['close']) >= p1_sell_low - 0.50:
+                                if curr_ewo <= 0.0 or curr_ewo <= prev_ewo:
+                                    return False, True, f"🌊 Elliott Wave 3 Breaker Bearish (W1 Bottom {p1_sell_low:.2f} Broken | Tactical SL @ W2 High {p2_sell_high:.2f})"
 
         return False, False, ""
 
@@ -1610,14 +1679,14 @@ class GoldScalpingBot:
             now_hour = (datetime.utcnow().hour + 7) % 24
             in_kz = (14 <= now_hour <= 17) or (19 <= now_hour <= 23)
 
-            # 5. Check Bearish Quasimodo (SELL)
+            # 5. Check Bearish Quasimodo (SELL) - Strictly blocked if H1 trend is Bullish (Item 1)
             # High1 (QML) -> Low1 -> High2 (HH - Head) -> Low2 (LL - Breakout) -> Retest QML
             idx_qml, qml_high = s_high_items[-2]
             idx_head, head_hh = s_high_items[-1]
             idx_low1, low1 = s_low_items[-2]
             idx_break, break_ll = s_low_items[-1]
 
-            if head_hh > qml_high and break_ll < low1 and idx_qml < idx_head and idx_head < idx_break:
+            if h1_trend != 1 and head_hh > qml_high and break_ll < low1 and idx_qml < idx_head and idx_head < idx_break:
                 # 1. Calculate Refined MPL (Maximum Pain Level)
                 ls_cluster = df_m15.iloc[max(0, idx_qml-2) : min(len(df_m15), idx_qml+3)]
                 mpl_price = float(ls_cluster[['open', 'close']].max().max())
@@ -1676,14 +1745,14 @@ class GoldScalpingBot:
                             "is_ftb": is_ftb
                         }
 
-            # 6. Check Bullish Quasimodo (BUY)
+            # 6. Check Bullish Quasimodo (BUY) - Strictly blocked if H1 trend is Bearish (Item 1)
             # Low1 (QML) -> High1 -> Low2 (LL - Head) -> High2 (HH - Breakout) -> Retest QML
             idx_qml, qml_low = s_low_items[-2]
             idx_head, head_ll = s_low_items[-1]
             idx_high1, high1 = s_high_items[-2]
             idx_break, break_hh = s_high_items[-1]
 
-            if head_ll < qml_low and break_hh > high1 and idx_qml < idx_head and idx_head < idx_break:
+            if h1_trend != -1 and head_ll < qml_low and break_hh > high1 and idx_qml < idx_head and idx_head < idx_break:
                 # 1. Calculate Refined MPL (Maximum Pain Level)
                 ls_cluster = df_m15.iloc[max(0, idx_qml-2) : min(len(df_m15), idx_qml+3)]
                 mpl_price = float(ls_cluster[['open', 'close']].min().min())
@@ -1798,6 +1867,15 @@ class GoldScalpingBot:
         score = sig["score"]
         sl = sig["sl"]
         reason = sig["reason"]
+
+        # Master Trend Filter (Item 1: H1 EMA 50 vs EMA 200 alignment)
+        h1_macro_trend = self.get_h1_macro_trend(symbol)
+        if h1_macro_trend == 1 and action == "SELL":
+            self.add_log(f"🛡️ [MASTER TREND FILTER] RTM (SELL) Blocked | H1 Macro Trend is BULLISH (EMA 50 > EMA 200)", "WARNING")
+            return
+        elif h1_macro_trend == -1 and action == "BUY":
+            self.add_log(f"🛡️ [MASTER TREND FILTER] RTM (BUY) Blocked | H1 Macro Trend is BEARISH (EMA 50 < EMA 200)", "WARNING")
+            return
 
         # 1. Check Post-SL Directional Cooldown (15-min pause for same direction)
         self._update_rtm_sl_cooldown()
