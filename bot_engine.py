@@ -152,7 +152,6 @@ class GoldScalpingBot:
         self.silver_bullet_last_trade_date: Optional[object] = None
         self.last_smc_sto_h1_bar_time: Optional[object] = None
         self._h1_macro_trend_cache: Dict[str, dict] = {}
-
         # Donchian Adaptive Trend: Break-and-Retest State Machine
         # Phase 1 (ALERT): breakout detected, waiting for pullback retest
         # Phase 2 (ENTRY): retest confirmed at broken level, fire order
@@ -345,7 +344,7 @@ class GoldScalpingBot:
             return cached.get("trend", 0)
 
         try:
-            df_h1 = self.connector.get_rates(symbol, "H1", 60)
+            df_h1 = self.connector.get_rates(symbol, "H1", 300)
             if df_h1 is None or not isinstance(df_h1, pd.DataFrame) or df_h1.empty or len(df_h1) < 25:
                 return 0
 
@@ -865,7 +864,7 @@ class GoldScalpingBot:
         h1_bear_allowed = True
         if self.connector:
             try:
-                df_h1 = self.connector.get_rates(symbol, "H1", 60)
+                df_h1 = self.connector.get_rates(symbol, "H1", 300)
                 if df_h1 is not None and isinstance(df_h1, pd.DataFrame) and not df_h1.empty and len(df_h1) >= 25:
                     df_h1 = df_h1.copy()
                     df_h1['ema50'] = df_h1['close'].ewm(span=50, adjust=False).mean()
@@ -1068,7 +1067,7 @@ class GoldScalpingBot:
         h1_bear_allowed = True
         if self.connector:
             try:
-                df_h1 = self.connector.get_rates(symbol, "H1", 60)
+                df_h1 = self.connector.get_rates(symbol, "H1", 300)
                 if isinstance(df_h1, pd.DataFrame) and not df_h1.empty and len(df_h1) >= 25:
                     df_h1 = df_h1.copy()
                     df_h1['ema50'] = df_h1['close'].ewm(span=50, adjust=False).mean()
@@ -1197,7 +1196,7 @@ class GoldScalpingBot:
         df_h1 = None
         if hasattr(self, 'connector') and hasattr(self.connector, 'get_rates'):
             try:
-                df_h1 = self.connector.get_rates(symbol, "H1", 60)
+                df_h1 = self.connector.get_rates(symbol, "H1", 300)
             except Exception:
                 df_h1 = None
 
@@ -1307,7 +1306,7 @@ class GoldScalpingBot:
         h1_bull_allowed, h1_bear_allowed = True, True
         if self.connector:
             try:
-                df_h1 = self.connector.get_rates(symbol, "H1", 60)
+                df_h1 = self.connector.get_rates(symbol, "H1", 300)
                 if df_h1 is not None and isinstance(df_h1, pd.DataFrame) and not df_h1.empty and len(df_h1) >= 25:
                     df_h1 = df_h1.copy()
                     df_h1['ema50'] = df_h1['close'].ewm(span=50, adjust=False).mean()
@@ -1681,7 +1680,7 @@ class GoldScalpingBot:
         4. Entry Trigger: Stochastic (14, 3, 3) Oversold (<= 28) / Overbought (>= 72) reversal cross.
         """
         try:
-            df_h1 = self.connector.get_rates(symbol, "H1", 60)
+            df_h1 = self.connector.get_rates(symbol, "H1", 300)
             if df_h1 is None or df_h1.empty or len(df_h1) < 35:
                 return False, False, ""
 
@@ -1848,7 +1847,7 @@ class GoldScalpingBot:
         """
         try:
             df_m15 = self.connector.get_rates(symbol, "M15", 70)
-            df_h1 = self.connector.get_rates(symbol, "H1", 60)
+            df_h1 = self.connector.get_rates(symbol, "H1", 300)
             if df_m15 is None or df_m15.empty or len(df_m15) < 35:
                 return {}
             if df_h1 is None or df_h1.empty or len(df_h1) < 25:
@@ -2353,6 +2352,13 @@ class GoldScalpingBot:
         ask = self.connector.get_market_info(symbol).get("ask", 0.0)
         if ask <= 0: return
 
+        # Double-Lock Master Trend Guard: Block BUY if H1 Macro Trend is Bearish (-1)
+        if not is_asian_scalp and strat_id != "ASIAN_RANGE_SNIPER":
+            h1_macro = self.get_h1_macro_trend(symbol)
+            if h1_macro == -1:
+                self.add_log(f"🛡️ [EXECUTION BLOCKED] {strat_id} BUY aborted | H1 Macro Trend is BEARISH (EMA 50 < EMA 200)", "WARNING")
+                return
+
         opt = opt_params or {}
         sl_mult = opt.get("atr_sl_multiplier", 1.0)
         lot_mult = opt.get("lot_multiplier", 1.0)
@@ -2508,6 +2514,13 @@ class GoldScalpingBot:
     def execute_sell(self, df: pd.DataFrame, symbol: str, reason: str, is_asian_scalp: bool = False, opt_params: Optional[dict] = None, strat_id: str = "PULLBACK_DR_EKK", **kwargs):
         bid = self.connector.get_market_info(symbol).get("bid", 0.0)
         if bid <= 0: return
+
+        # Double-Lock Master Trend Guard: Block SELL if H1 Macro Trend is Bullish (+1)
+        if not is_asian_scalp and strat_id != "ASIAN_RANGE_SNIPER":
+            h1_macro = self.get_h1_macro_trend(symbol)
+            if h1_macro == 1:
+                self.add_log(f"🛡️ [EXECUTION BLOCKED] {strat_id} SELL aborted | H1 Macro Trend is BULLISH (EMA 50 > EMA 200)", "WARNING")
+                return
 
         opt = opt_params or {}
         sl_mult = opt.get("atr_sl_multiplier", 1.0)
