@@ -74,14 +74,14 @@ SETUP_PROFILES = {
         "id": "EW_WAVE3_BREAKER",
         "name": "Elliott Wave 3 & SMC Breaker Propulsion",
         "icon": "🌊",
-        "win_prob": 70.0,
-        "base_rr": 2.50,
-        "min_rr": 2.00,
-        "max_rr": 3.50,
+        "win_prob": 72.0,
+        "base_rr": 2.20,
+        "min_rr": 1.80,
+        "max_rr": 2.50,
         "trailing_type": "CONFLUENCE_STAGE",
         "trail_points": 250.0,
         "trail_step_points": 40.0,
-        "description": "Elliott Wave 3 Flagship Breakout + SMC Breaker - Fixed 1.0% Risk"
+        "description": "Elliott Wave 3 Flagship Breakout + SMC Breaker (Target 2.0R-2.5R) - Fixed 1.0% Risk"
     },
     "KC_LIQUIDITY_DOMINANCE": {
         "id": "KC_LIQUIDITY_DOMINANCE",

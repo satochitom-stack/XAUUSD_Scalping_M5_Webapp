@@ -2444,7 +2444,7 @@ class GoldScalpingBot:
             sl_dist = ask - sl
             if sl_dist < 2.50: sl = ask - 2.50; sl_dist = 2.50
             if sl_dist > 12.00: sl = ask - 12.00; sl_dist = 12.00
-            target_rr = opt.get("tp_ratio", 2.5)
+            target_rr = opt.get("tp_ratio", 2.2)
             tp2 = ask + (sl_dist * target_rr)
         elif strat_id == "DONCHIAN_ADAPTIVE_TREND":
             custom_sl = getattr(self, "_donchian_sl", None)
@@ -2600,7 +2600,7 @@ class GoldScalpingBot:
             sl_dist = sl - bid
             if sl_dist < 2.50: sl = bid + 2.50; sl_dist = 2.50
             if sl_dist > 12.00: sl = bid + 12.00; sl_dist = 12.00
-            target_rr = opt.get("tp_ratio", 2.5)
+            target_rr = opt.get("tp_ratio", 2.2)
             tp2 = bid - (sl_dist * target_rr)
         elif strat_id == "DONCHIAN_ADAPTIVE_TREND":
             custom_sl = getattr(self, "_donchian_sl", None)
@@ -2800,7 +2800,9 @@ class GoldScalpingBot:
                             initial_r = abs(open_p - tp) / 2.0
                         elif strat_id == "ICT_SILVER_BULLET_FVG":
                             initial_r = abs(open_p - tp) / 1.5
-                        elif strat_id in ["EW_WAVE3_BREAKER", "DONCHIAN_ADAPTIVE_TREND"]:
+                        elif strat_id == "EW_WAVE3_BREAKER":
+                            initial_r = abs(open_p - tp) / 2.2
+                        elif strat_id == "DONCHIAN_ADAPTIVE_TREND":
                             initial_r = abs(open_p - tp) / 2.5
                         else:
                             initial_r = abs(open_p - tp) / 1.8
@@ -2949,17 +2951,17 @@ class GoldScalpingBot:
                                 self.add_log(f"🛡️ [SILVER BULLET BREAK-EVEN] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
 
                     elif is_ew_breaker:
-                        # Elliott Wave 3 Breaker (Target 2.5R)
-                        if r_profit >= 1.8:
-                            target_sl = round(open_p + (initial_r * 1.2), 2)
+                        # Elliott Wave 3 Breaker (Target 2.2R, range 2.0R - 2.5R)
+                        if r_profit >= 1.7:
+                            target_sl = round(open_p + (initial_r * 1.3), 2)
                             if sl < target_sl - 0.10:
                                 self.connector.modify_position(t_id, target_sl, tp)
-                                self.add_log(f"💰 [EW WAVE3 +1.2R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.2R ({target_sl:.2f})", "SUCCESS")
-                        elif r_profit >= 1.2:
-                            target_sl = round(open_p + (initial_r * 0.6), 2)
+                                self.add_log(f"💰 [EW WAVE3 +1.3R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.3R ({target_sl:.2f})", "SUCCESS")
+                        elif r_profit >= 1.3:
+                            target_sl = round(open_p + (initial_r * 0.8), 2)
                             if sl < target_sl - 0.10:
                                 self.connector.modify_position(t_id, target_sl, tp)
-                                self.add_log(f"🎯 [EW WAVE3 +0.6R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +0.6R ({target_sl:.2f})", "SUCCESS")
+                                self.add_log(f"🎯 [EW WAVE3 +0.8R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +0.8R ({target_sl:.2f})", "SUCCESS")
                         elif r_profit >= 1.0:
                             target_sl = round(open_p + 0.30, 2)
                             if sl < target_sl - 0.10:
@@ -3118,17 +3120,17 @@ class GoldScalpingBot:
                                 self.add_log(f"🛡️ [SILVER BULLET BREAK-EVEN] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
 
                     elif is_ew_breaker:
-                        # Elliott Wave 3 Breaker (Target 2.5R)
-                        if r_profit >= 1.8:
-                            target_sl = round(open_p - (initial_r * 1.2), 2)
+                        # Elliott Wave 3 Breaker (Target 2.2R, range 2.0R - 2.5R)
+                        if r_profit >= 1.7:
+                            target_sl = round(open_p - (initial_r * 1.3), 2)
                             if sl == 0 or sl > target_sl + 0.10:
                                 self.connector.modify_position(t_id, target_sl, tp)
-                                self.add_log(f"💰 [EW WAVE3 +1.2R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.2R ({target_sl:.2f})", "SUCCESS")
-                        elif r_profit >= 1.2:
-                            target_sl = round(open_p - (initial_r * 0.6), 2)
+                                self.add_log(f"💰 [EW WAVE3 +1.3R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.3R ({target_sl:.2f})", "SUCCESS")
+                        elif r_profit >= 1.3:
+                            target_sl = round(open_p - (initial_r * 0.8), 2)
                             if sl == 0 or sl > target_sl + 0.10:
                                 self.connector.modify_position(t_id, target_sl, tp)
-                                self.add_log(f"🎯 [EW WAVE3 +0.6R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +0.6R ({target_sl:.2f})", "SUCCESS")
+                                self.add_log(f"🎯 [EW WAVE3 +0.8R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +0.8R ({target_sl:.2f})", "SUCCESS")
                         elif r_profit >= 1.0:
                             target_sl = round(open_p - 0.30, 2)
                             if sl == 0 or sl > target_sl + 0.10:

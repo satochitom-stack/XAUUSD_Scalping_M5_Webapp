@@ -109,8 +109,8 @@ class RealTradeAnalyticsManager:
             "timeframe": "M5",
             "best_session": "London & NY Trend (14:00 - 02:00)",
             "magic_numbers": [555930, 555931, 555932, 555933],
-            "avg_rr": "1:2.5",
-            "description": "Elliott Wave 3 Flagship: ตามคลื่นส่ง Wave 3 หลังยืนยันการย่อ Wave 2 ไม่หลุดจุดเริ่ม Wave 1 (Rule 1) ทะลุ Breaker Block พร้อม EWO (5/34) ขยายตัวสูงสุด (ความเสี่ยง 1.0% | TP 2.5R)"
+            "avg_rr": "1:2.2",
+            "description": "Elliott Wave 3 Flagship: ตามคลื่นส่ง Wave 3 หลังยืนยันการย่อ Wave 2 ไม่หลุดจุดเริ่ม Wave 1 (Rule 1) ทะลุ Breaker Block พร้อม EWO (5/34) ขยายตัวสูงสุด (ความเสี่ยง 1.0% | TP 2.0R - 2.5R)"
         },
         "DONCHIAN_ADAPTIVE_TREND": {
             "id": "DONCHIAN_ADAPTIVE_TREND",
