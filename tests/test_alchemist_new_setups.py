@@ -265,8 +265,9 @@ class TestAlchemistNewSetups(unittest.TestCase):
             'tick_volume': [100]*30
         })
 
-        # Mock Bullish H1 trend
+        # Mock Bullish H1 trend & Trading Hours
         self.bot.get_h1_macro_trend = MagicMock(return_value=1) # Bullish
+        self.bot.is_setup_in_trading_hours = MagicMock(return_value=(True, "Within hours", "14:00", "02:00"))
         self.bot.execute_sell = MagicMock()
         self.bot.execute_buy = MagicMock()
 

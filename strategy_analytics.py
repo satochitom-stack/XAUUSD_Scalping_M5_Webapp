@@ -112,6 +112,17 @@ class RealTradeAnalyticsManager:
             "avg_rr": "1:2.5",
             "description": "Elliott Wave 3 Flagship: ตามคลื่นส่ง Wave 3 หลังยืนยันการย่อ Wave 2 ไม่หลุดจุดเริ่ม Wave 1 (Rule 1) ทะลุ Breaker Block พร้อม EWO (5/34) ขยายตัวสูงสุด (ความเสี่ยง 1.0% | TP 2.5R)"
         },
+        "DONCHIAN_ADAPTIVE_TREND": {
+            "id": "DONCHIAN_ADAPTIVE_TREND",
+            "name": "Donchian Adaptive Trend (Anti-Chop Breakout)",
+            "icon": "⚡",
+            "category": "TREND_BREAKOUT",
+            "timeframe": "M5 (H1 Filter)",
+            "best_session": "London & NY (14:00 - 24:00)",
+            "magic_numbers": [555940, 555941, 555942, 555943],
+            "avg_rr": "1:2.5",
+            "description": "Donchian 20-bar Breakout ผสานเกราะ Triple Anti-Chop (Choppiness Index < 58, Adaptive ATR Percentile >= 35%, H1 Macro Orderflow) พร้อม Selective Flat State และ Stepped Trailing Stop (ความเสี่ยงคงที่ 0.5% | TP 2.5R)"
+        },
         "RETIRED_SETUPS": {
             "id": "RETIRED_SETUPS",
             "name": "เซตอัพที่เลิกใช้",
@@ -140,7 +151,8 @@ class RealTradeAnalyticsManager:
         555950, 555951, 555952, 555953,  # AI Confluence Squeeze Breakout M15
         555910, 555911, 555912, 555913,  # ICT Judas Swing & RTM QM
         555920, 555921, 555922, 555923,  # ICT NY Silver Bullet & FVG Imbalance
-        555930, 555931, 555932, 555933   # Elliott Wave 3 & SMC Breaker
+        555930, 555931, 555932, 555933,  # Elliott Wave 3 & SMC Breaker
+        555940, 555941, 555942, 555943   # Donchian Adaptive Trend Breakout
     }
     
     # System Epoch Cutoff: Start recording fresh from 2026-09-07 15:00:00 (Today's update)
@@ -588,7 +600,11 @@ class RealTradeAnalyticsManager:
         if "wave3" in comment or "breaker" in comment or "ew_wave" in comment or (555930 <= magic <= 555933):
             return "EW_WAVE3_BREAKER"
 
-        # 8. Decommissioned / Retired Setups (AI Confluence Squeeze, News Momentum, Asian Range Sniper, RTM M5, RTM M7, Captain SMC, Tug of War M15, etc.)
+        # 8. Active: Donchian Adaptive Trend (Anti-Chop Breakout)
+        if "donchian" in comment or "adaptive" in comment or "donch" in comment or (555940 <= magic <= 555943):
+            return "DONCHIAN_ADAPTIVE_TREND"
+
+        # 9. Decommissioned / Retired Setups (AI Confluence Squeeze, News Momentum, Asian Range Sniper, RTM M5, RTM M7, Captain SMC, Tug of War M15, etc.)
         return "RETIRED_SETUPS"
 
     def get_real_stats_summary(self) -> dict:
@@ -771,6 +787,7 @@ class RealTradeAnalyticsManager:
         judas_active = strat_cfg.get("ict_judas_rtm_qm_enabled", True)
         silver_active = strat_cfg.get("ict_silver_bullet_fvg_enabled", True)
         ew_active = strat_cfg.get("ew_wave3_breaker_enabled", True)
+        donchian_active = strat_cfg.get("donchian_adaptive_trend_enabled", True)
 
         # Set active status tags based on real configuration
         if "PULLBACK_DR_EKK" in setups_data:
@@ -789,6 +806,8 @@ class RealTradeAnalyticsManager:
             setups_data["ICT_SILVER_BULLET_FVG"]["status"] = "🟢 ACTIVE (Silver Bullet FVG 0.5%)" if silver_active else "⏸️ PAUSED (ปิดการทำงาน)"
         if "EW_WAVE3_BREAKER" in setups_data:
             setups_data["EW_WAVE3_BREAKER"]["status"] = "🟢 ACTIVE (EW Wave 3 Breaker 1.0%)" if ew_active else "⏸️ PAUSED (ปิดการทำงาน)"
+        if "DONCHIAN_ADAPTIVE_TREND" in setups_data:
+            setups_data["DONCHIAN_ADAPTIVE_TREND"]["status"] = "🟢 ACTIVE (Donchian Trend 0.5% | Anti-Chop)" if donchian_active else "⏸️ PAUSED (ปิดการทำงาน)"
         if "RETIRED_SETUPS" in setups_data:
             setups_data["RETIRED_SETUPS"]["status"] = "📦 ARCHIVED (บันทึกประวัติเดิม)"
 

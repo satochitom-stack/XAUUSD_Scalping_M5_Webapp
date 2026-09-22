@@ -26,10 +26,24 @@ DEFAULT_STRATEGIES = [
     "KC_LIQUIDITY_DOMINANCE",
     "ICT_JUDAS_RTM_QM",
     "ICT_SILVER_BULLET_FVG",
-    "EW_WAVE3_BREAKER"
+    "EW_WAVE3_BREAKER",
+    "DONCHIAN_ADAPTIVE_TREND"
 ]
 
 SETUP_PROFILES = {
+    "DONCHIAN_ADAPTIVE_TREND": {
+        "id": "DONCHIAN_ADAPTIVE_TREND",
+        "name": "Donchian Adaptive Trend (Anti-Chop Breakout)",
+        "icon": "⚡",
+        "win_prob": 72.0,
+        "base_rr": 2.50,
+        "min_rr": 1.80,
+        "max_rr": 3.50,
+        "trailing_type": "CONFLUENCE_STAGE",
+        "trail_points": 220.0,
+        "trail_step_points": 35.0,
+        "description": "Donchian 20-bar Breakout + Triple Anti-Chop Shield (CHOP<58, ATR Pct>=35, H1 Orderflow) - Fixed 0.5% Risk"
+    },
     "ICT_JUDAS_RTM_QM": {
         "id": "ICT_JUDAS_RTM_QM",
         "name": "ICT Judas Swing & RTM Quasimodo",
@@ -653,6 +667,7 @@ class RealTimeStrategyOptimizer:
             elif "judas" in comment or "judas_qm" in comment: strat = "ICT_JUDAS_RTM_QM"
             elif "silver" in comment or "bullet" in comment or "silver_b" in comment: strat = "ICT_SILVER_BULLET_FVG"
             elif "wave3" in comment or "breaker" in comment or "ew_wave" in comment: strat = "EW_WAVE3_BREAKER"
+            elif "donchian" in comment or "adaptive" in comment or "donch" in comment: strat = "DONCHIAN_ADAPTIVE_TREND"
             elif "news" in comment or "momentum" in comment or "asian" in comment or "rtm_m5" in comment or "m5_allw" in comment or "rtm_m7" in comment or "m7_alpha" in comment: strat = "RETIRED_SETUPS"
 
             self.record_trade_outcome(strat, profit, 0.0, comment, ticket=deal.get("ticket"))

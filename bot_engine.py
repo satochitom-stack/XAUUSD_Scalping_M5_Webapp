@@ -36,7 +36,8 @@ STRATEGY_MAGIC_MAP = {
     "KC_LIQUIDITY_DOMINANCE": {"base": 555880, "pos1": 555881, "pos2": 555882, "pos3": 555883},
     "ICT_JUDAS_RTM_QM": {"base": 555910, "pos1": 555911, "pos2": 555912, "pos3": 555913},
     "ICT_SILVER_BULLET_FVG": {"base": 555920, "pos1": 555921, "pos2": 555922, "pos3": 555923},
-    "EW_WAVE3_BREAKER": {"base": 555930, "pos1": 555931, "pos2": 555932, "pos3": 555933}
+    "EW_WAVE3_BREAKER": {"base": 555930, "pos1": 555931, "pos2": 555932, "pos3": 555933},
+    "DONCHIAN_ADAPTIVE_TREND": {"base": 555940, "pos1": 555941, "pos2": 555942, "pos3": 555943}
 }
 
 # Per-pillar risk sizing profile: default risk %, sizing MODE (whether Step-Up Compounding
@@ -54,6 +55,7 @@ RISK_PROFILE_DEFAULTS = {
     "ICT_JUDAS_RTM_QM":        {"default_pct": 0.5, "mode": "FIXED"},
     "ICT_SILVER_BULLET_FVG":   {"default_pct": 0.5, "mode": "FIXED"},
     "EW_WAVE3_BREAKER":        {"default_pct": 1.0, "mode": "FIXED"},
+    "DONCHIAN_ADAPTIVE_TREND": {"default_pct": 0.5, "mode": "FIXED"},
     "TUG_OF_WAR_M15":         {"default_pct": 0.5, "mode": "FIXED"},
 }
 RISK_OVERRIDE_MIN_PCT = 0.10
@@ -73,6 +75,7 @@ DEFAULT_TRADING_HOURS = {
     "ICT_JUDAS_RTM_QM":        {"start": "14:00", "end": "17:00"},
     "ICT_SILVER_BULLET_FVG":   {"start": "21:00", "end": "22:30"},
     "EW_WAVE3_BREAKER":        {"start": "14:00", "end": "02:00"},
+    "DONCHIAN_ADAPTIVE_TREND": {"start": "14:00", "end": "24:00"},
     "TUG_OF_WAR_M15":         {"start": "14:00", "end": "24:00"},
 }
 
@@ -567,6 +570,15 @@ class GoldScalpingBot:
                     b_sig, s_sig, reason = self._check_ew_wave3_breaker(df, symbol)
                     if b_sig or s_sig:
                         self._process_single_setup_signal(df, symbol, spread, "EW_WAVE3_BREAKER", "BUY" if b_sig else "SELL", reason)
+
+        # --- PILLAR 9: Donchian Adaptive Trend (Anti-Chop & Adaptive ATR Breakout) ---
+        donchian_enabled = strat_cfg.get("donchian_adaptive_trend_enabled", True)
+        if donchian_enabled and (strat_mode in ["ALL", "DONCHIAN_ADAPTIVE_TREND", "DONCHIAN_TREND", "DONCHIAN"]):
+            if not self.has_open_positions_for_setup(symbol, "DONCHIAN_ADAPTIVE_TREND"):
+                if self.is_setup_in_trading_hours("DONCHIAN_ADAPTIVE_TREND")[0]:
+                    b_sig, s_sig, reason = self._check_donchian_adaptive_trend(df, symbol)
+                    if b_sig or s_sig:
+                        self._process_single_setup_signal(df, symbol, spread, "DONCHIAN_ADAPTIVE_TREND", "BUY" if b_sig else "SELL", reason)
 
         # Update Trend Badge with News Radar
         if news_status.get("is_news_active"):
@@ -1442,6 +1454,123 @@ class GoldScalpingBot:
 
         return False, False, ""
 
+    def _check_donchian_adaptive_trend(self, df: pd.DataFrame, symbol: str = "XAUUSD") -> Tuple[bool, bool, str]:
+        """
+        ⚡ DONCHIAN_ADAPTIVE_TREND (M5/H1, Trend Session 14:00 - 24:00 Thai Time)
+        Synthesis of:
+        - Donchian Channel Breakout (20-period High/Low expansion)
+        - Adaptive ATR Percentile Volatility Filter (requires >= 35th percentile)
+        - Choppiness Index (CHOP 14 < 58.0: blocks sideways/consolidation whipsaw)
+        - H1 Macro Orderflow Alignment (EMA50 / EMA200)
+        - Stepped Trailing SAR Tactical SL (Clamped $3.00 - $6.00, Target 2.5R)
+        """
+        if len(df) < 35:
+            return False, False, ""
+
+        sim_time = getattr(self.connector, "current_time", None)
+        if sim_time is not None and hasattr(sim_time, "time") and not hasattr(sim_time, "_mock_return_value"):
+            now_time = sim_time.time()
+        else:
+            th_tz = timezone(timedelta(hours=7))
+            now_time = datetime.now(th_tz).time()
+
+        # Trend hours window (Default: 14:00 - 24:00 Thai Time)
+        in_hours, _, _, _ = self.is_setup_in_trading_hours("DONCHIAN_ADAPTIVE_TREND", now_time)
+        if not in_hours:
+            return False, False, ""
+
+        # 1. Donchian Channel (20 closed bars: df.iloc[-22:-2])
+        b1 = df.iloc[-2]
+        b2 = df.iloc[-3]
+        bars_20 = df.iloc[-22:-2]
+        if len(bars_20) < 20:
+            return False, False, ""
+
+        donchian_high = float(bars_20['high'].max())
+        donchian_low = float(bars_20['low'].min())
+        donchian_mid = (donchian_high + donchian_low) / 2.0
+
+        c_open = float(b1['open'])
+        c_close = float(b1['close'])
+        c_high = float(b1['high'])
+        c_low = float(b1['low'])
+        c_rng = max(c_high - c_low, 0.1)
+
+        # 2. Triple Anti-Chop Filter:
+        # A) Choppiness Index (CHOP) over 14 bars
+        chop_bars = df.iloc[-16:-2]
+        if len(chop_bars) >= 14:
+            tr_list = []
+            for i in range(1, len(chop_bars)):
+                prev_c = float(chop_bars['close'].iloc[i - 1])
+                curr_h = float(chop_bars['high'].iloc[i])
+                curr_l = float(chop_bars['low'].iloc[i])
+                tr = max(curr_h - curr_l, abs(curr_h - prev_c), abs(curr_l - prev_c))
+                tr_list.append(tr)
+            sum_tr = sum(tr_list[-14:])
+            chop_high = float(chop_bars['high'].iloc[-14:].max())
+            chop_low = float(chop_bars['low'].iloc[-14:].min())
+            chop_range = max(chop_high - chop_low, 0.1)
+            chop_val = 100.0 * np.log10(sum_tr / (chop_range + 1e-9)) / np.log10(14.0)
+            if chop_val > 58.0:
+                # Market is in high consolidation / chop
+                return False, False, ""
+        else:
+            chop_val = 50.0
+
+        # B) Adaptive ATR Percentile (over available bars up to 100)
+        atr_lookback = min(len(df) - 2, 100)
+        if atr_lookback >= 20:
+            hist_atrs = []
+            for i in range(len(df) - atr_lookback - 1, len(df) - 1):
+                prev_c = float(df['close'].iloc[i - 1])
+                curr_h = float(df['high'].iloc[i])
+                curr_l = float(df['low'].iloc[i])
+                hist_atrs.append(max(curr_h - curr_l, abs(curr_h - prev_c), abs(curr_l - prev_c)))
+            curr_atr = float(b1.get('atr14', hist_atrs[-1])) if 'atr14' in b1 else hist_atrs[-1]
+            hist_arr = np.array(hist_atrs)
+            atr_pct = float((hist_arr < curr_atr).mean() * 100.0)
+            if atr_pct < 35.0:
+                # Volatility compressed / dead zone
+                return False, False, ""
+        else:
+            curr_atr = float(b1.get('atr14', 2.50)) if 'atr14' in b1 else 2.50
+            atr_pct = 50.0
+
+        # C) H1 Macro Trend Orderflow Alignment
+        h1_bull_allowed = True
+        h1_bear_allowed = True
+        if self.connector:
+            try:
+                df_h1 = self.connector.get_rates(symbol, "H1", 60)
+                if df_h1 is not None and not df_h1.empty and len(df_h1) >= 25:
+                    df_h1['ema50'] = df_h1['close'].ewm(span=50, adjust=False).mean()
+                    df_h1['ema200'] = df_h1['close'].ewm(span=200, adjust=False).mean()
+                    h1_close = float(df_h1['close'].iloc[-2])
+                    h1_ema50 = float(df_h1['ema50'].iloc[-2])
+                    h1_ema200 = float(df_h1['ema200'].iloc[-2])
+                    h1_bull_allowed = (h1_close >= h1_ema50 - 1.0) or (h1_ema50 >= h1_ema200)
+                    h1_bear_allowed = (h1_close <= h1_ema50 + 1.0) or (h1_ema50 <= h1_ema200)
+            except Exception:
+                pass
+
+        # 3. Breakout Execution Check
+        # Bullish Breakout:
+        if h1_bull_allowed and c_close > donchian_high and float(b2['close']) <= donchian_high + 0.50:
+            bull_body = (c_close - c_open) / c_rng
+            if bull_body >= 0.40 and (c_close - donchian_high) <= (2.5 * curr_atr):
+                self._donchian_sl = max(donchian_mid, c_close - 5.50)
+                return True, False, f"⚡ Donchian Adaptive Breakout Bullish (High {donchian_high:.2f} Broken | CHOP: {chop_val:.1f} | ATR Pct: {atr_pct:.0f}% | Mid SL @ {self._donchian_sl:.2f})"
+
+        # Bearish Breakout:
+        if h1_bear_allowed and c_close < donchian_low and float(b2['close']) >= donchian_low - 0.50:
+            bear_body = (c_open - c_close) / c_rng
+            if bear_body >= 0.40 and (donchian_low - c_close) <= (2.5 * curr_atr):
+                self._donchian_sl = min(donchian_mid, c_close + 5.50)
+                return False, True, f"⚡ Donchian Adaptive Breakout Bearish (Low {donchian_low:.2f} Broken | CHOP: {chop_val:.1f} | ATR Pct: {atr_pct:.0f}% | Mid SL @ {self._donchian_sl:.2f})"
+
+        return False, False, ""
+
     def _check_smc_x_sto_h1(self, symbol: str) -> Tuple[bool, bool, str]:
         """
         😈 SMCxSTO ระบบปีศาจ (H1 Devil System by SMC by Bossz):
@@ -2218,6 +2347,20 @@ class GoldScalpingBot:
             if sl_dist > 12.00: sl = ask - 12.00; sl_dist = 12.00
             target_rr = opt.get("tp_ratio", 2.5)
             tp2 = ask + (sl_dist * target_rr)
+        elif strat_id == "DONCHIAN_ADAPTIVE_TREND":
+            custom_sl = getattr(self, "_donchian_sl", None)
+            if custom_sl is not None and custom_sl < ask:
+                sl = float(custom_sl)
+                sl_dist = ask - sl
+            else:
+                lowest_low = float(df['low'].iloc[-20:-1].min())
+                sl = lowest_low - 0.50
+                sl_dist = ask - sl
+            if sl_dist < 3.00: sl = ask - 3.00; sl_dist = 3.00
+            if sl_dist > 6.00: sl = ask - 6.00; sl_dist = 6.00
+            target_rr = opt.get("tp_ratio", 2.5)
+            tp2 = ask + (sl_dist * target_rr)
+            self._donchian_sl = None
         else:
             # News Momentum Expansion / Default (EarthETC Structural SL)
             if len(df) >= 15:
@@ -2239,7 +2382,7 @@ class GoldScalpingBot:
             if sl_dist > 18.00: sl = ask - 18.00; sl_dist = 18.00  # EarthETC: wide structural room, no arbitrary 7.00 choke
             tp2 = ask + (sl_dist * 1.8)
 
-        if strat_id in ["ICT_JUDAS_RTM_QM", "ICT_SILVER_BULLET_FVG"]:
+        if strat_id in ["ICT_JUDAS_RTM_QM", "ICT_SILVER_BULLET_FVG", "SMC_X_STO_H1", "DONCHIAN_ADAPTIVE_TREND"]:
             risk_label = "0.5% Risk"
         elif strat_id == "EW_WAVE3_BREAKER":
             risk_label = "1.0% Risk"
@@ -2360,6 +2503,20 @@ class GoldScalpingBot:
             if sl_dist > 12.00: sl = bid + 12.00; sl_dist = 12.00
             target_rr = opt.get("tp_ratio", 2.5)
             tp2 = bid - (sl_dist * target_rr)
+        elif strat_id == "DONCHIAN_ADAPTIVE_TREND":
+            custom_sl = getattr(self, "_donchian_sl", None)
+            if custom_sl is not None and custom_sl > bid:
+                sl = float(custom_sl)
+                sl_dist = sl - bid
+            else:
+                highest_high = float(df['high'].iloc[-20:-1].max())
+                sl = highest_high + 0.50
+                sl_dist = sl - bid
+            if sl_dist < 3.00: sl = bid + 3.00; sl_dist = 3.00
+            if sl_dist > 6.00: sl = bid + 6.00; sl_dist = 6.00
+            target_rr = opt.get("tp_ratio", 2.5)
+            tp2 = bid - (sl_dist * target_rr)
+            self._donchian_sl = None
         else:
             # News Momentum Expansion / Default (EarthETC Structural SL)
             if len(df) >= 15:
@@ -2381,7 +2538,7 @@ class GoldScalpingBot:
             if sl_dist > 18.00: sl = bid + 18.00; sl_dist = 18.00  # EarthETC: wide structural room, no arbitrary 7.00 choke
             tp2 = bid - (sl_dist * 1.8)
 
-        if strat_id in ["ICT_JUDAS_RTM_QM", "ICT_SILVER_BULLET_FVG"]:
+        if strat_id in ["ICT_JUDAS_RTM_QM", "ICT_SILVER_BULLET_FVG", "SMC_X_STO_H1", "DONCHIAN_ADAPTIVE_TREND"]:
             risk_label = "0.5% Risk"
         elif strat_id == "EW_WAVE3_BREAKER":
             risk_label = "1.0% Risk"
@@ -2544,7 +2701,7 @@ class GoldScalpingBot:
                             initial_r = abs(open_p - tp) / 2.0
                         elif strat_id == "ICT_SILVER_BULLET_FVG":
                             initial_r = abs(open_p - tp) / 1.5
-                        elif strat_id == "EW_WAVE3_BREAKER":
+                        elif strat_id in ["EW_WAVE3_BREAKER", "DONCHIAN_ADAPTIVE_TREND"]:
                             initial_r = abs(open_p - tp) / 2.5
                         else:
                             initial_r = abs(open_p - tp) / 1.8
@@ -2564,6 +2721,7 @@ class GoldScalpingBot:
                 is_judas_qm = strat_id == "ICT_JUDAS_RTM_QM"
                 is_silver_bullet = strat_id == "ICT_SILVER_BULLET_FVG"
                 is_ew_breaker = strat_id == "EW_WAVE3_BREAKER"
+                is_donchian = strat_id == "DONCHIAN_ADAPTIVE_TREND"
 
                 if ptype == "BUY":
                     profit_dist = bid - open_p
@@ -2708,6 +2866,24 @@ class GoldScalpingBot:
                             if sl < target_sl - 0.10:
                                 self.connector.modify_position(t_id, target_sl, tp)
                                 self.add_log(f"🛡️ [EW WAVE3 BREAK-EVEN] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
+
+                    elif is_donchian:
+                        # Donchian Adaptive Trend (Target 2.5R - 3.0R)
+                        if r_profit >= 2.0:
+                            target_sl = round(open_p + (initial_r * 1.4), 2)
+                            if sl < target_sl - 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"💰 [DONCHIAN TREND +1.4R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.4R ({target_sl:.2f})", "SUCCESS")
+                        elif r_profit >= 1.5:
+                            target_sl = round(open_p + (initial_r * 0.8), 2)
+                            if sl < target_sl - 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🎯 [DONCHIAN TREND +0.8R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +0.8R ({target_sl:.2f})", "SUCCESS")
+                        elif r_profit >= 1.0:
+                            target_sl = round(open_p + 0.30, 2)
+                            if sl < target_sl - 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🛡️ [DONCHIAN TREND BREAK-EVEN] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
 
                     else:
                         if r_profit >= 1.0:
@@ -2859,6 +3035,24 @@ class GoldScalpingBot:
                             if sl == 0 or sl > target_sl + 0.10:
                                 self.connector.modify_position(t_id, target_sl, tp)
                                 self.add_log(f"🛡️ [EW WAVE3 BREAK-EVEN] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
+
+                    elif is_donchian:
+                        # Donchian Adaptive Trend (Target 2.5R - 3.0R)
+                        if r_profit >= 2.0:
+                            target_sl = round(open_p - (initial_r * 1.4), 2)
+                            if sl == 0 or sl > target_sl + 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"💰 [DONCHIAN TREND +1.4R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.4R ({target_sl:.2f})", "SUCCESS")
+                        elif r_profit >= 1.5:
+                            target_sl = round(open_p - (initial_r * 0.8), 2)
+                            if sl == 0 or sl > target_sl + 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🎯 [DONCHIAN TREND +0.8R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +0.8R ({target_sl:.2f})", "SUCCESS")
+                        elif r_profit >= 1.0:
+                            target_sl = round(open_p - 0.30, 2)
+                            if sl == 0 or sl > target_sl + 0.10:
+                                self.connector.modify_position(t_id, target_sl, tp)
+                                self.add_log(f"🛡️ [DONCHIAN TREND BREAK-EVEN] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
 
                     else:
                         if r_profit >= 1.0:
