@@ -299,5 +299,41 @@ class TestDonchianAdaptiveTrend(unittest.TestCase):
         self.bot.manage_open_positions("XAUUSDc")
         self.mock_connector.modify_position.assert_called_with(111, 2505.60, 2510.00)
 
+    def test_breakout_bar_cannot_trigger_retest_same_bar(self):
+        """
+        Verify that Phase 1 breakout bar NEVER triggers Phase 2 retest
+        on subsequent iteration calls while still on the SAME closed bar.
+        Retest must wait for a subsequent bar.
+        """
+        df = self._make_trending_df(n=120)
+        self.mock_connector.get_rates.return_value = self._mock_h1_bullish()
+        self.bot.is_setup_in_trading_hours = MagicMock(return_value=(True, None, None, None))
+
+        donchian_high = float(df['high'].iloc[-22:-2].max())
+        # Breakout candle on df.iloc[-2]
+        df.iloc[-2, df.columns.get_loc('open')]  = donchian_high - 0.30
+        df.iloc[-2, df.columns.get_loc('close')] = donchian_high + 2.50
+        df.iloc[-2, df.columns.get_loc('high')]  = donchian_high + 3.00
+        df.iloc[-2, df.columns.get_loc('low')]   = donchian_high - 0.40
+        df.iloc[-3, df.columns.get_loc('close')] = donchian_high - 0.10
+
+        # 1. First call (breakout detected) -> sets alert, returns False
+        b_sig1, s_sig1, _ = self.bot._check_donchian_adaptive_trend(df, "XAUUSDc")
+        self.assertFalse(b_sig1)
+        self.assertIsNotNone(self.bot._donchian_alert)
+        self.assertEqual(self.bot._donchian_alert["bars_waited"], 0)
+
+        # 2. Second call on the EXACT SAME closed bar (1 second later tick) -> MUST NOT FIRE!
+        b_sig2, s_sig2, _ = self.bot._check_donchian_adaptive_trend(df, "XAUUSDc")
+        self.assertFalse(b_sig2, "Must NOT fire retest on the same breakout bar!")
+        self.assertFalse(s_sig2)
+        self.assertEqual(self.bot._donchian_alert["bars_waited"], 0, "bars_waited must not increment on same bar tick")
+
+        # 3. Third call on the EXACT SAME bar -> STILL MUST NOT FIRE!
+        b_sig3, s_sig3, _ = self.bot._check_donchian_adaptive_trend(df, "XAUUSDc")
+        self.assertFalse(b_sig3)
+        self.assertEqual(self.bot._donchian_alert["bars_waited"], 0)
+
 if __name__ == "__main__":
     unittest.main()
+
