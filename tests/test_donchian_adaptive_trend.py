@@ -1,11 +1,14 @@
 """
-Unit Test Suite for DONCHIAN_ADAPTIVE_TREND:
+Unit Test Suite for DONCHIAN_ADAPTIVE_TREND (Break-and-Retest v2):
 1. Registration in STRATEGY_MAGIC_MAP (555940, 555941)
 2. Risk Profile Isolation (0.5% Risk, FIXED mode)
 3. Strategy Analytics Classification & Status
 4. Strategy Optimizer Registration
-5. Triple Anti-Chop Filter & Breakout Detection
-6. Stepped Trailing Stop (1.0R -> BE, 1.5R -> +0.8R, 2.0R -> +1.4R)
+5. Phase 1 (ALERT): Bullish breakout sets alert, no immediate order
+6. Phase 2 (ENTRY): Retest bar fires BUY order
+7. Phase 1 (ALERT): Bearish breakout sets SELL alert
+8. Timeout: Alert cleared after >3 bars without retest
+9. Stepped Trailing Stop (1.0R -> BE, 1.5R -> +0.8R, 2.0R -> +1.4R)
 """
 
 import unittest
@@ -78,43 +81,189 @@ class TestDonchianAdaptiveTrend(unittest.TestCase):
         self.assertEqual(profile["icon"], "⚡")
         self.assertEqual(profile["base_rr"], 2.50)
 
-    def test_donchian_breakout_detection(self):
-        """Test breakout detection with synthetic data."""
-        # Create 120 bars of M5 data
-        np.random.seed(42)
-        closes = [2500.0]
-        for _ in range(120):
+    def _make_synthetic_df(self, seed=42, n=120, base=2500.0):
+        """Helper: create n bars of random-walk M5 OHLC data (may have high CHOP)."""
+        np.random.seed(seed)
+        closes = [base]
+        for _ in range(n):
             closes.append(closes[-1] + np.random.uniform(-0.5, 0.5))
-
         df = pd.DataFrame({
-            'open': closes[:-1],
-            'close': closes[1:],
-            'high': [max(o, c) + 0.5 for o, c in zip(closes[:-1], closes[1:])],
-            'low': [min(o, c) - 0.5 for o, c in zip(closes[:-1], closes[1:])],
-            'volume': [100] * 120
+            'open':   closes[:-1],
+            'close':  closes[1:],
+            'high':   [max(o, c) + 0.5 for o, c in zip(closes[:-1], closes[1:])],
+            'low':    [min(o, c) - 0.5 for o, c in zip(closes[:-1], closes[1:])],
+            'volume': [100] * n
+        })
+        return df
+
+    def _make_trending_df(self, n=120, base=2500.0, step=0.30, noise=0.05):
+        """
+        Helper: create n bars of TRENDING M5 OHLC data with low CHOP (< 58).
+        Uses steady directional drift with small noise so the market regime
+        filters (CHOP < 58, ATR Pct >= 35%) are likely to pass.
+        """
+        np.random.seed(7)
+        closes = [base]
+        for _ in range(n):
+            closes.append(closes[-1] + step + np.random.uniform(-noise, noise))
+        df = pd.DataFrame({
+            'open':   closes[:-1],
+            'close':  closes[1:],
+            'high':   [max(o, c) + 0.40 for o, c in zip(closes[:-1], closes[1:])],
+            'low':    [min(o, c) - 0.40 for o, c in zip(closes[:-1], closes[1:])],
+            'volume': [100] * n
+        })
+        return df
+
+    def _mock_h1_bullish(self):
+        """Return H1 df where H1 is in uptrend (ema50 above ema200)."""
+        closes = [2500.0 + i * 0.5 for i in range(210)]
+        return pd.DataFrame({
+            'close': closes,
+            'open':  closes,
+            'high':  [c + 0.5 for c in closes],
+            'low':   [c - 0.5 for c in closes],
         })
 
-        # Make the last bar a strong bullish breakout
-        donchian_high = df['high'].iloc[-21:-1].max()
-        df.loc[df.index[-1], 'open'] = donchian_high - 0.50
-        df.loc[df.index[-1], 'close'] = donchian_high + 2.00
-        df.loc[df.index[-1], 'high'] = donchian_high + 2.50
-        df.loc[df.index[-1], 'low'] = donchian_high - 0.60
-
-        # Mock H1 rates to allow bull
-        h1_df = pd.DataFrame({
-            'close': [2500.0] * 60,
-            'open': [2500.0] * 60,
-            'high': [2505.0] * 60,
-            'low': [2495.0] * 60
+    def _mock_h1_bearish(self):
+        """Return H1 df where H1 is in downtrend (ema50 below ema200)."""
+        closes = [2600.0 - i * 0.5 for i in range(210)]
+        return pd.DataFrame({
+            'close': closes,
+            'open':  closes,
+            'high':  [c + 0.5 for c in closes],
+            'low':   [c - 0.5 for c in closes],
         })
-        self.mock_connector.get_rates.return_value = h1_df
 
-        buy_sig, sell_sig, reason = self.bot._check_donchian_adaptive_trend("XAUUSDc", df)
-        # Even if CHOP or ATR condition varies based on random seed, it should run without error
-        self.assertIsInstance(buy_sig, (bool, np.bool_))
-        self.assertIsInstance(sell_sig, (bool, np.bool_))
-        self.assertIsInstance(reason, str)
+    def test_phase1_alert_set_no_immediate_entry(self):
+        """
+        Phase 1: On breakout bar, function should return (False, False)
+        and set _donchian_alert state. No order fired immediately.
+        Uses trending data so CHOP < 58 and ATR Pct >= 35% pass.
+        """
+        df = self._make_trending_df(n=120)
+        self.mock_connector.get_rates.return_value = self._mock_h1_bullish()
+        self.bot.is_setup_in_trading_hours = MagicMock(return_value=(True, None, None, None))
+
+        # Force last closed bar (b1 = df.iloc[-2]) to be a strong bullish breakout
+        donchian_high = float(df['high'].iloc[-22:-2].max())
+        df.iloc[-2, df.columns.get_loc('open')]  = donchian_high - 0.30
+        df.iloc[-2, df.columns.get_loc('close')] = donchian_high + 2.50  # breakout
+        df.iloc[-2, df.columns.get_loc('high')]  = donchian_high + 3.00
+        df.iloc[-2, df.columns.get_loc('low')]   = donchian_high - 0.40
+        # Ensure b2 was close to (not breaking) donchian_high
+        df.iloc[-3, df.columns.get_loc('close')] = donchian_high - 0.10
+
+        buy_sig, sell_sig, reason = self.bot._check_donchian_adaptive_trend(df, "XAUUSDc")
+
+        # Phase 1: must NOT fire order
+        self.assertFalse(buy_sig, "Phase 1 should NOT return buy_sig=True immediately")
+        self.assertFalse(sell_sig)
+        self.assertEqual(reason, "")
+        # But alert must be set
+        self.assertIsNotNone(self.bot._donchian_alert)
+        self.assertEqual(self.bot._donchian_alert["direction"], "BUY")
+        self.assertAlmostEqual(self.bot._donchian_alert["level"], donchian_high, places=1)
+
+    def test_phase2_retest_fires_buy_entry(self):
+        """
+        Phase 2: After Phase 1 ALERT is set, a pullback bar that retests
+        the broken level and closes above it should fire BUY.
+        The CHOP/ATR filters still run but use _alert values from Phase 1,
+        so pre-set a valid alert and use trending data for the retest bar.
+        """
+        df = self._make_trending_df(n=120)
+        self.mock_connector.get_rates.return_value = self._mock_h1_bullish()
+        self.bot.is_setup_in_trading_hours = MagicMock(return_value=(True, None, None, None))
+
+        donchian_high = float(df['high'].iloc[-22:-2].max())
+
+        # Pre-set Phase 1 ALERT manually (simulates previous breakout bar)
+        self.bot._donchian_alert = {
+            "direction":    "BUY",
+            "level":        donchian_high,
+            "donchian_mid": donchian_high - 3.0,
+            "curr_atr":     2.0,
+            "chop_val":     50.0,
+            "atr_pct":      60.0,
+            "bars_waited":  0,
+        }
+
+        # Simulate a retest bar: wicks into level, body is bullish and strong
+        # open = at level, close = 1.50 above level, high = 1.80 above, low = -0.50 below
+        # => body = 1.50, range = 2.30, bull_body = 0.65 >= 0.35 ✓
+        # => c_low (donchian_high - 0.50) <= level + 0.80 → pulled_back=True ✓
+        # => c_close (donchian_high + 1.50) > level → closed_above=True ✓
+        df.iloc[-2, df.columns.get_loc('open')]  = donchian_high - 0.00  # at level
+        df.iloc[-2, df.columns.get_loc('close')] = donchian_high + 1.50  # well above
+        df.iloc[-2, df.columns.get_loc('high')]  = donchian_high + 1.80  # small upper wick
+        df.iloc[-2, df.columns.get_loc('low')]   = donchian_high - 0.50  # wick into level
+
+        buy_sig, sell_sig, reason = self.bot._check_donchian_adaptive_trend(df, "XAUUSDc")
+
+        self.assertTrue(buy_sig, "Phase 2 retest should fire BUY")
+        self.assertFalse(sell_sig)
+        self.assertIn("Retest BUY", reason)
+        # Alert should be cleared after entry
+        self.assertIsNone(self.bot._donchian_alert)
+
+    def test_phase1_sell_alert_set(self):
+        """
+        Phase 1 Bearish: breakout below Donchian Low should set SELL alert,
+        not fire order immediately. Uses trending (bearish) data for CHOP pass.
+        """
+        df = self._make_trending_df(n=120, step=-0.30)  # downtrend
+        self.mock_connector.get_rates.return_value = self._mock_h1_bearish()
+        self.bot.is_setup_in_trading_hours = MagicMock(return_value=(True, None, None, None))
+
+        donchian_low = float(df['low'].iloc[-22:-2].min())
+        df.iloc[-2, df.columns.get_loc('open')]  = donchian_low + 0.30
+        df.iloc[-2, df.columns.get_loc('close')] = donchian_low - 2.50  # breakdown
+        df.iloc[-2, df.columns.get_loc('high')]  = donchian_low + 0.40
+        df.iloc[-2, df.columns.get_loc('low')]   = donchian_low - 3.00
+        # Ensure b2 was just above donchian_low
+        df.iloc[-3, df.columns.get_loc('close')] = donchian_low + 0.10
+
+        buy_sig, sell_sig, reason = self.bot._check_donchian_adaptive_trend(df, "XAUUSDc")
+
+        self.assertFalse(buy_sig)
+        self.assertFalse(sell_sig, "Phase 1 SELL should NOT fire immediately")
+        self.assertIsNotNone(self.bot._donchian_alert)
+        self.assertEqual(self.bot._donchian_alert["direction"], "SELL")
+
+    def test_alert_timeout_clears_after_3_bars(self):
+        """
+        If no valid retest occurs within 3 bars, alert is cleared (timeout).
+        """
+        df = self._make_synthetic_df(n=120)
+        self.mock_connector.get_rates.return_value = self._mock_h1_bullish()
+        self.bot.is_setup_in_trading_hours = MagicMock(return_value=(True, None, None, None))
+
+        donchian_high = float(df['high'].iloc[-22:-2].max())
+
+        # Pre-set alert at bars_waited=3 (about to expire)
+        self.bot._donchian_alert = {
+            "direction":    "BUY",
+            "level":        donchian_high,
+            "donchian_mid": donchian_high - 3.0,
+            "curr_atr":     2.0,
+            "chop_val":     50.0,
+            "atr_pct":      60.0,
+            "bars_waited":  3,
+        }
+
+        # Current bar does NOT retest (far from level)
+        df.iloc[-2, df.columns.get_loc('open')]  = donchian_high + 5.0
+        df.iloc[-2, df.columns.get_loc('close')] = donchian_high + 6.0
+        df.iloc[-2, df.columns.get_loc('high')]  = donchian_high + 6.5
+        df.iloc[-2, df.columns.get_loc('low')]   = donchian_high + 4.5
+
+        buy_sig, sell_sig, reason = self.bot._check_donchian_adaptive_trend(df, "XAUUSDc")
+
+        self.assertFalse(buy_sig)
+        self.assertFalse(sell_sig)
+        # Alert should be None (timed out)
+        self.assertIsNone(self.bot._donchian_alert, "Alert should be cleared after timeout")
 
     def test_donchian_trailing_stop_logic(self):
         """Test stepped trailing stop for DONCHIAN_ADAPTIVE_TREND."""

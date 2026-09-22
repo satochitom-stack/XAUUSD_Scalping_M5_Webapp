@@ -152,6 +152,13 @@ class GoldScalpingBot:
         self.silver_bullet_last_trade_date: Optional[object] = None
         self.last_smc_sto_h1_bar_time: Optional[object] = None
         self._h1_macro_trend_cache: Dict[str, dict] = {}
+
+        # Donchian Adaptive Trend: Break-and-Retest State Machine
+        # Phase 1 (ALERT): breakout detected, waiting for pullback retest
+        # Phase 2 (ENTRY): retest confirmed at broken level, fire order
+        # dict keys: direction ("BUY"/"SELL"), level (broken Donchian High/Low),
+        #            donchian_mid, curr_atr, chop_val, atr_pct, bars_waited
+        self._donchian_alert: Optional[dict] = None
         
         mt5_cfg = self.config.get("mt5", {})
         self.magic_number = mt5_cfg.get("magic_number", 555888)
@@ -1456,13 +1463,20 @@ class GoldScalpingBot:
 
     def _check_donchian_adaptive_trend(self, df: pd.DataFrame, symbol: str = "XAUUSD") -> Tuple[bool, bool, str]:
         """
-        ⚡ DONCHIAN_ADAPTIVE_TREND (M5/H1, Trend Session 14:00 - 24:00 Thai Time)
-        Synthesis of:
-        - Donchian Channel Breakout (20-period High/Low expansion)
-        - Adaptive ATR Percentile Volatility Filter (requires >= 35th percentile)
-        - Choppiness Index (CHOP 14 < 58.0: blocks sideways/consolidation whipsaw)
-        - H1 Macro Orderflow Alignment (EMA50 / EMA200)
-        - Stepped Trailing SAR Tactical SL (Clamped $3.00 - $6.00, Target 2.5R)
+        ⚡ DONCHIAN_ADAPTIVE_TREND — Break-and-Retest State Machine (v2)
+        M5/H1 | Trend Session 14:00 - 24:00 Thai Time
+
+        PHASE 1 (ALERT)
+          - Donchian 20-bar breakout detected (strong body ≥ 40%, not over-extended)
+          - Triple Anti-Chop filter must pass (CHOP < 58, ATR Pct ≥ 35%, H1 EMA alignment)
+          - Saves breakout state, does NOT fire order yet
+
+        PHASE 2 (ENTRY) — executes on a subsequent bar
+          - Price must pull back and retest the broken Donchian level (within 0.80 of level)
+          - Current bar must close on the breakout side (confirms rejection of retest)
+          - Timeout: if no retest within 3 bars, alert is cancelled
+
+        SL/TP: SL at Donchian Mid (or ±5.50 max), Stepped Trailing Stop, Target 2.5R
         """
         if len(df) < 35:
             return False, False, ""
@@ -1474,30 +1488,32 @@ class GoldScalpingBot:
             th_tz = timezone(timedelta(hours=7))
             now_time = datetime.now(th_tz).time()
 
-        # Trend hours window (Default: 14:00 - 24:00 Thai Time)
+        # Trading hours check (Default: 14:00 - 24:00 Thai Time)
         in_hours, _, _, _ = self.is_setup_in_trading_hours("DONCHIAN_ADAPTIVE_TREND", now_time)
         if not in_hours:
+            # Clear stale alert when outside hours
+            self._donchian_alert = None
             return False, False, ""
 
-        # 1. Donchian Channel (20 closed bars: df.iloc[-22:-2])
-        b1 = df.iloc[-2]
-        b2 = df.iloc[-3]
+        # ── Reference bars ───────────────────────────────────────────────────
+        b1 = df.iloc[-2]   # last closed bar
+        b2 = df.iloc[-3]   # bar before that
         bars_20 = df.iloc[-22:-2]
         if len(bars_20) < 20:
             return False, False, ""
 
         donchian_high = float(bars_20['high'].max())
-        donchian_low = float(bars_20['low'].min())
-        donchian_mid = (donchian_high + donchian_low) / 2.0
+        donchian_low  = float(bars_20['low'].min())
+        donchian_mid  = (donchian_high + donchian_low) / 2.0
 
-        c_open = float(b1['open'])
+        c_open  = float(b1['open'])
         c_close = float(b1['close'])
-        c_high = float(b1['high'])
-        c_low = float(b1['low'])
-        c_rng = max(c_high - c_low, 0.1)
+        c_high  = float(b1['high'])
+        c_low   = float(b1['low'])
+        c_rng   = max(c_high - c_low, 0.1)
 
-        # 2. Triple Anti-Chop Filter:
-        # A) Choppiness Index (CHOP) over 14 bars
+        # ── Triple Anti-Chop Filter ──────────────────────────────────────────
+        # A) Choppiness Index (CHOP 14)
         chop_bars = df.iloc[-16:-2]
         if len(chop_bars) >= 14:
             tr_list = []
@@ -1507,18 +1523,18 @@ class GoldScalpingBot:
                 curr_l = float(chop_bars['low'].iloc[i])
                 tr = max(curr_h - curr_l, abs(curr_h - prev_c), abs(curr_l - prev_c))
                 tr_list.append(tr)
-            sum_tr = sum(tr_list[-14:])
+            sum_tr    = sum(tr_list[-14:])
             chop_high = float(chop_bars['high'].iloc[-14:].max())
-            chop_low = float(chop_bars['low'].iloc[-14:].min())
+            chop_low  = float(chop_bars['low'].iloc[-14:].min())
             chop_range = max(chop_high - chop_low, 0.1)
-            chop_val = 100.0 * np.log10(sum_tr / (chop_range + 1e-9)) / np.log10(14.0)
+            chop_val  = 100.0 * np.log10(sum_tr / (chop_range + 1e-9)) / np.log10(14.0)
             if chop_val > 58.0:
-                # Market is in high consolidation / chop
+                self._donchian_alert = None
                 return False, False, ""
         else:
             chop_val = 50.0
 
-        # B) Adaptive ATR Percentile (over available bars up to 100)
+        # B) Adaptive ATR Percentile
         atr_lookback = min(len(df) - 2, 100)
         if atr_lookback >= 20:
             hist_atrs = []
@@ -1529,13 +1545,13 @@ class GoldScalpingBot:
                 hist_atrs.append(max(curr_h - curr_l, abs(curr_h - prev_c), abs(curr_l - prev_c)))
             curr_atr = float(b1.get('atr14', hist_atrs[-1])) if 'atr14' in b1 else hist_atrs[-1]
             hist_arr = np.array(hist_atrs)
-            atr_pct = float((hist_arr < curr_atr).mean() * 100.0)
+            atr_pct  = float((hist_arr < curr_atr).mean() * 100.0)
             if atr_pct < 35.0:
-                # Volatility compressed / dead zone
+                self._donchian_alert = None
                 return False, False, ""
         else:
             curr_atr = float(b1.get('atr14', 2.50)) if 'atr14' in b1 else 2.50
-            atr_pct = 50.0
+            atr_pct  = 50.0
 
         # C) H1 Macro Trend Orderflow Alignment
         h1_bull_allowed = True
@@ -1544,30 +1560,113 @@ class GoldScalpingBot:
             try:
                 df_h1 = self.connector.get_rates(symbol, "H1", 60)
                 if df_h1 is not None and not df_h1.empty and len(df_h1) >= 25:
-                    df_h1['ema50'] = df_h1['close'].ewm(span=50, adjust=False).mean()
+                    df_h1['ema50']  = df_h1['close'].ewm(span=50,  adjust=False).mean()
                     df_h1['ema200'] = df_h1['close'].ewm(span=200, adjust=False).mean()
-                    h1_close = float(df_h1['close'].iloc[-2])
-                    h1_ema50 = float(df_h1['ema50'].iloc[-2])
+                    h1_close  = float(df_h1['close'].iloc[-2])
+                    h1_ema50  = float(df_h1['ema50'].iloc[-2])
                     h1_ema200 = float(df_h1['ema200'].iloc[-2])
                     h1_bull_allowed = (h1_close >= h1_ema50 - 1.0) or (h1_ema50 >= h1_ema200)
                     h1_bear_allowed = (h1_close <= h1_ema50 + 1.0) or (h1_ema50 <= h1_ema200)
             except Exception:
                 pass
 
-        # 3. Breakout Execution Check
-        # Bullish Breakout:
+        # ════════════════════════════════════════════════════════════════════
+        # PHASE 2 — ENTRY CHECK (Retest Confirmation)
+        # If we already have a Phase-1 ALERT stored, check for retest entry
+        # ════════════════════════════════════════════════════════════════════
+        if self._donchian_alert is not None:
+            alert = self._donchian_alert
+            alert["bars_waited"] = alert.get("bars_waited", 0) + 1
+
+            # Timeout: cancel after 3 M5 bars with no retest
+            if alert["bars_waited"] > 3:
+                self.add_log(
+                    f"⏰ [DONCHIAN] Alert expired after {alert['bars_waited']} bars "
+                    f"(direction={alert['direction']}, level={alert['level']:.2f})",
+                    "INFO"
+                )
+                self._donchian_alert = None
+            else:
+                direction = alert["direction"]
+                level     = alert["level"]      # broken Donchian High or Low
+                al_mid    = alert["donchian_mid"]
+                al_atr    = alert["curr_atr"]
+                al_chop   = alert["chop_val"]
+                al_pct    = alert["atr_pct"]
+
+                if direction == "BUY":
+                    # Retest: current bar pulled back to within 0.80 of broken High
+                    # and closed back above the level (bullish rejection of retest)
+                    pulled_back = c_low <= level + 0.80
+                    closed_above = c_close > level
+                    bull_body   = (c_close - c_open) / c_rng
+                    if pulled_back and closed_above and bull_body >= 0.35:
+                        self._donchian_sl = max(al_mid, c_close - 5.50)
+                        self._donchian_alert = None
+                        return True, False, (
+                            f"⚡ Donchian Retest BUY ✓ (Level {level:.2f} retested | "
+                            f"CHOP: {al_chop:.1f} | ATR Pct: {al_pct:.0f}% | "
+                            f"SL @ {self._donchian_sl:.2f} | bar {alert['bars_waited']})"
+                        )
+
+                elif direction == "SELL":
+                    # Retest: current bar spiked up to within 0.80 of broken Low
+                    # and closed back below the level (bearish rejection of retest)
+                    spiked_up    = c_high >= level - 0.80
+                    closed_below = c_close < level
+                    bear_body    = (c_open - c_close) / c_rng
+                    if spiked_up and closed_below and bear_body >= 0.35:
+                        self._donchian_sl = min(al_mid, c_close + 5.50)
+                        self._donchian_alert = None
+                        return False, True, (
+                            f"⚡ Donchian Retest SELL ✓ (Level {level:.2f} retested | "
+                            f"CHOP: {al_chop:.1f} | ATR Pct: {al_pct:.0f}% | "
+                            f"SL @ {self._donchian_sl:.2f} | bar {alert['bars_waited']})"
+                        )
+
+        # ════════════════════════════════════════════════════════════════════
+        # PHASE 1 — BREAKOUT DETECTION (Set ALERT, do not fire order yet)
+        # ════════════════════════════════════════════════════════════════════
+
+        # Bullish Breakout: last closed bar closes above Donchian High
         if h1_bull_allowed and c_close > donchian_high and float(b2['close']) <= donchian_high + 0.50:
             bull_body = (c_close - c_open) / c_rng
             if bull_body >= 0.40 and (c_close - donchian_high) <= (2.5 * curr_atr):
-                self._donchian_sl = max(donchian_mid, c_close - 5.50)
-                return True, False, f"⚡ Donchian Adaptive Breakout Bullish (High {donchian_high:.2f} Broken | CHOP: {chop_val:.1f} | ATR Pct: {atr_pct:.0f}% | Mid SL @ {self._donchian_sl:.2f})"
+                self._donchian_alert = {
+                    "direction":    "BUY",
+                    "level":        donchian_high,
+                    "donchian_mid": donchian_mid,
+                    "curr_atr":     curr_atr,
+                    "chop_val":     chop_val,
+                    "atr_pct":      atr_pct,
+                    "bars_waited":  0,
+                }
+                self.add_log(
+                    f"⚡ [DONCHIAN ALERT] Bullish breakout @ {donchian_high:.2f} — "
+                    f"waiting for retest (CHOP: {chop_val:.1f} | ATR Pct: {atr_pct:.0f}%)",
+                    "INFO"
+                )
+                return False, False, ""
 
-        # Bearish Breakout:
+        # Bearish Breakout: last closed bar closes below Donchian Low
         if h1_bear_allowed and c_close < donchian_low and float(b2['close']) >= donchian_low - 0.50:
             bear_body = (c_open - c_close) / c_rng
             if bear_body >= 0.40 and (donchian_low - c_close) <= (2.5 * curr_atr):
-                self._donchian_sl = min(donchian_mid, c_close + 5.50)
-                return False, True, f"⚡ Donchian Adaptive Breakout Bearish (Low {donchian_low:.2f} Broken | CHOP: {chop_val:.1f} | ATR Pct: {atr_pct:.0f}% | Mid SL @ {self._donchian_sl:.2f})"
+                self._donchian_alert = {
+                    "direction":    "SELL",
+                    "level":        donchian_low,
+                    "donchian_mid": donchian_mid,
+                    "curr_atr":     curr_atr,
+                    "chop_val":     chop_val,
+                    "atr_pct":      atr_pct,
+                    "bars_waited":  0,
+                }
+                self.add_log(
+                    f"⚡ [DONCHIAN ALERT] Bearish breakout @ {donchian_low:.2f} — "
+                    f"waiting for retest (CHOP: {chop_val:.1f} | ATR Pct: {atr_pct:.0f}%)",
+                    "INFO"
+                )
+                return False, False, ""
 
         return False, False, ""
 
