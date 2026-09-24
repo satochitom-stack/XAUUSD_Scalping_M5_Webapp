@@ -2394,7 +2394,7 @@ class GoldScalpingBot:
             sl_dist = ask - sl
             if sl_dist < 4.50: sl = ask - 4.50; sl_dist = 4.50
             if sl_dist > 18.00: sl = ask - 18.00; sl_dist = 18.00
-            tp2 = ask + (sl_dist * 2.2)
+            tp2 = ask + (sl_dist * 2.0)
         elif strat_id.startswith("RTM_") or "RTM" in reason:
             custom_sl = opt.get("custom_sl")
             custom_tp = opt.get("custom_tp")
@@ -2409,7 +2409,7 @@ class GoldScalpingBot:
             # EarthETC Structural SL: respect true Swing Head extreme + buffer without artificial 8.50 clamp
             if sl_dist < 2.50: sl = ask - 2.50; sl_dist = 2.50
             if sl_dist > 18.00: sl = ask - 18.00; sl_dist = 18.00
-            target_rr = opt.get("tp_ratio", 3.0)
+            target_rr = opt.get("tp_ratio", 2.0)
             if custom_tp and custom_tp > ask:
                 tp2 = float(custom_tp)
             else:
@@ -2423,7 +2423,7 @@ class GoldScalpingBot:
             sl_dist = ask - sl
             if sl_dist < 2.50: sl = ask - 2.50; sl_dist = 2.50
             if sl_dist > 12.00: sl = ask - 12.00; sl_dist = 12.00
-            target_rr = opt.get("tp_ratio", 2.5)
+            target_rr = opt.get("tp_ratio", 2.0)
             tp2 = ask + (sl_dist * target_rr)
         elif strat_id == "KC_LIQUIDITY_DOMINANCE":
             lowest_low = float(df['low'].iloc[-22:-1].min())
@@ -2441,7 +2441,7 @@ class GoldScalpingBot:
             sl_dist = ask - sl
             if sl_dist < 2.00: sl = ask - 2.00; sl_dist = 2.00
             if sl_dist > 10.00: sl = ask - 10.00; sl_dist = 10.00
-            target_rr = opt.get("tp_ratio", 2.2)
+            target_rr = opt.get("tp_ratio", 2.0)
             tp2 = ask + (sl_dist * target_rr)
         elif strat_id == "ICT_SILVER_BULLET_FVG":
             lowest_low = float(df['low'].iloc[-8:-1].min())
@@ -2459,7 +2459,7 @@ class GoldScalpingBot:
             sl_dist = ask - sl
             if sl_dist < 2.50: sl = ask - 2.50; sl_dist = 2.50
             if sl_dist > 12.00: sl = ask - 12.00; sl_dist = 12.00
-            target_rr = opt.get("tp_ratio", 2.2)
+            target_rr = opt.get("tp_ratio", 2.0)
             tp2 = ask + (sl_dist * target_rr)
         elif strat_id == "DONCHIAN_ADAPTIVE_TREND":
             custom_sl = getattr(self, "_donchian_sl", None)
@@ -2557,7 +2557,7 @@ class GoldScalpingBot:
             sl_dist = sl - bid
             if sl_dist < 4.50: sl = bid + 4.50; sl_dist = 4.50
             if sl_dist > 18.00: sl = bid + 18.00; sl_dist = 18.00
-            tp2 = bid - (sl_dist * 2.2)
+            tp2 = bid - (sl_dist * 2.0)
         elif strat_id.startswith("RTM_") or "RTM" in reason:
             custom_sl = opt.get("custom_sl")
             custom_tp = opt.get("custom_tp")
@@ -2572,7 +2572,7 @@ class GoldScalpingBot:
             # EarthETC Structural SL: respect true Swing Head extreme + buffer without arbitrary 8.50 clamp
             if sl_dist < 2.50: sl = bid + 2.50; sl_dist = 2.50
             if sl_dist > 18.00: sl = bid + 18.00; sl_dist = 18.00
-            target_rr = opt.get("tp_ratio", 3.0)
+            target_rr = opt.get("tp_ratio", 2.0)
             if custom_tp and custom_tp < bid:
                 tp2 = float(custom_tp)
             else:
@@ -2586,7 +2586,7 @@ class GoldScalpingBot:
             sl_dist = sl - bid
             if sl_dist < 2.50: sl = bid + 2.50; sl_dist = 2.50
             if sl_dist > 12.00: sl = bid + 12.00; sl_dist = 12.00
-            target_rr = opt.get("tp_ratio", 2.5)
+            target_rr = opt.get("tp_ratio", 2.0)
             tp2 = bid - (sl_dist * target_rr)
         elif strat_id == "KC_LIQUIDITY_DOMINANCE":
             highest_high = float(df['high'].iloc[-22:-1].max())
@@ -2604,7 +2604,7 @@ class GoldScalpingBot:
             sl_dist = sl - bid
             if sl_dist < 2.00: sl = bid + 2.00; sl_dist = 2.00
             if sl_dist > 10.00: sl = bid + 10.00; sl_dist = 10.00
-            target_rr = opt.get("tp_ratio", 2.2)
+            target_rr = opt.get("tp_ratio", 2.0)
             tp2 = bid - (sl_dist * target_rr)
         elif strat_id == "ICT_SILVER_BULLET_FVG":
             highest_high = float(df['high'].iloc[-8:-1].max())
@@ -2622,7 +2622,7 @@ class GoldScalpingBot:
             sl_dist = sl - bid
             if sl_dist < 2.50: sl = bid + 2.50; sl_dist = 2.50
             if sl_dist > 12.00: sl = bid + 12.00; sl_dist = 12.00
-            target_rr = opt.get("tp_ratio", 2.2)
+            target_rr = opt.get("tp_ratio", 2.0)
             tp2 = bid - (sl_dist * target_rr)
         elif strat_id == "DONCHIAN_ADAPTIVE_TREND":
             custom_sl = getattr(self, "_donchian_sl", None)
@@ -2810,12 +2810,11 @@ class GoldScalpingBot:
                         self.initial_risk_map[t_id] = initial_r
                     elif tp > 0:
                         if strat_id in ["RTM_M4_CONSERVATIVE", "RTM_M6_ELITE_GROWTH"]:
-                            raw_dist = abs(open_p - tp)
-                            initial_r = raw_dist / 3.0 if raw_dist > 20.0 else raw_dist / 2.0
+                            initial_r = abs(open_p - tp) / 2.0
                         elif strat_id == "SMC_X_STO_H1":
-                            initial_r = abs(open_p - tp) / 2.2
+                            initial_r = abs(open_p - tp) / 2.0
                         elif strat_id == "PULLBACK_DR_EKK":
-                            initial_r = abs(open_p - tp) / 1.5
+                            initial_r = abs(open_p - tp) / 2.0
                         elif strat_id == "KC_LIQUIDITY_DOMINANCE":
                             initial_r = abs(open_p - tp) / 2.0
                         elif strat_id == "ICT_JUDAS_RTM_QM":
@@ -2823,7 +2822,7 @@ class GoldScalpingBot:
                         elif strat_id == "ICT_SILVER_BULLET_FVG":
                             initial_r = abs(open_p - tp) / 1.5
                         elif strat_id == "EW_WAVE3_BREAKER":
-                            initial_r = abs(open_p - tp) / 2.2
+                            initial_r = abs(open_p - tp) / 2.0
                         elif strat_id == "DONCHIAN_ADAPTIVE_TREND":
                             initial_r = abs(open_p - tp) / 1.0
                         else:
@@ -2851,21 +2850,15 @@ class GoldScalpingBot:
                     r_profit = profit_dist / initial_r
 
                     if is_quick_harvest:
-                        # RTM Quasimodo Multi-Stage Profit Lock (Target 3.0R - 4.5R Runner):
-                        # Step 4: At >= 2.8R -> Lock +2.0R Profit
-                        if r_profit >= 2.8:
-                            target_sl = round(open_p + (initial_r * 2.0), 2)
+                        # RTM Quasimodo Multi-Stage Profit Lock (Target 2.0R):
+                        # Step 3: At >= 1.7R -> Lock +1.3R Profit
+                        if r_profit >= 1.7:
+                            target_sl = round(open_p + (initial_r * 1.3), 2)
                             if sl < target_sl - 0.10:
                                 self.connector.modify_position(t_id, target_sl, tp)
-                                self.add_log(f"💰 [PROFIT LOCKED +2.0R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +2.0R ({target_sl:.2f})", "SUCCESS")
-                        # Step 3: At >= 2.0R -> Lock +1.2R Profit
-                        elif r_profit >= 2.0:
-                            target_sl = round(open_p + (initial_r * 1.2), 2)
-                            if sl < target_sl - 0.10:
-                                self.connector.modify_position(t_id, target_sl, tp)
-                                self.add_log(f"🎯 [PROFIT LOCKED +1.2R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.2R ({target_sl:.2f})", "SUCCESS")
-                        # Step 2: At >= 1.5R -> Lock +0.8R Profit
-                        elif r_profit >= 1.5:
+                                self.add_log(f"💰 [PROFIT LOCKED +1.3R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.3R ({target_sl:.2f})", "SUCCESS")
+                        # Step 2: At >= 1.4R -> Lock +0.8R Profit
+                        elif r_profit >= 1.4:
                             target_sl = round(open_p + (initial_r * 0.8), 2)
                             if sl < target_sl - 0.10:
                                 self.connector.modify_position(t_id, target_sl, tp)
@@ -3017,26 +3010,20 @@ class GoldScalpingBot:
                     r_profit = profit_dist / initial_r
 
                     if is_quick_harvest:
-                        # RTM Quasimodo Multi-Stage Profit Lock (Target 3.0R - 4.5R Runner):
-                        # Step 4: At >= 2.8R -> Lock +2.0R Profit
-                        if r_profit >= 2.8:
-                            target_sl = round(open_p - (initial_r * 2.0), 2)
+                        # RTM Quasimodo Multi-Stage Profit Lock (Target 2.0R):
+                        # Step 3: At >= 1.7R -> Lock +1.3R Profit
+                        if r_profit >= 1.7:
+                            target_sl = round(open_p - (initial_r * 1.3), 2)
                             if sl == 0 or sl > target_sl + 0.10:
                                 self.connector.modify_position(t_id, target_sl, tp)
-                                self.add_log(f"💰 [PROFIT LOCKED +2.0R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +2.0R ({target_sl:.2f})", "SUCCESS")
-                        # Step 3: At >= 2.0R -> Lock +1.2R Profit
-                        elif r_profit >= 2.0:
-                            target_sl = round(open_p - (initial_r * 1.2), 2)
-                            if sl == 0 or sl > target_sl + 0.10:
-                                self.connector.modify_position(t_id, target_sl, tp)
-                                self.add_log(f"🎯 [PROFIT LOCKED +1.2R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.2R ({target_sl:.2f})", "SUCCESS")
-                        # Step 2: At >= 1.5R -> Lock +0.8R Profit
-                        elif r_profit >= 1.5:
+                                self.add_log(f"💰 [PROFIT LOCKED +1.3R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.3R ({target_sl:.2f})", "SUCCESS")
+                        # Step 2: At >= 1.4R -> Lock +0.8R Profit
+                        elif r_profit >= 1.4:
                             target_sl = round(open_p - (initial_r * 0.8), 2)
                             if sl == 0 or sl > target_sl + 0.10:
                                 self.connector.modify_position(t_id, target_sl, tp)
                                 self.add_log(f"🎯 [PROFIT LOCKED +0.8R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +0.8R ({target_sl:.2f})", "SUCCESS")
-                        # Step 1: At >= 1.0R -> Lock Break-Even (+0.30 USD)
+                        # Step 1: At >= 1.0R -> Lock Break-Even (-0.30 USD)
                         elif r_profit >= 1.0:
                             target_sl = round(open_p - 0.30, 2)
                             if sl == 0 or sl > target_sl + 0.10:
