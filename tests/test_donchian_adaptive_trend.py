@@ -79,7 +79,7 @@ class TestDonchianAdaptiveTrend(unittest.TestCase):
         self.assertIn("DONCHIAN_ADAPTIVE_TREND", strategy_optimizer.SETUP_PROFILES)
         profile = strategy_optimizer.SETUP_PROFILES["DONCHIAN_ADAPTIVE_TREND"]
         self.assertEqual(profile["icon"], "⚡")
-        self.assertEqual(profile["base_rr"], 2.50)
+        self.assertEqual(profile["base_rr"], 1.00)
 
     def _make_synthetic_df(self, seed=42, n=120, base=2500.0):
         """Helper: create n bars of random-walk M5 OHLC data (may have high CHOP)."""
@@ -266,38 +266,31 @@ class TestDonchianAdaptiveTrend(unittest.TestCase):
         self.assertIsNone(self.bot._donchian_alert, "Alert should be cleared after timeout")
 
     def test_donchian_trailing_stop_logic(self):
-        """Test stepped trailing stop for DONCHIAN_ADAPTIVE_TREND."""
-        # 1. Test BUY trailing at 1.0R -> BE
-        pos_buy_1r = [{
+        """Test stepped trailing stop for DONCHIAN_ADAPTIVE_TREND (RR 1:1 Scalp)."""
+        # 1. Test BUY trailing at 0.6R -> BE (+0.20 USD)
+        pos_buy_06r = [{
             'ticket': 111,
             'magic': 555941,
             'type': 'BUY',
             'price_open': 2500.00,
             'sl': 2496.00,  # 4.00 USD initial R
-            'tp': 2510.00,  # 2.5R target
+            'tp': 2504.00,  # 1.0R target (RR 1:1)
             'comment': 'Gold_DONCHIAN'
         }]
-        self.mock_connector.get_open_positions.return_value = pos_buy_1r
-        # Market price at 2504.20 -> 4.20 / 4.00 = 1.05R profit
-        self.mock_connector.get_market_info.return_value = {"bid": 2504.20, "ask": 2504.45, "spread": 25.0}
+        self.mock_connector.get_open_positions.return_value = pos_buy_06r
+        # Market price at 2502.50 -> 2.50 / 4.00 = 0.625R profit
+        self.mock_connector.get_market_info.return_value = {"bid": 2502.50, "ask": 2502.75, "spread": 25.0}
 
         self.bot.manage_open_positions("XAUUSDc")
-        # modify_position should be called with BE sl (open + 0.30 = 2500.30)
-        self.mock_connector.modify_position.assert_called_with(111, 2500.30, 2510.00)
+        # modify_position should be called with BE sl (open + 0.20 = 2500.20)
+        self.mock_connector.modify_position.assert_called_with(111, 2500.20, 2504.00)
 
-        # 2. Test BUY trailing at 1.5R -> +0.8R (2500 + 4*0.8 = 2503.20)
+        # 2. Test BUY trailing at 0.8R -> +0.4R (2500 + 4*0.4 = 2501.60)
         self.mock_connector.modify_position.reset_mock()
-        pos_buy_1r[0]['sl'] = 2500.30
-        self.mock_connector.get_market_info.return_value = {"bid": 2506.20, "ask": 2506.45, "spread": 25.0} # 1.55R
+        pos_buy_06r[0]['sl'] = 2500.20
+        self.mock_connector.get_market_info.return_value = {"bid": 2503.40, "ask": 2503.65, "spread": 25.0} # 0.85R
         self.bot.manage_open_positions("XAUUSDc")
-        self.mock_connector.modify_position.assert_called_with(111, 2503.20, 2510.00)
-
-        # 3. Test BUY trailing at 2.0R -> +1.4R (2500 + 4*1.4 = 2505.60)
-        self.mock_connector.modify_position.reset_mock()
-        pos_buy_1r[0]['sl'] = 2503.20
-        self.mock_connector.get_market_info.return_value = {"bid": 2508.20, "ask": 2508.45, "spread": 25.0} # 2.05R
-        self.bot.manage_open_positions("XAUUSDc")
-        self.mock_connector.modify_position.assert_called_with(111, 2505.60, 2510.00)
+        self.mock_connector.modify_position.assert_called_with(111, 2501.60, 2504.00)
 
     def test_breakout_bar_cannot_trigger_retest_same_bar(self):
         """

@@ -120,8 +120,8 @@ class RealTradeAnalyticsManager:
             "timeframe": "M5 (H1 Filter)",
             "best_session": "London & NY (14:00 - 24:00)",
             "magic_numbers": [555940, 555941, 555942, 555943],
-            "avg_rr": "1:2.5",
-            "description": "Donchian 20-bar Breakout ผสานเกราะ Triple Anti-Chop (Choppiness Index < 58, Adaptive ATR Percentile >= 35%, H1 Macro Orderflow) พร้อม Selective Flat State และ Stepped Trailing Stop (ความเสี่ยงคงที่ 0.5% | TP 2.5R)"
+            "avg_rr": "1:1.0",
+            "description": "Donchian 20-bar Break-and-Retest ผสานเกราะ Triple Anti-Chop (Choppiness Index < 58, Adaptive ATR Percentile >= 35%, H1 Macro Orderflow) เน้น High Winrate Scalping ล็อกจุดคุ้มทุนเร็วที่ 0.6R (ความเสี่ยงคงที่ 0.5% | TP 1.0R)"
         },
         "RETIRED_SETUPS": {
             "id": "RETIRED_SETUPS",

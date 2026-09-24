@@ -35,14 +35,14 @@ SETUP_PROFILES = {
         "id": "DONCHIAN_ADAPTIVE_TREND",
         "name": "Donchian Adaptive Trend (Anti-Chop Breakout)",
         "icon": "⚡",
-        "win_prob": 72.0,
-        "base_rr": 2.50,
-        "min_rr": 1.80,
-        "max_rr": 3.50,
+        "win_prob": 78.0,
+        "base_rr": 1.00,
+        "min_rr": 0.80,
+        "max_rr": 1.50,
         "trailing_type": "CONFLUENCE_STAGE",
-        "trail_points": 220.0,
-        "trail_step_points": 35.0,
-        "description": "Donchian 20-bar Breakout + Triple Anti-Chop Shield (CHOP<58, ATR Pct>=35, H1 Orderflow) - Fixed 0.5% Risk"
+        "trail_points": 180.0,
+        "trail_step_points": 25.0,
+        "description": "Donchian 20-bar Break-and-Retest + Triple Anti-Chop Shield (High Winrate 1:1 Scalp | TP 1.0R) - Fixed 0.5% Risk"
     },
     "ICT_JUDAS_RTM_QM": {
         "id": "ICT_JUDAS_RTM_QM",

@@ -2472,7 +2472,7 @@ class GoldScalpingBot:
                 sl_dist = ask - sl
             if sl_dist < 3.00: sl = ask - 3.00; sl_dist = 3.00
             if sl_dist > 6.00: sl = ask - 6.00; sl_dist = 6.00
-            target_rr = opt.get("tp_ratio", 2.5)
+            target_rr = opt.get("tp_ratio", 1.0)
             tp2 = ask + (sl_dist * target_rr)
             self._donchian_sl = None
         else:
@@ -2635,7 +2635,7 @@ class GoldScalpingBot:
                 sl_dist = sl - bid
             if sl_dist < 3.00: sl = bid + 3.00; sl_dist = 3.00
             if sl_dist > 6.00: sl = bid + 6.00; sl_dist = 6.00
-            target_rr = opt.get("tp_ratio", 2.5)
+            target_rr = opt.get("tp_ratio", 1.0)
             tp2 = bid - (sl_dist * target_rr)
             self._donchian_sl = None
         else:
@@ -2825,7 +2825,7 @@ class GoldScalpingBot:
                         elif strat_id == "EW_WAVE3_BREAKER":
                             initial_r = abs(open_p - tp) / 2.2
                         elif strat_id == "DONCHIAN_ADAPTIVE_TREND":
-                            initial_r = abs(open_p - tp) / 2.5
+                            initial_r = abs(open_p - tp) / 1.0
                         else:
                             initial_r = abs(open_p - tp) / 1.8
                         self.initial_risk_map[t_id] = initial_r
@@ -2991,22 +2991,19 @@ class GoldScalpingBot:
                                 self.add_log(f"🛡️ [EW WAVE3 BREAK-EVEN] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
 
                     elif is_donchian:
-                        # Donchian Adaptive Trend (Target 2.5R - 3.0R)
-                        if r_profit >= 2.0:
-                            target_sl = round(open_p + (initial_r * 1.4), 2)
+                        # Donchian Adaptive Trend (High Winrate Scalp: Target 1.0R)
+                        # Step 2: At >= 0.8R -> Lock +0.4R Profit (Guarantees bank profit near 1.0R TP)
+                        if r_profit >= 0.8:
+                            target_sl = round(open_p + (initial_r * 0.4), 2)
                             if sl < target_sl - 0.10:
                                 self.connector.modify_position(t_id, target_sl, tp)
-                                self.add_log(f"💰 [DONCHIAN TREND +1.4R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.4R ({target_sl:.2f})", "SUCCESS")
-                        elif r_profit >= 1.5:
-                            target_sl = round(open_p + (initial_r * 0.8), 2)
+                                self.add_log(f"🎯 [DONCHIAN TREND +0.4R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +0.4R ({target_sl:.2f})", "SUCCESS")
+                        # Step 1: At >= 0.6R -> Lock Break-Even (+0.20 USD)
+                        elif r_profit >= 0.6:
+                            target_sl = round(open_p + 0.20, 2)
                             if sl < target_sl - 0.10:
                                 self.connector.modify_position(t_id, target_sl, tp)
-                                self.add_log(f"🎯 [DONCHIAN TREND +0.8R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +0.8R ({target_sl:.2f})", "SUCCESS")
-                        elif r_profit >= 1.0:
-                            target_sl = round(open_p + 0.30, 2)
-                            if sl < target_sl - 0.10:
-                                self.connector.modify_position(t_id, target_sl, tp)
-                                self.add_log(f"🛡️ [DONCHIAN TREND BREAK-EVEN] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
+                                self.add_log(f"🛡️ [DONCHIAN TREND BREAK-EVEN] [{strat_id}] Ticket #{t_id} reached 0.6R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
 
                     else:
                         if r_profit >= 1.0:
@@ -3160,22 +3157,19 @@ class GoldScalpingBot:
                                 self.add_log(f"🛡️ [EW WAVE3 BREAK-EVEN] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
 
                     elif is_donchian:
-                        # Donchian Adaptive Trend (Target 2.5R - 3.0R)
-                        if r_profit >= 2.0:
-                            target_sl = round(open_p - (initial_r * 1.4), 2)
+                        # Donchian Adaptive Trend (High Winrate Scalp: Target 1.0R)
+                        # Step 2: At >= 0.8R -> Lock +0.4R Profit (Guarantees bank profit near 1.0R TP)
+                        if r_profit >= 0.8:
+                            target_sl = round(open_p - (initial_r * 0.4), 2)
                             if sl == 0 or sl > target_sl + 0.10:
                                 self.connector.modify_position(t_id, target_sl, tp)
-                                self.add_log(f"💰 [DONCHIAN TREND +1.4R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +1.4R ({target_sl:.2f})", "SUCCESS")
-                        elif r_profit >= 1.5:
-                            target_sl = round(open_p - (initial_r * 0.8), 2)
+                                self.add_log(f"🎯 [DONCHIAN TREND +0.4R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +0.4R ({target_sl:.2f})", "SUCCESS")
+                        # Step 1: At >= 0.6R -> Lock Break-Even (-0.20 USD)
+                        elif r_profit >= 0.6:
+                            target_sl = round(open_p - 0.20, 2)
                             if sl == 0 or sl > target_sl + 0.10:
                                 self.connector.modify_position(t_id, target_sl, tp)
-                                self.add_log(f"🎯 [DONCHIAN TREND +0.8R] [{strat_id}] Ticket #{t_id} at {r_profit:.1f}R | SL locked to +0.8R ({target_sl:.2f})", "SUCCESS")
-                        elif r_profit >= 1.0:
-                            target_sl = round(open_p - 0.30, 2)
-                            if sl == 0 or sl > target_sl + 0.10:
-                                self.connector.modify_position(t_id, target_sl, tp)
-                                self.add_log(f"🛡️ [DONCHIAN TREND BREAK-EVEN] [{strat_id}] Ticket #{t_id} reached 1.0R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
+                                self.add_log(f"🛡️ [DONCHIAN TREND BREAK-EVEN] [{strat_id}] Ticket #{t_id} reached 0.6R | SL locked to BE ({target_sl:.2f})", "SUCCESS")
 
                     else:
                         if r_profit >= 1.0:
