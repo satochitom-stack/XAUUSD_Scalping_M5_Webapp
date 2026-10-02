@@ -4,6 +4,7 @@ Provides automated live connection to active MetaTrader 5 terminals on Windows.
 Auto-detects running MT5 instances and seamlessly syncs real balances, equity, and positions.
 """
 
+import os
 import time
 import logging
 from typing import Dict, List, Optional
@@ -44,7 +45,11 @@ class MT5Connector:
 
         try:
             # 1. First, attempt to attach to already running visible MT5 GUI terminal
-            init_ok = mt5.initialize()
+            if self.path and os.path.exists(self.path):
+                init_ok = mt5.initialize(path=self.path)
+            else:
+                init_ok = mt5.initialize()
+
             if init_ok and mt5.account_info() is not None:
                 acc_info = mt5.account_info()
                 # If target account is configured and differs from active GUI account, switch to target
@@ -60,16 +65,9 @@ class MT5Connector:
                 logger.info(f"✅ Successfully attached to active MT5 GUI Window #{acc_info.login} ({acc_info.server}) | Balance: {acc_info.balance:,.2f} {acc_info.currency}")
                 return True
 
-            # 2. If not open, launch MT5 GUI process directly so the window is visible to the user
-            if self.path and os.path.exists(self.path):
-                import subprocess
-                subprocess.Popen([self.path])
-                time.sleep(2.0)
-                init_ok = mt5.initialize()
-
-            # 3. Fallback explicit login
+            # 2. Fallback explicit login
             if not init_ok and self.account > 0 and self.password and self.server:
-                if self.path:
+                if self.path and os.path.exists(self.path):
                     init_ok = mt5.initialize(
                         path=self.path,
                         login=int(self.account),
