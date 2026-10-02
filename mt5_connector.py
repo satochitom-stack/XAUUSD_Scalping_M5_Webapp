@@ -47,6 +47,12 @@ class MT5Connector:
             init_ok = mt5.initialize()
             if init_ok and mt5.account_info() is not None:
                 acc_info = mt5.account_info()
+                # If target account is configured and differs from active GUI account, switch to target
+                if self.account > 0 and self.password and self.server and acc_info.login != int(self.account):
+                    logger.info(f"Active MT5 GUI is on #{acc_info.login}, switching to configured account #{self.account} ({self.server})...")
+                    if mt5.login(int(self.account), password=self.password, server=self.server):
+                        acc_info = mt5.account_info()
+
                 self.is_connected = True
                 self.account = acc_info.login
                 self.server = acc_info.server
