@@ -907,7 +907,7 @@ def restart_webapp_process(delay_sec: float = 1.0):
     DETACHED_FLAGS = 0x00000008 | 0x00000200  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
     try:
         subprocess.Popen(
-            f'cmd.exe /c "{cmd_str}"',
+            cmd_str,
             shell=True,
             cwd=base_dir,
             creationflags=DETACHED_FLAGS,

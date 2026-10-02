@@ -3426,7 +3426,7 @@ try:
                 DETACHED_FLAGS = 0x00000008 | 0x00000200
                 import subprocess, threading
                 subprocess.Popen(
-                    f'cmd.exe /c "{cmd_str}"',
+                    cmd_str,
                     shell=True,
                     cwd=base_dir,
                     creationflags=DETACHED_FLAGS,
