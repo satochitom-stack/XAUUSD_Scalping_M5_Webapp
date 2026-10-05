@@ -2515,7 +2515,7 @@ class GoldScalpingBot:
         m_info = self.get_magic_for_strategy(strat_id)
         magic_p1 = m_info["pos1"]
 
-        # Volatility metric for Dynamic ATR SL floor (Gold New Normal Rule 3)
+        # Volatility metric for Dynamic ATR SL floor (Gold New Normal Rule 3) & ATR Trading Framework
         if len(df) >= 15:
             hl = df['high'] - df['low']
             hc = (df['high'] - df['close'].shift()).abs()
@@ -2526,6 +2526,18 @@ class GoldScalpingBot:
                 curr_atr = 2.50
         else:
             curr_atr = 2.50
+
+        # ATR Overextension Guard (MTRADERS Rule 2 & 6: Avoid Buying Overextended Price)
+        if 'ema50' in df and len(df) >= 2 and strat_id not in ["KC_LIQUIDITY_DOMINANCE", "ASIAN_RANGE_SNIPER"]:
+            ema50_val = float(df['ema50'].iloc[-2])
+            dist_from_ema = ask - ema50_val
+            atr_extension_ratio = dist_from_ema / max(curr_atr, 0.5)
+            if atr_extension_ratio > 2.0:
+                self.add_log(f"🛡️ [ATR OVEREXTENDED] {strat_id} BUY blocked | Price is +{dist_from_ema:.2f} ({atr_extension_ratio:.2f}x ATR) above EMA50. Waiting for pullback.", "WARNING")
+                return
+
+        # Dynamic ATR SL Buffer (MTRADERS Rule 4: Market Structure + 0.25 ATR Buffer)
+        dynamic_atr_buffer = max(0.40, min(1.25, 0.25 * curr_atr)) * sl_mult
 
         if is_asian_scalp or strat_id == "ASIAN_RANGE_SNIPER":
             lowest_low = df['low'].iloc[-6:-1].min()
@@ -2541,7 +2553,7 @@ class GoldScalpingBot:
                 ob_low = float(df_h1['low'].iloc[-15:-1].min())
             else:
                 ob_low = float(df['low'].iloc[-30:-1].min())
-            sl_buffer = 0.80 * sl_mult
+            sl_buffer = max(0.80, 0.30 * curr_atr) * sl_mult
             sl = ob_low - sl_buffer
             sl_dist = ask - sl
             min_sl = max(4.50, min(7.00, 0.90 * curr_atr))
@@ -2556,7 +2568,7 @@ class GoldScalpingBot:
                 sl_dist = ask - sl
             else:
                 lowest_low = float(df['low'].iloc[-15:-1].min())
-                sl_buffer = 0.50 * sl_mult
+                sl_buffer = dynamic_atr_buffer
                 sl = lowest_low - sl_buffer
                 sl_dist = ask - sl
             # EarthETC Structural SL: respect true Swing Head extreme + buffer without artificial 8.50 clamp
@@ -2572,7 +2584,7 @@ class GoldScalpingBot:
             lowest_low = float(df['low'].iloc[-12:-1].min())
             ema60_val = float(df['ema60'].iloc[-2]) if 'ema60' in df else lowest_low
             structural_ref = min(lowest_low, ema60_val)
-            sl_buffer = 0.50 * sl_mult
+            sl_buffer = dynamic_atr_buffer
             sl = structural_ref - sl_buffer
             sl_dist = ask - sl
             min_sl = max(2.50, min(5.00, 0.80 * curr_atr))
@@ -2582,7 +2594,7 @@ class GoldScalpingBot:
             tp2 = ask + (sl_dist * target_rr)
         elif strat_id == "KC_LIQUIDITY_DOMINANCE":
             lowest_low = float(df['low'].iloc[-22:-1].min())
-            sl_buffer = 0.40 * sl_mult
+            sl_buffer = max(0.35, min(1.00, 0.20 * curr_atr)) * sl_mult
             sl = lowest_low - sl_buffer
             sl_dist = ask - sl
             min_sl = max(2.00, min(4.50, 0.70 * curr_atr))
@@ -2592,7 +2604,7 @@ class GoldScalpingBot:
             tp2 = ask + (sl_dist * target_rr)
         elif strat_id == "ICT_JUDAS_RTM_QM":
             lowest_low = float(df['low'].iloc[-18:-1].min())
-            sl_buffer = 0.80 * sl_mult
+            sl_buffer = max(0.50, min(1.50, 0.30 * curr_atr)) * sl_mult
             sl = lowest_low - sl_buffer
             sl_dist = ask - sl
             min_sl = max(2.00, min(4.50, 0.70 * curr_atr))
@@ -2602,7 +2614,7 @@ class GoldScalpingBot:
             tp2 = ask + (sl_dist * target_rr)
         elif strat_id == "ICT_SILVER_BULLET_FVG":
             lowest_low = float(df['low'].iloc[-8:-1].min())
-            sl_buffer = 0.45 * sl_mult
+            sl_buffer = dynamic_atr_buffer
             sl = lowest_low - sl_buffer
             sl_dist = ask - sl
             min_sl = max(2.50, min(4.50, 0.75 * curr_atr))
@@ -2612,7 +2624,7 @@ class GoldScalpingBot:
             tp2 = ask + (sl_dist * target_rr)
         elif strat_id == "EW_WAVE3_BREAKER":
             lowest_low = float(df['low'].iloc[-8:-1].min())
-            sl_buffer = 0.40 * sl_mult
+            sl_buffer = dynamic_atr_buffer
             sl = lowest_low - sl_buffer
             sl_dist = ask - sl
             min_sl = max(2.50, min(5.00, 0.80 * curr_atr))
@@ -2627,7 +2639,7 @@ class GoldScalpingBot:
                 sl_dist = ask - sl
             else:
                 lowest_low = float(df['low'].iloc[-20:-1].min())
-                sl = lowest_low - 0.50
+                sl = lowest_low - dynamic_atr_buffer
                 sl_dist = ask - sl
             min_sl = max(3.00, min(5.50, 0.85 * curr_atr))
             if sl_dist < min_sl: sl = ask - min_sl; sl_dist = min_sl
@@ -2644,6 +2656,13 @@ class GoldScalpingBot:
             if sl_dist < 3.50: sl = ask - 3.50; sl_dist = 3.50
             if sl_dist > 18.00: sl = ask - 18.00; sl_dist = 18.00  # EarthETC: wide structural room, no arbitrary 7.00 choke
             tp2 = ask + (sl_dist * 1.8)
+
+        # ATR TP Feasibility Validation (MTRADERS Rule 5: Ensure TP is realistically achievable)
+        tp_dist = tp2 - ask
+        if not is_asian_scalp and tp_dist > (2.5 * curr_atr):
+            feasible_tp_dist = round(2.5 * curr_atr, 2)
+            tp2 = ask + feasible_tp_dist
+            self.add_log(f"🎯 [ATR TP FEASIBLE CLAMP] Adjusted {strat_id} TP: +{tp_dist:.2f} -> +{feasible_tp_dist:.2f} (2.5x ATR {curr_atr:.2f}) to secure profit before reversal", "INFO")
 
         if strat_id in ["ICT_JUDAS_RTM_QM", "ICT_SILVER_BULLET_FVG", "SMC_X_STO_H1", "DONCHIAN_ADAPTIVE_TREND"]:
             risk_label = "0.5% Risk"
@@ -2687,7 +2706,7 @@ class GoldScalpingBot:
         m_info = self.get_magic_for_strategy(strat_id)
         magic_p1 = m_info["pos1"]
 
-        # Volatility metric for Dynamic ATR SL floor (Gold New Normal Rule 3)
+        # Volatility metric for Dynamic ATR SL floor (Gold New Normal Rule 3) & ATR Trading Framework
         if len(df) >= 15:
             hl = df['high'] - df['low']
             hc = (df['high'] - df['close'].shift()).abs()
@@ -2698,6 +2717,18 @@ class GoldScalpingBot:
                 curr_atr = 2.50
         else:
             curr_atr = 2.50
+
+        # ATR Overextension Guard (MTRADERS Rule 2 & 6: Avoid Selling Overextended Price)
+        if 'ema50' in df and len(df) >= 2 and strat_id not in ["KC_LIQUIDITY_DOMINANCE", "ASIAN_RANGE_SNIPER"]:
+            ema50_val = float(df['ema50'].iloc[-2])
+            dist_from_ema = ema50_val - bid
+            atr_extension_ratio = dist_from_ema / max(curr_atr, 0.5)
+            if atr_extension_ratio > 2.0:
+                self.add_log(f"🛡️ [ATR OVEREXTENDED] {strat_id} SELL blocked | Price is -{dist_from_ema:.2f} ({atr_extension_ratio:.2f}x ATR) below EMA50. Waiting for pullback.", "WARNING")
+                return
+
+        # Dynamic ATR SL Buffer (MTRADERS Rule 4: Market Structure + 0.25 ATR Buffer)
+        dynamic_atr_buffer = max(0.40, min(1.25, 0.25 * curr_atr)) * sl_mult
 
         if is_asian_scalp or strat_id == "ASIAN_RANGE_SNIPER":
             highest_high = df['high'].iloc[-6:-1].max()
@@ -2713,7 +2744,7 @@ class GoldScalpingBot:
                 ob_high = float(df_h1['high'].iloc[-15:-1].max())
             else:
                 ob_high = float(df['high'].iloc[-30:-1].max())
-            sl_buffer = 0.80 * sl_mult
+            sl_buffer = max(0.80, 0.30 * curr_atr) * sl_mult
             sl = ob_high + sl_buffer
             sl_dist = sl - bid
             min_sl = max(4.50, min(7.00, 0.90 * curr_atr))
@@ -2728,7 +2759,7 @@ class GoldScalpingBot:
                 sl_dist = sl - bid
             else:
                 highest_high = float(df['high'].iloc[-15:-1].max())
-                sl_buffer = 0.50 * sl_mult
+                sl_buffer = dynamic_atr_buffer
                 sl = highest_high + sl_buffer
                 sl_dist = sl - bid
             # EarthETC Structural SL: respect true Swing Head extreme + buffer without arbitrary 8.50 clamp
@@ -2744,7 +2775,7 @@ class GoldScalpingBot:
             highest_high = float(df['high'].iloc[-12:-1].max())
             ema60_val = float(df['ema60'].iloc[-2]) if 'ema60' in df else highest_high
             structural_ref = max(highest_high, ema60_val)
-            sl_buffer = 0.50 * sl_mult
+            sl_buffer = dynamic_atr_buffer
             sl = structural_ref + sl_buffer
             sl_dist = sl - bid
             min_sl = max(2.50, min(5.00, 0.80 * curr_atr))
@@ -2754,7 +2785,7 @@ class GoldScalpingBot:
             tp2 = bid - (sl_dist * target_rr)
         elif strat_id == "KC_LIQUIDITY_DOMINANCE":
             highest_high = float(df['high'].iloc[-22:-1].max())
-            sl_buffer = 0.40 * sl_mult
+            sl_buffer = max(0.35, min(1.00, 0.20 * curr_atr)) * sl_mult
             sl = highest_high + sl_buffer
             sl_dist = sl - bid
             min_sl = max(2.00, min(4.50, 0.70 * curr_atr))
@@ -2764,7 +2795,7 @@ class GoldScalpingBot:
             tp2 = bid - (sl_dist * target_rr)
         elif strat_id == "ICT_JUDAS_RTM_QM":
             highest_high = float(df['high'].iloc[-18:-1].max())
-            sl_buffer = 0.80 * sl_mult
+            sl_buffer = max(0.50, min(1.50, 0.30 * curr_atr)) * sl_mult
             sl = highest_high + sl_buffer
             sl_dist = sl - bid
             min_sl = max(2.00, min(4.50, 0.70 * curr_atr))
@@ -2774,7 +2805,7 @@ class GoldScalpingBot:
             tp2 = bid - (sl_dist * target_rr)
         elif strat_id == "ICT_SILVER_BULLET_FVG":
             highest_high = float(df['high'].iloc[-8:-1].max())
-            sl_buffer = 0.45 * sl_mult
+            sl_buffer = dynamic_atr_buffer
             sl = highest_high + sl_buffer
             sl_dist = sl - bid
             min_sl = max(2.50, min(4.50, 0.75 * curr_atr))
@@ -2784,7 +2815,7 @@ class GoldScalpingBot:
             tp2 = bid - (sl_dist * target_rr)
         elif strat_id == "EW_WAVE3_BREAKER":
             highest_high = float(df['high'].iloc[-8:-1].max())
-            sl_buffer = 0.40 * sl_mult
+            sl_buffer = dynamic_atr_buffer
             sl = highest_high + sl_buffer
             sl_dist = sl - bid
             min_sl = max(2.50, min(5.00, 0.80 * curr_atr))
@@ -2799,7 +2830,7 @@ class GoldScalpingBot:
                 sl_dist = sl - bid
             else:
                 highest_high = float(df['high'].iloc[-20:-1].max())
-                sl = highest_high + 0.50
+                sl = highest_high + dynamic_atr_buffer
                 sl_dist = sl - bid
             min_sl = max(3.00, min(5.50, 0.85 * curr_atr))
             if sl_dist < min_sl: sl = bid + min_sl; sl_dist = min_sl
@@ -2816,6 +2847,13 @@ class GoldScalpingBot:
             if sl_dist < 3.50: sl = bid + 3.50; sl_dist = 3.50
             if sl_dist > 18.00: sl = bid + 18.00; sl_dist = 18.00  # EarthETC: wide structural room, no arbitrary 7.00 choke
             tp2 = bid - (sl_dist * 1.8)
+
+        # ATR TP Feasibility Validation (MTRADERS Rule 5: Ensure TP is realistically achievable)
+        tp_dist = bid - tp2
+        if not is_asian_scalp and tp_dist > (2.5 * curr_atr):
+            feasible_tp_dist = round(2.5 * curr_atr, 2)
+            tp2 = bid - feasible_tp_dist
+            self.add_log(f"🎯 [ATR TP FEASIBLE CLAMP] Adjusted {strat_id} TP: +{tp_dist:.2f} -> +{feasible_tp_dist:.2f} (2.5x ATR {curr_atr:.2f}) to secure profit before reversal", "INFO")
 
         if strat_id in ["ICT_JUDAS_RTM_QM", "ICT_SILVER_BULLET_FVG", "SMC_X_STO_H1", "DONCHIAN_ADAPTIVE_TREND"]:
             risk_label = "0.5% Risk"
@@ -3410,6 +3448,23 @@ class GoldScalpingBot:
         m_info = self.connector.get_market_info(symbol)
         curr_price = m_info.get('ask' if ptype == "BUY" else 'bid', 0.0)
         pyramid_sl = open_price
+
+        # ATR-based minimum step distance before scaling-in (MTRADERS Rule 8)
+        curr_atr = 3.50
+        if len(df) >= 15:
+            hl = df['high'] - df['low']
+            hc = (df['high'] - df['close'].shift()).abs()
+            lc = (df['low'] - df['close'].shift()).abs()
+            tr = pd.concat([hl, hc, lc], axis=1).max(axis=1)
+            atr_calc = float(tr.rolling(window=14).mean().iloc[-2])
+            if not (math.isnan(atr_calc) or atr_calc <= 0):
+                curr_atr = atr_calc
+
+        pyramid_step = max(3.00, 1.0 * curr_atr)
+        if ptype == "BUY" and curr_price < (open_price + pyramid_step):
+            return
+        if ptype == "SELL" and curr_price > (open_price - pyramid_step):
+            return
 
         self.connector.open_order(symbol, ptype, lot, pyramid_sl, 0.0, pyramid_magic_base, "Pyramid_L1")
         self.add_log(f"🔺 [TREND PYRAMIDING] Added Layer 1 on {ptype} | Lot: {lot} | Magic: {pyramid_magic_base}", "SUCCESS")

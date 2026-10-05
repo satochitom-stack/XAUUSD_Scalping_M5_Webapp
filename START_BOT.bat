@@ -1,13 +1,13 @@
 @echo off
 chcp 65001 >nul
 title XAUUSD Scalping M5 Bot (Local MT5 Mode)
-cd /d "%~dp0"
+cd /d "C:\Users\Windows11\.gemini\antigravity\scratch\XAUUSD_Scalping_M5_Webapp"
 
 echo ===================================================================
 echo   XAUUSD Scalping M5 Secret System - Local MT5 Auto Bot
 echo ===================================================================
 echo.
-echo [1/3] ตรวจสอบโปรแกรม MT5...
+echo [1/3] ตรวจสอบโปรแกรม MT5 Terminal 1...
 tasklist /FI "IMAGENAME eq terminal64.exe" 2>NUL | find /I /N "terminal64.exe">NUL
 if "%ERRORLEVEL%"=="0" (
     echo [OK] MT5 Terminal กำลังเปิดทำงานอยู่
@@ -27,5 +27,6 @@ echo  Dashboard: http://localhost:8000
 echo  Access Token: GOLD_VIP_2026
 echo -------------------------------------------------------------------
 echo.
+start http://localhost:8000
 python run_webapp.py
 pause
