@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 title XAUUSD Scalping M5 Bot (Local MT5 Mode)
-cd /d "C:\Users\Windows11\.gemini\antigravity\scratch\XAUUSD_Scalping_M5_Webapp"
+cd /d "%~dp0"
 
 echo ===================================================================
 echo   XAUUSD Scalping M5 Secret System - Local MT5 Auto Bot
@@ -31,5 +31,9 @@ echo  Access Token: GOLD_VIP_2026
 echo -------------------------------------------------------------------
 echo.
 start http://localhost:8000
-python run_webapp.py
+if exist "%~dp0.venv\Scripts\python.exe" (
+    "%~dp0.venv\Scripts\python.exe" run_webapp.py
+) else (
+    python run_webapp.py
+)
 pause
