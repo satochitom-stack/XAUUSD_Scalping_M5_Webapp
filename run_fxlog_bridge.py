@@ -46,8 +46,8 @@ def index():
 
 @app.get("/api/journal/closed_trades")
 @app.get("/api/journal/export_trades")
-async def get_closed_trades(
-    days: int = Query(7, description="Days of history"),
+async def export_trades_for_journal(
+    days: int = Query(180, description="Days of history"),
     mode: str = Query("manual", description="Mode"),
     user: str = Query("TOM", description="Target user")
 ):
@@ -67,7 +67,7 @@ async def get_closed_trades(
     }
 
 @app.get("/api/journal/rebates")
-async def get_rebates_endpoint(days: int = Query(90, description="Days of history")):
+async def get_rebates_endpoint(days: int = Query(180, description="Days of history")):
     rebates = analytics.fetch_rebate_history(days=days)
     total_rebates = round(sum(r["amount"] for r in rebates), 2)
     return {
@@ -77,19 +77,13 @@ async def get_rebates_endpoint(days: int = Query(90, description="Days of histor
         "rebates": rebates
     }
 
-@app.get("/api/journal/export_trades")
-async def export_trades_for_journal(
-    days: int = Query(90, description="Days of history"),
-    mode: str = Query("manual", description="Mode"),
-    user: str = Query("TOM", description="Target user")
-):
-    trades = analytics.fetch_trades_for_journal(days=days, mode=mode, user=user)
+@app.get("/api/journal/transactions")
+async def get_transactions_endpoint(days: int = Query(180, description="Days of history")):
+    txs = analytics.fetch_transactions_for_journal(days=days)
     return {
         "status": True,
-        "mode": mode,
-        "user": user,
-        "count": len(trades),
-        "trades": trades
+        "count": len(txs),
+        "transactions": txs
     }
 
 @app.get("/api/journal/open_positions")

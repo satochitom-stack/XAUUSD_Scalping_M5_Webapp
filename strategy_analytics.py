@@ -215,7 +215,7 @@ class RealTradeAnalyticsManager:
         closed_deals.sort(key=lambda x: x["time"], reverse=True)
         return closed_deals
 
-    def fetch_rebate_history(self, days: int = 90) -> List[dict]:
+    def fetch_rebate_history(self, days: int = 180) -> List[dict]:
         """Fetch Exness D-INTARB auto rebate transactions from MT5 deal history."""
         rebates_list = []
         if not MT5_AVAILABLE:
@@ -228,25 +228,69 @@ class RealTradeAnalyticsManager:
             deals = mt5.history_deals_get(from_date, to_date)
             if deals:
                 for d in deals:
-                    if (d.type == 2 or not d.symbol) and "intarb" in (d.comment or "").lower() and d.profit > 0:
+                    c = (d.comment or "").lower()
+                    is_rebate = (d.profit > 0) and any(k in c for k in ["intarb", "rebate", "cashback", "agent", "commission"])
+                    if (d.type == 2 or not d.symbol) and is_rebate:
                         dt = datetime.fromtimestamp(d.time)
-                        if dt >= self.EPOCH_START_TIME:
-                            rebates_list.append({
-                                "id": f"rebate-{d.ticket}",
-                                "ticket": d.ticket,
-                                "time": dt.strftime("%Y-%m-%d %H:%M:%S"),
-                                "date": dt.strftime("%Y-%m-%d %H:%M"),
-                                "amount": round(float(d.profit), 2),
-                                "comment": d.comment or "D-INTARB-USC-INT",
-                                "type": "REBATE",
-                                "status": "COMPLETED"
-                            })
+                        rebates_list.append({
+                            "id": f"mt5_{d.ticket}",
+                            "ticket": d.ticket,
+                            "positionId": d.ticket,
+                            "time": dt.strftime("%Y-%m-%d %H:%M:%S"),
+                            "date": dt.strftime("%Y-%m-%d %H:%M"),
+                            "amount": round(float(d.profit), 2),
+                            "comment": d.comment or "D-INTARB-USC-INT",
+                            "type": "REBATE",
+                            "status": "REBATE"
+                        })
                 rebates_list.sort(key=lambda x: x["time"], reverse=True)
         except Exception as e:
             logger.error(f"Error fetching rebate history: {e}")
         return rebates_list
 
-    def fetch_trades_for_journal(self, days: int = 90, mode: str = "auto", user: Optional[str] = None) -> List[dict]:
+    def fetch_transactions_for_journal(self, days: int = 180) -> List[dict]:
+        """Fetch deposit and withdrawal transactions from MT5 deal history."""
+        transactions = []
+        if not MT5_AVAILABLE:
+            return transactions
+        try:
+            manual_mt5_path = r"C:\Users\Windows11\AppData\Local\Programs\MetaTrader 5 EXNESS 2\terminal64.exe"
+            if os.path.exists(manual_mt5_path) and (not mt5.terminal_info() or getattr(mt5.account_info(), 'login', 0) != 257508244):
+                mt5.shutdown()
+                mt5.initialize(path=manual_mt5_path)
+            elif not mt5.terminal_info():
+                mt5.initialize()
+
+            from_date = datetime.now() - timedelta(days=days)
+            to_date = datetime.now() + timedelta(days=1)
+            deals = mt5.history_deals_get(from_date, to_date)
+            if deals:
+                for d in deals:
+                    if d.type == 2 or not d.symbol:
+                        c = (d.comment or "").lower()
+                        is_rebate = (d.profit > 0) and any(k in c for k in ["intarb", "rebate", "cashback", "agent", "commission"])
+                        if is_rebate:
+                            continue
+                        
+                        dt = datetime.fromtimestamp(d.time)
+                        tx_type = "DEPOSIT" if d.profit >= 0 else "WITHDRAWAL"
+                        prefix = "dep" if d.profit >= 0 else "with"
+                        transactions.append({
+                            "id": f"mt5_{prefix}_{d.ticket}",
+                            "ticket": d.ticket,
+                            "type": tx_type,
+                            "amount": round(abs(float(d.profit)), 2),
+                            "date": dt.strftime("%Y-%m-%d %H:%M"),
+                            "accountType": "REAL",
+                            "status": "completed",
+                            "notes": f"MT5 {'ฝากเงิน' if d.profit >= 0 else 'ถอนเงิน'} #{d.ticket} ({d.comment or ''})".strip()
+                        })
+                transactions.sort(key=lambda x: x["date"], reverse=True)
+        except Exception as e:
+            logger.error(f"Error fetching transactions for journal: {e}")
+        return transactions
+
+    def fetch_trades_for_journal(self, days: int = 180, mode: str = "auto", user: Optional[str] = None) -> List[dict]:
         """
         Fetch closed positions from MT5 formatted specifically for FXLOG PRO (Trade Journal).
         Supports:
@@ -296,21 +340,54 @@ class RealTradeAnalyticsManager:
             # Extract and cache Exness D-INTARB Rebates
             rebates_cached = []
             for d in deals:
-                if (d.type == 2 or not d.symbol) and "intarb" in (d.comment or "").lower() and d.profit > 0:
+                c = (d.comment or "").lower()
+                is_rebate = (d.profit > 0) and any(k in c for k in ["intarb", "rebate", "cashback", "agent", "commission"])
+                if (d.type == 2 or not d.symbol) and is_rebate:
                     dt_r = datetime.fromtimestamp(d.time)
-                    if dt_r >= self.EPOCH_START_TIME:
-                        rebates_cached.append({
-                            "id": f"rebate-{d.ticket}",
-                            "ticket": d.ticket,
-                            "time": dt_r.strftime("%Y-%m-%d %H:%M:%S"),
-                            "date": dt_r.strftime("%Y-%m-%d %H:%M"),
-                            "amount": round(float(d.profit), 2),
-                            "comment": d.comment or "D-INTARB-USC-INT",
-                            "type": "REBATE",
-                            "status": "COMPLETED"
-                        })
+                    rebates_cached.append({
+                        "id": f"mt5_{d.ticket}",
+                        "ticket": d.ticket,
+                        "positionId": d.ticket,
+                        "time": dt_r.strftime("%Y-%m-%d %H:%M:%S"),
+                        "date": dt_r.strftime("%Y-%m-%d %H:%M"),
+                        "amount": round(float(d.profit), 2),
+                        "comment": d.comment or "D-INTARB-USC-INT",
+                        "type": "REBATE",
+                        "status": "REBATE"
+                    })
             rebates_cached.sort(key=lambda x: x["time"], reverse=True)
             self._last_rebates = rebates_cached
+
+            # Add rebates directly into journal_trades
+            for r in rebates_cached:
+                journal_trades.append({
+                    "id": r["id"],
+                    "ticket": r["ticket"],
+                    "positionId": r["ticket"],
+                    "magic": 0,
+                    "pair": "REBATE",
+                    "type": "REBATE",
+                    "entryPrice": 0.0,
+                    "exitPrice": 0.0,
+                    "lotSize": 0.0,
+                    "tp": None,
+                    "sl": None,
+                    "profit": r["amount"],
+                    "status": "REBATE",
+                    "rrRatio": None,
+                    "date": r["date"],
+                    "openDate": r["date"],
+                    "closeDate": r["date"],
+                    "closedAt": r["date"],
+                    "technique": "REBATE",
+                    "timeframe": "-",
+                    "session": "-",
+                    "notes": f"เงินคืนรีเบท Exness #{r['ticket']} ({r['comment']})",
+                    "mentalTags": ["💰 Rebate Cashback"],
+                    "disciplineStatus": "system",
+                    "psychology": "เงินคืนรีเบท (Rebate Cashback)",
+                    "source": "MT5_EA"
+                })
 
             # Group deals by position_id to pair Entry (IN) and Exit (OUT)
             positions = {}
