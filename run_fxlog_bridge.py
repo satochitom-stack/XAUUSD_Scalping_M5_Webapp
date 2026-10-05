@@ -129,8 +129,8 @@ if __name__ == "__main__":
     if acc:
         print(f"[OK] Connected to MT5 Account: #{acc.login} ({acc.server})")
         print(f"[*] Balance: {acc.balance} {acc.currency}")
-    print("[*] Listening on: http://127.0.0.1:8000")
-    print("[*] Mode: READ-ONLY (No bot trading, purely for Journal sync)")
+    print("[*] Listening on: http://127.0.0.1:8001")
+    print("[*] Note: Main Webapp already serves FXLOG PRO on port 8000.")
     print("=======================================================\n")
 
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8001)
