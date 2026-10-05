@@ -276,6 +276,10 @@ class RealTradeAnalyticsManager:
                         if is_rebate:
                             continue
                         
+                        amount = round(abs(float(d.profit)), 2)
+                        if amount <= 0:
+                            continue
+
                         dt = datetime.fromtimestamp(d.time)
                         tx_type = "DEPOSIT" if d.profit >= 0 else "WITHDRAWAL"
                         prefix = "dep" if d.profit >= 0 else "with"
@@ -283,7 +287,7 @@ class RealTradeAnalyticsManager:
                             "id": f"mt5_{prefix}_{d.ticket}",
                             "ticket": d.ticket,
                             "type": tx_type,
-                            "amount": round(abs(float(d.profit)), 2),
+                            "amount": amount,
                             "date": dt.strftime("%Y-%m-%d %H:%M"),
                             "accountType": "REAL",
                             "status": "completed",
