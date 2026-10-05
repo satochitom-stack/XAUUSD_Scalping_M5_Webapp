@@ -598,6 +598,106 @@ class GoldScalpingBot:
         else:
             self.latest_trend = "SIDEWAY"
 
+    def get_market_liquidity_levels(self, df: pd.DataFrame, symbol: str = "XAUUSD") -> dict:
+        """
+        Calculates Key Liquidity Reference Levels (PDH/PDL, Asian High/Low, EQH/EQL)
+        to identify liquidity pools and avoid breakout traps (Gold New Normal Rule 1 & 4).
+        """
+        levels = {
+            "pdh": 0.0,
+            "pdl": 0.0,
+            "asia_high": 0.0,
+            "asia_low": 0.0,
+            "eqh": 0.0,
+            "eql": 0.0,
+            "curr_atr": 2.50
+        }
+        if df is None or df.empty or len(df) < 15:
+            return levels
+
+        # 1. M5 ATR 14
+        hl = df['high'] - df['low']
+        hc = (df['high'] - df['close'].shift()).abs()
+        lc = (df['low'] - df['close'].shift()).abs()
+        tr = pd.concat([hl, hc, lc], axis=1).max(axis=1)
+        curr_atr = float(tr.rolling(window=14).mean().iloc[-2]) if len(df) >= 15 else 2.50
+        if math.isnan(curr_atr) or curr_atr <= 0: curr_atr = 2.50
+        levels["curr_atr"] = curr_atr
+
+        # 2. PDH / PDL (Previous Day High / Low)
+        try:
+            if hasattr(self, 'connector') and hasattr(self.connector, 'get_rates'):
+                df_d1 = self.connector.get_rates(symbol, "D1", 5)
+                if df_d1 is not None and isinstance(df_d1, pd.DataFrame) and len(df_d1) >= 2:
+                    levels["pdh"] = float(df_d1['high'].iloc[-2])
+                    levels["pdl"] = float(df_d1['low'].iloc[-2])
+        except Exception:
+            pass
+
+        # Fallback for PDH/PDL from M5 history if D1 unavailable
+        if levels["pdh"] <= 0 or levels["pdl"] <= 0:
+            if len(df) >= 100:
+                lookback_m5 = df.iloc[-150:-25]
+                levels["pdh"] = float(lookback_m5['high'].max())
+                levels["pdl"] = float(lookback_m5['low'].min())
+
+        # 3. Asian Session High / Low (07:00 - 14:00 Thai Time)
+        sim_time = getattr(self.connector, "current_time", None)
+        if sim_time is not None and hasattr(sim_time, "time") and not hasattr(sim_time, "_mock_return_value"):
+            curr_date = sim_time.date() if hasattr(sim_time, "date") else None
+        else:
+            th_tz = timezone(timedelta(hours=7))
+            curr_date = datetime.now(th_tz).date()
+
+        times = df.get('time')
+        if times is not None and len(times) > 0 and hasattr(times.iloc[0], 'date') and curr_date is not None:
+            try:
+                asia_mask = (times.dt.date == curr_date) & (times.dt.time >= dtime(7, 0)) & (times.dt.time <= dtime(14, 0))
+                asia_df = df[asia_mask]
+                if len(asia_df) >= 6:
+                    levels["asia_high"] = float(asia_df['high'].max())
+                    levels["asia_low"] = float(asia_df['low'].min())
+            except Exception:
+                pass
+
+        if levels["asia_high"] <= 0 or levels["asia_low"] <= 0:
+            if len(df) >= 40:
+                asia_approx = df.iloc[max(0, len(df) - 75) : -15]
+                levels["asia_high"] = float(asia_approx['high'].max())
+                levels["asia_low"] = float(asia_approx['low'].min())
+
+        # 4. Equal Highs (EQH) / Equal Lows (EQL) within recent 35 bars (tolerance <= 0.35 * ATR)
+        if len(df) >= 30:
+            recent_highs = []
+            recent_lows = []
+            sub = df.iloc[-35:-2]
+            for i in range(2, len(sub) - 2):
+                h_mid = float(sub['high'].iloc[i])
+                l_mid = float(sub['low'].iloc[i])
+                if h_mid > float(sub['high'].iloc[i-1]) and h_mid > float(sub['high'].iloc[i+1]):
+                    recent_highs.append(h_mid)
+                if l_mid < float(sub['low'].iloc[i-1]) and l_mid < float(sub['low'].iloc[i+1]):
+                    recent_lows.append(l_mid)
+
+            tol = 0.35 * curr_atr
+            for i in range(len(recent_highs)):
+                for j in range(i + 1, len(recent_highs)):
+                    if abs(recent_highs[i] - recent_highs[j]) <= tol:
+                        levels["eqh"] = max(recent_highs[i], recent_highs[j])
+                        break
+                if levels["eqh"] > 0:
+                    break
+
+            for i in range(len(recent_lows)):
+                for j in range(i + 1, len(recent_lows)):
+                    if abs(recent_lows[i] - recent_lows[j]) <= tol:
+                        levels["eql"] = min(recent_lows[i], recent_lows[j])
+                        break
+                if levels["eql"] > 0:
+                    break
+
+        return levels
+
     def _process_single_setup_signal(self, df: pd.DataFrame, symbol: str, spread: float, strat_key: str, action_type: str, reason: str, is_asian_scalp: bool = False, **kwargs):
         """Processes and executes a signal specifically isolated for a single strategy setup."""
         # 0. Evaluate Trading Hours Schedule Guard
@@ -618,6 +718,29 @@ class GoldScalpingBot:
             self.latest_trend = f"TREND BLOCKED ({strat_key}: BUY blocked by H1 Bear Trend)"
             return
 
+        # 0.2 Liquidity Pool & Breakout Chasing Guard (Gold New Normal Rule 1)
+        # Prevents buying directly under major liquidity ceilings or selling directly above support floors
+        liq_levels = self.get_market_liquidity_levels(df, symbol)
+        curr_c = float(df['close'].iloc[-2]) if len(df) >= 2 else 0.0
+        m5_atr = liq_levels.get("curr_atr", 2.50)
+
+        # Breakout setups that should NOT chase unpurged liquidity levels
+        if strat_key in ["EW_WAVE3_BREAKER"]:
+            if action_type == "BUY":
+                ceilings = [lvl for lvl in [liq_levels.get("pdh"), liq_levels.get("asia_high"), liq_levels.get("eqh")] if lvl and lvl > curr_c]
+                for ceil in ceilings:
+                    if 0.0 <= (ceil - curr_c) <= max(0.50, 0.20 * m5_atr):
+                        self.add_log(f"🛡️ [LIQUIDITY GUARD] {strat_key} (BUY) Blocked | Price ({curr_c:.2f}) directly under unpurged Liquidity Ceiling ({ceil:.2f}) - Anti Stop-Hunt", "WARNING")
+                        self.latest_trend = f"LIQUIDITY BLOCKED ({strat_key}: Ceiling @ {ceil:.2f})"
+                        return
+            elif action_type == "SELL":
+                floors = [lvl for lvl in [liq_levels.get("pdl"), liq_levels.get("asia_low"), liq_levels.get("eql")] if lvl and lvl < curr_c]
+                for flr in floors:
+                    if 0.0 <= (curr_c - flr) <= max(0.50, 0.20 * m5_atr):
+                        self.add_log(f"🛡️ [LIQUIDITY GUARD] {strat_key} (SELL) Blocked | Price ({curr_c:.2f}) directly over unpurged Liquidity Floor ({flr:.2f}) - Anti Stop-Hunt", "WARNING")
+                        self.latest_trend = f"LIQUIDITY BLOCKED ({strat_key}: Floor @ {flr:.2f})"
+                        return
+
         # 1. Evaluate Market Regime & Liquidity Filter Score (0 - 100)
         score_res = self.scorer.evaluate_market_confluence(df, spread, strat_key)
         if not score_res.get("is_allowed", True):
@@ -631,11 +754,18 @@ class GoldScalpingBot:
             self.latest_trend = f"AI PAUSED ({strat_key}: {opt_params.get('reason', 'Blocked')})"
             return
 
-        # Apply quality bonus or special risk cap
+        # Apply quality bonus or special risk cap (Gold New Normal Rule 2 & 3)
         if strat_key == "NEWS_MOMENTUM_EXPANSION":
             opt_params["lot_multiplier"] = 0.5  # Fixed 0.5% risk requested by user
         elif score_res.get("grade") == "A+":
             opt_params["lot_multiplier"] = round(opt_params.get("lot_multiplier", 1.0) * score_res.get("lot_recommendation", 1.15), 2)
+        elif score_res.get("grade") == "B":
+            # Scale down lot size by 50% for marginal / high volatility setups per New Normal Rule 2
+            opt_params["lot_multiplier"] = round(opt_params.get("lot_multiplier", 1.0) * 0.50, 2)
+
+        # Dynamic high-volatility damping: if ATR is extreme (> 4.50 USD per M5 bar), damp lot by 20%
+        if m5_atr >= 4.50:
+            opt_params["lot_multiplier"] = round(opt_params.get("lot_multiplier", 1.0) * 0.80, 2)
 
         if action_type == "BUY":
             self.last_signal = f"BUY ({reason} | Quality: {score_res['score']}/100 {score_res['grade']})"
@@ -889,13 +1019,13 @@ class GoldScalpingBot:
         lower_wick = min(open_p, close_p) - low_p
         body_size = abs(close_p - open_p)
 
-        # Candle triggers
-        bullish_pinbar = (lower_wick >= 0.45 * candle_range) and (close_p >= low_p + 0.45 * candle_range)
-        bearish_pinbar = (upper_wick >= 0.45 * candle_range) and (close_p <= high_p - 0.45 * candle_range)
+        # Candle triggers with strict rejection confirmation (Gold New Normal Rule 2: Anti-fakeout)
+        bullish_pinbar = (lower_wick >= 0.45 * candle_range) and (close_p >= low_p + 0.45 * candle_range) and (upper_wick <= 0.35 * candle_range)
+        bearish_pinbar = (upper_wick >= 0.45 * candle_range) and (close_p <= high_p - 0.45 * candle_range) and (lower_wick <= 0.35 * candle_range)
 
         prev_bar = df.iloc[-3]
-        bullish_engulfing = (close_p > open_p) and (close_p > float(prev_bar['high'])) and (body_size >= 0.55 * candle_range)
-        bearish_engulfing = (close_p < open_p) and (close_p < float(prev_bar['low'])) and (body_size >= 0.55 * candle_range)
+        bullish_engulfing = (close_p > open_p) and (close_p > float(prev_bar['high'])) and (body_size >= 0.55 * candle_range) and (upper_wick <= 0.30 * candle_range)
+        bearish_engulfing = (close_p < open_p) and (close_p < float(prev_bar['low'])) and (body_size >= 0.55 * candle_range) and (lower_wick <= 0.30 * candle_range)
 
         window = df.iloc[-32:-2]
         if len(window) < 20:
@@ -1432,8 +1562,13 @@ class GoldScalpingBot:
                         if 0.25 <= retrace_ratio <= 0.80:
                             # Breakout: b1 closed above Wave 1 High
                             if float(b1['close']) > p1_high and float(b2['close']) <= p1_high + 0.50:
-                                if curr_ewo >= 0.0 or curr_ewo >= prev_ewo:
-                                    return True, False, f"🌊 Elliott Wave 3 Breaker Bullish (W1 Top {p1_high:.2f} Broken | Tactical SL @ W2 Low {p2_low:.2f})"
+                                # Strict Confirmation: solid bullish body, upper wick <= 40% (anti-fakeout / no exhaustion spike)
+                                c_range = max(float(b1['high']) - float(b1['low']), 0.1)
+                                c_body = float(b1['close']) - float(b1['open'])
+                                upper_wick = float(b1['high']) - float(b1['close'])
+                                is_confirmed = (c_body / c_range >= 0.35) and (upper_wick / c_range <= 0.40)
+                                if is_confirmed and (curr_ewo >= 0.0 or curr_ewo >= prev_ewo):
+                                    return True, False, f"🌊 Elliott Wave 3 Breaker Bullish (W1 Top {p1_high:.2f} Broken | Confirmed Body {c_body/c_range*100:.0f}% | Tactical SL @ W2 Low {p2_low:.2f})"
 
         # SELL (Bearish Wave 3):
         if can_sell:
@@ -1455,8 +1590,13 @@ class GoldScalpingBot:
                         retrace_ratio = wave2_retrace / wave1_dist
                         if 0.25 <= retrace_ratio <= 0.80:
                             if float(b1['close']) < p1_sell_low and float(b2['close']) >= p1_sell_low - 0.50:
-                                if curr_ewo <= 0.0 or curr_ewo <= prev_ewo:
-                                    return False, True, f"🌊 Elliott Wave 3 Breaker Bearish (W1 Bottom {p1_sell_low:.2f} Broken | Tactical SL @ W2 High {p2_sell_high:.2f})"
+                                # Strict Confirmation: solid bearish body, lower wick <= 40% (anti-fakeout / no exhaustion spike)
+                                c_range = max(float(b1['high']) - float(b1['low']), 0.1)
+                                c_body = float(b1['open']) - float(b1['close'])
+                                lower_wick = float(b1['close']) - float(b1['low'])
+                                is_confirmed = (c_body / c_range >= 0.35) and (lower_wick / c_range <= 0.40)
+                                if is_confirmed and (curr_ewo <= 0.0 or curr_ewo <= prev_ewo):
+                                    return False, True, f"🌊 Elliott Wave 3 Breaker Bearish (W1 Bottom {p1_sell_low:.2f} Broken | Confirmed Body {c_body/c_range*100:.0f}% | Tactical SL @ W2 High {p2_sell_high:.2f})"
 
         return False, False, ""
 
@@ -2375,6 +2515,18 @@ class GoldScalpingBot:
         m_info = self.get_magic_for_strategy(strat_id)
         magic_p1 = m_info["pos1"]
 
+        # Volatility metric for Dynamic ATR SL floor (Gold New Normal Rule 3)
+        if len(df) >= 15:
+            hl = df['high'] - df['low']
+            hc = (df['high'] - df['close'].shift()).abs()
+            lc = (df['low'] - df['close'].shift()).abs()
+            tr = pd.concat([hl, hc, lc], axis=1).max(axis=1)
+            curr_atr = float(tr.rolling(window=14).mean().iloc[-2])
+            if math.isnan(curr_atr) or curr_atr <= 0:
+                curr_atr = 2.50
+        else:
+            curr_atr = 2.50
+
         if is_asian_scalp or strat_id == "ASIAN_RANGE_SNIPER":
             lowest_low = df['low'].iloc[-6:-1].min()
             sl_buffer = 0.40 * sl_mult
@@ -2392,7 +2544,8 @@ class GoldScalpingBot:
             sl_buffer = 0.80 * sl_mult
             sl = ob_low - sl_buffer
             sl_dist = ask - sl
-            if sl_dist < 4.50: sl = ask - 4.50; sl_dist = 4.50
+            min_sl = max(4.50, min(7.00, 0.90 * curr_atr))
+            if sl_dist < min_sl: sl = ask - min_sl; sl_dist = min_sl
             if sl_dist > 18.00: sl = ask - 18.00; sl_dist = 18.00
             tp2 = ask + (sl_dist * 2.0)
         elif strat_id.startswith("RTM_") or "RTM" in reason:
@@ -2407,7 +2560,8 @@ class GoldScalpingBot:
                 sl = lowest_low - sl_buffer
                 sl_dist = ask - sl
             # EarthETC Structural SL: respect true Swing Head extreme + buffer without artificial 8.50 clamp
-            if sl_dist < 2.50: sl = ask - 2.50; sl_dist = 2.50
+            min_sl = max(2.50, min(5.00, 0.75 * curr_atr))
+            if sl_dist < min_sl: sl = ask - min_sl; sl_dist = min_sl
             if sl_dist > 18.00: sl = ask - 18.00; sl_dist = 18.00
             target_rr = opt.get("tp_ratio", 2.0)
             if custom_tp and custom_tp > ask:
@@ -2421,7 +2575,8 @@ class GoldScalpingBot:
             sl_buffer = 0.50 * sl_mult
             sl = structural_ref - sl_buffer
             sl_dist = ask - sl
-            if sl_dist < 2.50: sl = ask - 2.50; sl_dist = 2.50
+            min_sl = max(2.50, min(5.00, 0.80 * curr_atr))
+            if sl_dist < min_sl: sl = ask - min_sl; sl_dist = min_sl
             if sl_dist > 12.00: sl = ask - 12.00; sl_dist = 12.00
             target_rr = opt.get("tp_ratio", 2.0)
             tp2 = ask + (sl_dist * target_rr)
@@ -2430,7 +2585,8 @@ class GoldScalpingBot:
             sl_buffer = 0.40 * sl_mult
             sl = lowest_low - sl_buffer
             sl_dist = ask - sl
-            if sl_dist < 2.00: sl = ask - 2.00; sl_dist = 2.00
+            min_sl = max(2.00, min(4.50, 0.70 * curr_atr))
+            if sl_dist < min_sl: sl = ask - min_sl; sl_dist = min_sl
             if sl_dist > 12.00: sl = ask - 12.00; sl_dist = 12.00
             target_rr = opt.get("tp_ratio", 2.0)
             tp2 = ask + (sl_dist * target_rr)
@@ -2439,7 +2595,8 @@ class GoldScalpingBot:
             sl_buffer = 0.80 * sl_mult
             sl = lowest_low - sl_buffer
             sl_dist = ask - sl
-            if sl_dist < 2.00: sl = ask - 2.00; sl_dist = 2.00
+            min_sl = max(2.00, min(4.50, 0.70 * curr_atr))
+            if sl_dist < min_sl: sl = ask - min_sl; sl_dist = min_sl
             if sl_dist > 10.00: sl = ask - 10.00; sl_dist = 10.00
             target_rr = opt.get("tp_ratio", 2.0)
             tp2 = ask + (sl_dist * target_rr)
@@ -2448,7 +2605,8 @@ class GoldScalpingBot:
             sl_buffer = 0.45 * sl_mult
             sl = lowest_low - sl_buffer
             sl_dist = ask - sl
-            if sl_dist < 2.50: sl = ask - 2.50; sl_dist = 2.50
+            min_sl = max(2.50, min(4.50, 0.75 * curr_atr))
+            if sl_dist < min_sl: sl = ask - min_sl; sl_dist = min_sl
             if sl_dist > 9.00: sl = ask - 9.00; sl_dist = 9.00
             target_rr = opt.get("tp_ratio", 1.5)
             tp2 = ask + (sl_dist * target_rr)
@@ -2457,7 +2615,8 @@ class GoldScalpingBot:
             sl_buffer = 0.40 * sl_mult
             sl = lowest_low - sl_buffer
             sl_dist = ask - sl
-            if sl_dist < 2.50: sl = ask - 2.50; sl_dist = 2.50
+            min_sl = max(2.50, min(5.00, 0.80 * curr_atr))
+            if sl_dist < min_sl: sl = ask - min_sl; sl_dist = min_sl
             if sl_dist > 12.00: sl = ask - 12.00; sl_dist = 12.00
             target_rr = opt.get("tp_ratio", 2.0)
             tp2 = ask + (sl_dist * target_rr)
@@ -2470,24 +2629,14 @@ class GoldScalpingBot:
                 lowest_low = float(df['low'].iloc[-20:-1].min())
                 sl = lowest_low - 0.50
                 sl_dist = ask - sl
-            if sl_dist < 3.00: sl = ask - 3.00; sl_dist = 3.00
+            min_sl = max(3.00, min(5.50, 0.85 * curr_atr))
+            if sl_dist < min_sl: sl = ask - min_sl; sl_dist = min_sl
             if sl_dist > 6.00: sl = ask - 6.00; sl_dist = 6.00
             target_rr = opt.get("tp_ratio", 1.0)
             tp2 = ask + (sl_dist * target_rr)
             self._donchian_sl = None
         else:
             # News Momentum Expansion / Default (EarthETC Structural SL)
-            if len(df) >= 15:
-                hl = df['high'] - df['low']
-                hc = (df['high'] - df['close'].shift()).abs()
-                lc = (df['low'] - df['close'].shift()).abs()
-                tr = pd.concat([hl, hc, lc], axis=1).max(axis=1)
-                curr_atr = float(tr.rolling(window=14).mean().iloc[-2])
-                if math.isnan(curr_atr) or curr_atr <= 0:
-                    curr_atr = 2.50
-            else:
-                curr_atr = 2.50
-
             lowest_low = float(df['low'].iloc[-10:-1].min())
             sl_buffer = max(0.4 * curr_atr, 1.50) * sl_mult
             sl = lowest_low - sl_buffer
@@ -2538,6 +2687,18 @@ class GoldScalpingBot:
         m_info = self.get_magic_for_strategy(strat_id)
         magic_p1 = m_info["pos1"]
 
+        # Volatility metric for Dynamic ATR SL floor (Gold New Normal Rule 3)
+        if len(df) >= 15:
+            hl = df['high'] - df['low']
+            hc = (df['high'] - df['close'].shift()).abs()
+            lc = (df['low'] - df['close'].shift()).abs()
+            tr = pd.concat([hl, hc, lc], axis=1).max(axis=1)
+            curr_atr = float(tr.rolling(window=14).mean().iloc[-2])
+            if math.isnan(curr_atr) or curr_atr <= 0:
+                curr_atr = 2.50
+        else:
+            curr_atr = 2.50
+
         if is_asian_scalp or strat_id == "ASIAN_RANGE_SNIPER":
             highest_high = df['high'].iloc[-6:-1].max()
             sl_buffer = 0.40 * sl_mult
@@ -2555,7 +2716,8 @@ class GoldScalpingBot:
             sl_buffer = 0.80 * sl_mult
             sl = ob_high + sl_buffer
             sl_dist = sl - bid
-            if sl_dist < 4.50: sl = bid + 4.50; sl_dist = 4.50
+            min_sl = max(4.50, min(7.00, 0.90 * curr_atr))
+            if sl_dist < min_sl: sl = bid + min_sl; sl_dist = min_sl
             if sl_dist > 18.00: sl = bid + 18.00; sl_dist = 18.00
             tp2 = bid - (sl_dist * 2.0)
         elif strat_id.startswith("RTM_") or "RTM" in reason:
@@ -2570,7 +2732,8 @@ class GoldScalpingBot:
                 sl = highest_high + sl_buffer
                 sl_dist = sl - bid
             # EarthETC Structural SL: respect true Swing Head extreme + buffer without arbitrary 8.50 clamp
-            if sl_dist < 2.50: sl = bid + 2.50; sl_dist = 2.50
+            min_sl = max(2.50, min(5.00, 0.75 * curr_atr))
+            if sl_dist < min_sl: sl = bid + min_sl; sl_dist = min_sl
             if sl_dist > 18.00: sl = bid + 18.00; sl_dist = 18.00
             target_rr = opt.get("tp_ratio", 2.0)
             if custom_tp and custom_tp < bid:
@@ -2584,7 +2747,8 @@ class GoldScalpingBot:
             sl_buffer = 0.50 * sl_mult
             sl = structural_ref + sl_buffer
             sl_dist = sl - bid
-            if sl_dist < 2.50: sl = bid + 2.50; sl_dist = 2.50
+            min_sl = max(2.50, min(5.00, 0.80 * curr_atr))
+            if sl_dist < min_sl: sl = bid + min_sl; sl_dist = min_sl
             if sl_dist > 12.00: sl = bid + 12.00; sl_dist = 12.00
             target_rr = opt.get("tp_ratio", 2.0)
             tp2 = bid - (sl_dist * target_rr)
@@ -2593,7 +2757,8 @@ class GoldScalpingBot:
             sl_buffer = 0.40 * sl_mult
             sl = highest_high + sl_buffer
             sl_dist = sl - bid
-            if sl_dist < 2.00: sl = bid + 2.00; sl_dist = 2.00
+            min_sl = max(2.00, min(4.50, 0.70 * curr_atr))
+            if sl_dist < min_sl: sl = bid + min_sl; sl_dist = min_sl
             if sl_dist > 12.00: sl = bid + 12.00; sl_dist = 12.00
             target_rr = opt.get("tp_ratio", 2.0)
             tp2 = bid - (sl_dist * target_rr)
@@ -2602,7 +2767,8 @@ class GoldScalpingBot:
             sl_buffer = 0.80 * sl_mult
             sl = highest_high + sl_buffer
             sl_dist = sl - bid
-            if sl_dist < 2.00: sl = bid + 2.00; sl_dist = 2.00
+            min_sl = max(2.00, min(4.50, 0.70 * curr_atr))
+            if sl_dist < min_sl: sl = bid + min_sl; sl_dist = min_sl
             if sl_dist > 10.00: sl = bid + 10.00; sl_dist = 10.00
             target_rr = opt.get("tp_ratio", 2.0)
             tp2 = bid - (sl_dist * target_rr)
@@ -2611,7 +2777,8 @@ class GoldScalpingBot:
             sl_buffer = 0.45 * sl_mult
             sl = highest_high + sl_buffer
             sl_dist = sl - bid
-            if sl_dist < 2.50: sl = bid + 2.50; sl_dist = 2.50
+            min_sl = max(2.50, min(4.50, 0.75 * curr_atr))
+            if sl_dist < min_sl: sl = bid + min_sl; sl_dist = min_sl
             if sl_dist > 9.00: sl = bid + 9.00; sl_dist = 9.00
             target_rr = opt.get("tp_ratio", 1.5)
             tp2 = bid - (sl_dist * target_rr)
@@ -2620,7 +2787,8 @@ class GoldScalpingBot:
             sl_buffer = 0.40 * sl_mult
             sl = highest_high + sl_buffer
             sl_dist = sl - bid
-            if sl_dist < 2.50: sl = bid + 2.50; sl_dist = 2.50
+            min_sl = max(2.50, min(5.00, 0.80 * curr_atr))
+            if sl_dist < min_sl: sl = bid + min_sl; sl_dist = min_sl
             if sl_dist > 12.00: sl = bid + 12.00; sl_dist = 12.00
             target_rr = opt.get("tp_ratio", 2.0)
             tp2 = bid - (sl_dist * target_rr)
@@ -2633,24 +2801,14 @@ class GoldScalpingBot:
                 highest_high = float(df['high'].iloc[-20:-1].max())
                 sl = highest_high + 0.50
                 sl_dist = sl - bid
-            if sl_dist < 3.00: sl = bid + 3.00; sl_dist = 3.00
+            min_sl = max(3.00, min(5.50, 0.85 * curr_atr))
+            if sl_dist < min_sl: sl = bid + min_sl; sl_dist = min_sl
             if sl_dist > 6.00: sl = bid + 6.00; sl_dist = 6.00
             target_rr = opt.get("tp_ratio", 1.0)
             tp2 = bid - (sl_dist * target_rr)
             self._donchian_sl = None
         else:
             # News Momentum Expansion / Default (EarthETC Structural SL)
-            if len(df) >= 15:
-                hl = df['high'] - df['low']
-                hc = (df['high'] - df['close'].shift()).abs()
-                lc = (df['low'] - df['close'].shift()).abs()
-                tr = pd.concat([hl, hc, lc], axis=1).max(axis=1)
-                curr_atr = float(tr.rolling(window=14).mean().iloc[-2])
-                if math.isnan(curr_atr) or curr_atr <= 0:
-                    curr_atr = 2.50
-            else:
-                curr_atr = 2.50
-
             highest_high = float(df['high'].iloc[-10:-1].max())
             sl_buffer = max(0.4 * curr_atr, 1.50) * sl_mult
             sl = highest_high + sl_buffer
