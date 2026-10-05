@@ -1,57 +1,76 @@
 # 🧠 ANTIGRAVITY MASTER PROJECT CONTEXT & HANDOVER MEMORY
-**Last Updated**: 2026-09-07 (Asia/Bangkok)
+**Last Updated**: 2026-10-05 16:30 (Asia/Bangkok)
 **Project Owner**: @TOM (satochitom-stack)
+**Active Repository**: `https://github.com/satochitom-stack/XAUUSD_Scalping_M5_Webapp`
 
-> 📌 **คำสั่งสำหรับ AI / Antigravity บนเครื่องอื่น (เช่น เครื่องที่บ้าน / โน๊ตบุค)**:
-> เมื่อผู้ใช้เปิดโปรเจกต์นี้บนเครื่องที่บ้าน ให้อ่านเอกสารนี้เป็นอันดับแรก จะเข้าใจบริบททั้งหมด 100% ทันทีโดยที่ผู้ใช้ไม่ต้องอธิบายซ้ำ สามารถคุยงาน วิเคราะห์ผล และพัฒนาระบบต่อได้อย่างไร้รอยต่อ!
-
----
-
-## 1. ภาพรวมระบบ (System Architecture Overview)
-ระบบถูกแยกออกเป็น **2 โลกที่ทำงานอิสระจากกันอย่างเด็ดขาด** เพื่อความปลอดภัยของพอร์ต:
-
-### โลกที่ 1: บอทเทรดทองคำอัตโนมัติ (Automated Scalping Bot)
-* **รันอยู่ที่**: บน **Cloud VPS สิงคโปร์** (`139.180.157.124:12308`, FastAPI port `8000`)
-* **บัญชี MT5 บอท**: Exness Cent `#159415028` (`Exness-MT5Real20`)
-* **เว็บแอพแดชบอร์ดบอท**: [https://bot-intelligence-hub.vercel.app/](https://bot-intelligence-hub.vercel.app/)
-  * เชื่อมต่อดึงข้อมูลสดผ่าน Vercel Proxy (`/api/bot-proxy`) ไปที่ VPS IP `139.180.157.124:8000`
-  * Secret Access Token: `GOLD_VIP_2026`
-* **Repositories**: 
-  - Backend/VPS: `https://github.com/satochitom-stack/XAUUSD_Scalping_M5_Webapp`
-  - Frontend Dashboard: `https://github.com/satochitom-stack/bot-intelligence-hub`
-
-### โลกที่ 2: สมุดบันทึกการเทรดมือ (Manual Trading Journal - FXLOG PRO)
-* **รันอยู่ที่**: บน **เครื่องคอมพิวเตอร์ของคุณ @TOM** (เครื่องที่บ้าน / เครื่องที่ทำงาน)
-* **บัญชี MT5 เทรดมือ**: Exness Cent `#257508244` (`Exness-MT5Real36`)
-* **เว็บแอพบันทึกการเทรด**: [https://trade-journal-1.vercel.app/](https://trade-journal-1.vercel.app/)
-  * ดึงประวัติไม้ปิด (`/api/journal/closed_trades`) และไม้วิ่งสด (`/api/journal/open_positions`) ผ่าน `http://127.0.0.1:8000`
-  * **ตัวเชื่อมในเครื่อง**: ไฟล์ `run_fxlog_bridge.py` / `run_fxlog_bridge.bat` (อยู่ใน `XAUUSD_Scalping_M5_Webapp`)
-  * **ความปลอดภัย**: เป็น **Read-Only Bridge** เท่านั้น (ไม่มีระบบบอท ไม่มีโค้ดส่งออเดอร์เด็ดขาด ปลอดภัยต่อพอร์ตเทรดมือ 100%)
-* **Repository**: `https://github.com/satochitom-stack/fxlog-pro-v1`
+> 📌 **คำสั่งสำหรับ AI / Antigravity ประจำเครื่องที่บ้าน (Home PC Antigravity)**:
+> เมื่อผู้ใช้เปิดโปรเจกต์นี้บนเครื่องที่บ้าน ให้อ่านเอกสารนี้เป็นอันดับแรก จะเข้าใจบริบทและสถานะล่าสุดของระบบ 100% ทันทีโดยที่ผู้ใช้ไม่ต้องเล่าซ้ำ สามารถร่วมงาน ตรวจสอบบอท และพัฒนาต่อได้ทันที!
 
 ---
 
-## 2. ทำเนียบกลยุทธ์บอทอัตโนมัติ 8 เซตอัพ (Active 8 Strategy Catalog)
+## 1. สถานะสถาปัตยกรรมปัจจุบัน (Current Architecture - Local MT5 Direct Mode)
 
-| **1** | **🎯 Signature Pullback (#PullBack ร้อยล้าน)** *(ใหม่ล่าสุด)* | **M5** | `555860` - `555863` | **กลยุทธ์ 3-Confluence จากหนังสือ #PullBack ร้อยล้าน (พี่เอก / Trader Overseas)**<br>• รอคลื่น Impulse ทะลุโครงสร้าง แล้วย่อตัวเข้า 3-Confluence Zone:<br>&nbsp;&nbsp;1) Retest เส้น EMA 60<br>&nbsp;&nbsp;2) Fibonacci Retracement 38.2% - 61.8%<br>&nbsp;&nbsp;3) S/R Flip แนวรับต้านเดิมที่เบรกทะลุ<br>• แท่งเทียนทริกเกอร์: Pinbar Rejection $\ge 45\%$ หรือ Engulfing<br>• **การบริหารออเดอร์ (แบบที่ 3)**: **ความเสี่ยง Step-Up 2.0%** แบ่งปิด 50% ที่ 1.5R ยกกันทุน (BE) แล้วรันเทรนด์ด้วย **EMA 60 Trailing Stop** |
-| **2** | **🛡️ RTM Quasimodo M4 (Conservative)** | **M15** | `777004`, `777014`.. | **RTM Quasimodo Confluence เกรด A/A+**<br>• โครงสร้าง QM + Kill Zones + Fib 61.8-78.6%<br>• **ความเสี่ยง Step-Up 2.0%**, TP 2.0R ล็อกทุน 1.0R |
-| **3** | **👑 RTM Quasimodo M6 (Elite Growth)** | **M15** | `777006`, `777016`.. | **RTM Elite Confluence คัดหัวกะทิ A/A+**<br>• คัดเฉพาะไม้คุณภาพสูง A, A+ **ความเสี่ยง Step-Up 2.0%**, TP 2.0R ล็อกทุน 1.0R |
-| **4** | **😈 SMC x STO Devil (H1)** | **H1** | `555770` - `555773` | **ระบบปีศาจ SMC x Stochastic (SMC by Bossz)**<br>• กรองเทรนด์ H1 + โซน Discount/Premium + Order Block + Stochastic<br>• **ความเสี่ยงคงที่ 1.0%**, TP 1:2.2, Safe SL 500-900 จุด |
-| **5** | **⚡ News Momentum Expansion** | **M5** | `555890` - `555893` | ดักจับแท่ง Breakout ข่าวกล่องแดง + EarthETC SL (**ความเสี่ยง 0.5% ป้องกันพอร์ต**) |
-| **6** | **⛩️ Asian Range Sniper** | **M5** | `555820` - `555823` | สไนเปอร์กรอบไซด์เวย์ (Mean Reversion) กรองเทรนด์ (**ความเสี่ยง 0.5% ป้องกันพอร์ต**) |
-| **-** | **📦 เซตอัพที่เลิกใช้ (RETIRED_SETUPS)** | - | M5, M7, Legacy | ปลดระวาง RTM M5, M7 และเซตอัพเก่า รวมสถิติเพื่อความโปร่งใส ปิดรับออเดอร์ใหม่ 100% |
+เนื่องจากผู้ใช้หยุดเช่า VPS เพื่อประหยัดค่าใช้จ่าย ระบบจึงถูกปรับเปลี่ยนมารันบน **เครื่องคอมพิวเตอร์โดยตรง (Local PC Mode)**:
+
+### 🤖 1. ระบบบอทเทรดทองคำอัตโนมัติ (Automated Scalping Bot)
+* **รันอยู่ที่**: บนคอมพิวเตอร์ของผู้ใช้โดยตรง (Local Python Daemon Server)
+* **พอร์ตบอท**: Exness Cent `#159415028` (`Exness-MT5Real20`)
+* **MT5 Terminal Path**: `C:\Program Files\MetaTrader 5 EXNESS\terminal64.exe`
+* **Server Port**: `http://localhost:8000` (FastAPI + Uvicorn)
+* **Access Token**: `GOLD_VIP_2026`
+* **ตัวเปิดบอทอัตโนมัติ 1-Click**: ไฟล์ `START_BOT.bat` (มีคำสั่ง `git pull origin main` ซิงค์โค้ดอัตโนมัติก่อนรันบอทเสมอ)
+
+### ✍️ 2. ระบบบันทึกการเทรดมือ (Manual Trading Journal - FXLOG PRO)
+* **พอร์ตเทรดมือ**: Exness Cent `#257508244` (`Exness-MT5Real36`)
+* **MT5 Terminal Path**: `C:\Users\Windows11\AppData\Local\Programs\MetaTrader 5 EXNESS 2\terminal64.exe`
+* **เว็บแอพบันทึก**: [https://trade-journal-1.vercel.app/](https://trade-journal-1.vercel.app/)
+* **Bridge Port แยกอิสระ**: ย้ายไปที่ Port `8001` (ไฟล์ `run_fxlog_bridge.py`) เพื่อป้องกันไม่ให้ทับซ้อนกับ Webapp หลัก Port `8000`
 
 ---
 
-## 3. สรุปการปรับปรุงระบบและโค้ดล่าสุด (Latest Updates)
-1. **ปลดระวาง M5 และ M7**: ตัดออกจาก `bot_engine.py` และ `config.json` เหลือ 6 เซตอัพหลัก (`max_concurrent_setups: 6`)
-2. **บรรจุเซตอัพดร.เอก**: เพิ่มกลยุทธ์ `PULLBACK_DR_EKK` สมบูรณ์ทั้งระบบ Indicator, Trigger, Trailing และคำนวณ Lot Step-Up 2.0%
-3. **จัดหมวดหมู่ประวัติ**: รวมประวัติไม้เทรดเก่าของ M5, M7, และ Legacy เข้าสู่ `📦 เซตอัพที่เลิกใช้` ในระบบ Analytics และหน้า Dashboard
-4. **Unit Tests & Build**: ผ่านครบ 39/39 ข้อ และคอมไพล์ Frontend ผ่าน 100%
+## 2. การแยกพอร์ตถาวร (Account Isolation & Drift Prevention)
+* **ปัญหาที่เคยพบ**: ฟังก์ชันดึง Journal เคยสลับ MT5 ไปที่พอร์ตเทรดมือ `#257508244` ทำให้บอทเข้าใจผิดว่าติดเป้า Daily Target และเกือบยิงออเดอร์ผิดพอร์ต
+* **วิธีแก้ที่ทำเสร็จแล้ว**:
+  1. ใน `mt5_connector.py`: ล็อก `self.target_account = 159415028` ถาวร ใน `ensure_connected()` ถ้าตรวจพบการหลุดไปพอร์ตอื่น จะ Disconnect แล้ว Re-attach กลับมาที่ `#159415028` ทันที
+  2. ใน `strategy_analytics.py`: เพิ่มบล็อก `finally:` ให้สลับกลับมาที่ MT5 Terminal ของบอทเสมอ และตัดเงื่อนไข `or True` ออกทั้งหมด
+  3. ใน `account_manager.py`: เมธอด `to_dict()` รายงาน Login ของบอทตามพอร์ตที่คอนฟิกไว้เสมอ
 
 ---
 
-## 4. คำสั่งสำหรับ AI ฝั่ง VPS (Prompt for VPS Antigravity)
-เมื่อเปิด Antigravity บน VPS ให้เปิดโฟลเดอร์โปรเจกต์ `XAUUSD_Scalping_M5_Webapp` แล้วส่งคำสั่งนี้ในหน้าต่างแชท:
+## 3. ระบบความปลอดภัยทองคำยุคใหม่ (Gold New Normal Rules)
+ปรับปรุงรับมือทองคำผันผวนสูง (วิ่งวันละ $50-$150 และชอบสะบัดกินไส้):
+1. **Liquidity Sweep Zones (`get_market_liquidity_levels`)**: บล็อกการ Buy จ่อใต้แนว PDH/Asian High/EQH และบล็อกการ Sell เหนือแนว PDL/Asian Low/EQL
+2. **Strict Rejection Confirmation**: แท่งเทียนสัญญาณต้องมีไส้ฝั่งตรงข้าม $\le 30-40\%$ และมีเนื้อแท่งเทียน Solid Body $\ge 35\%$ เพื่อกรองแท่ง False Breakout
+3. **Dynamic ATR SL Floor**: ฐาน Stop Loss ลอยตัวตามความผันผวน $\text{SL Floor} = \max(2.50, \min(5.00, 0.8 \times \text{ATR}))$
 
-> *"คุณคือ AI Autonomous Analyst & Sentinel ประจำบอทเทรด XAUUSD บน VPS นี้ ให้อ่านไฟล์ `PROJECT_CONTEXT_HANDOVER.md` และ `walkthrough.md` เพื่อรับบริบทระบบทั้งหมด 100% จากนั้นช่วยตรวจสอบสถานะปัจจุบันของบอท: 1) ตรวจสอบว่า `bot_engine.py` และ MT5 ทำงานปกติหรือไม่ 2) ตรวจสอบไม้ที่เปิดอยู่ (Active Positions) 3) สรุปผลงานของ 6 เซตอัพหลักและหมวดเซตอัพที่เลิกใช้ พร้อมทำหน้าที่เป็น Daily Auditor คอยมอนิเตอร์และวิเคราะห์ไม้แพ้เพื่อปรับปรุงระบบให้ดียิ่งขึ้นตามรอบเวลา"*
+---
+
+## 4. อัปเกรดระบบด้วย MTRADERS ATR Trading Framework
+ผสานหลักการ **ATR Trading 11 ข้อ** ลงใน `bot_engine.py`:
+1. **Dynamic ATR SL Buffer (ข้อ 4)**:
+   - เปลี่ยนจาก Buffer คงที่ ($0.30) เป็น $\text{SL Buffer} = \max(0.40, \min(1.25, 0.25 \times \text{ATR}))$
+   - ช่วยให้เซตอัพ Swing เช่น `EW_WAVE3_BREAKER` และ `PULLBACK_DR_EKK` ไม่โดนสะบัดกิน SL ก่อนวิ่งถูกทาง
+2. **ATR Overextension Guard (ข้อ 2 & 6)**:
+   - ถ้าราคาพุ่งห่างจาก EMA50 เกิน $2.0 \times \text{ATR}$ บอทจะบล็อกการ Buy/Sell ปลายคลื่นทันที เพื่อไม่ให้ติดดอย/ติดเหว
+3. **ATR TP Feasibility Clamp (ข้อ 5)**:
+   - แก้ปัญหากราฟไปไม่ถึง TP แล้วย้อนกลับมากิน Break-Even โดยถ้าเป้า TP ไกลเกิน $2.5 \times \text{ATR}$ บอทจะ Clamp ระยะ TP ลงมาในระยะที่แตะถึงได้จริงในรอบ M5 นั้น
+4. **Dynamic Pyramiding Step (ข้อ 8)**:
+   - กำหนดระยะเพิ่มไม้รันเทรนด์ขั้นต่ำที่ $1.0 \times \text{ATR}$
+
+---
+
+## 5. สถานะการทดสอบ (Test Verification)
+* **Unit Tests ทั้งหมด**: `109 / 109 Passed 100%` (`python -m pytest tests/ -v`)
+* ครอบคลุม: Setup Triggers, Risk Isolation, ATR Rules, Account Switching, Trailing, Pyramiding, และ Benchmark Comparison
+
+---
+
+## 6. คำสั่งสำหรับเปิดงานที่เครื่องที่บ้าน (Prompt for Home Antigravity)
+
+เมื่อคุณเปิด Antigravity บนเครื่องที่บ้าน ให้ก๊อปปี้ข้อความนี้ส่งให้ AI ได้เลย:
+
+```text
+สวัสดีครับ ผมเปิดโปรเจกต์ XAUUSD_Scalping_M5_Webapp ที่เครื่องบ้านแล้ว
+ช่วยอ่านไฟล์ PROJECT_CONTEXT_HANDOVER.md และตรวจสอบ git pull ล่าสุด
+จากนั้นตรวจสอบสถานะบอทและ MT5 บัญชี 159415028 ให้ทีครับ ว่าพร้อมรันหรือไม่
+```
