@@ -754,7 +754,7 @@ async def get_closed_trades_for_journal(
     return await export_trades_for_journal(days=days, mode=mode, user=user)
 
 @app.get("/api/journal/rebates")
-async def get_rebates_endpoint(days: int = 90):
+async def get_rebates_endpoint(days: int = 180):
     rebates = account_manager.analytics.fetch_rebate_history(days=days)
     total_rebates = round(sum(r["amount"] for r in rebates), 2)
     return {
@@ -763,6 +763,21 @@ async def get_rebates_endpoint(days: int = 90):
         "total_rebates": total_rebates,
         "rebates": rebates
     }
+
+@app.get("/api/journal/transactions")
+async def get_transactions_for_journal(days: int = Query(180, description="Days of history")):
+    """Fetch deposit and withdrawal transactions from MT5 deal history."""
+    try:
+        txs = account_manager.analytics.fetch_transactions_for_journal(days=days)
+        return {
+            "status": True,
+            "count": len(txs),
+            "transactions": txs
+        }
+    except Exception as e:
+        logger.error(f"Error fetching transactions for journal: {e}")
+        return JSONResponse(status_code=500, content={"status": False, "error": str(e), "transactions": []})
+
 
 @app.get("/api/system/version")
 async def get_system_version():

@@ -253,13 +253,17 @@ class RealTradeAnalyticsManager:
         transactions = []
         if not MT5_AVAILABLE:
             return transactions
+        bot_mt5_path = r"C:\Program Files\MetaTrader 5 EXNESS\terminal64.exe"
+        manual_mt5_path = r"C:\Users\Windows11\AppData\Local\Programs\MetaTrader 5 EXNESS 2\terminal64.exe"
+        prev_login = getattr(mt5.account_info(), 'login', 0) if (mt5.terminal_info() and mt5.account_info()) else 0
+        switched = False
         try:
-            manual_mt5_path = r"C:\Users\Windows11\AppData\Local\Programs\MetaTrader 5 EXNESS 2\terminal64.exe"
-            if os.path.exists(manual_mt5_path) and (not mt5.terminal_info() or getattr(mt5.account_info(), 'login', 0) != 257508244):
+            if os.path.exists(manual_mt5_path) and prev_login != 257508244:
                 mt5.shutdown()
                 mt5.initialize(path=manual_mt5_path)
+                switched = True
             elif not mt5.terminal_info():
-                mt5.initialize()
+                mt5.initialize(path=bot_mt5_path) if os.path.exists(bot_mt5_path) else mt5.initialize()
 
             from_date = datetime.now() - timedelta(days=days)
             to_date = datetime.now() + timedelta(days=1)
@@ -288,6 +292,10 @@ class RealTradeAnalyticsManager:
                 transactions.sort(key=lambda x: x["date"], reverse=True)
         except Exception as e:
             logger.error(f"Error fetching transactions for journal: {e}")
+        finally:
+            if switched and os.path.exists(bot_mt5_path):
+                mt5.shutdown()
+                mt5.initialize(path=bot_mt5_path)
         return transactions
 
     def fetch_trades_for_journal(self, days: int = 180, mode: str = "auto", user: Optional[str] = None) -> List[dict]:
@@ -302,17 +310,23 @@ class RealTradeAnalyticsManager:
         if not MT5_AVAILABLE:
             return journal_trades
 
+        bot_mt5_path = r"C:\Program Files\MetaTrader 5 EXNESS\terminal64.exe"
+        manual_mt5_path = r"C:\Users\Windows11\AppData\Local\Programs\MetaTrader 5 EXNESS 2\terminal64.exe"
+        prev_login = getattr(mt5.account_info(), 'login', 0) if (mt5.terminal_info() and mt5.account_info()) else 0
+        switched = False
+
         try:
-            manual_mt5_path = r"C:\Users\Windows11\AppData\Local\Programs\MetaTrader 5 EXNESS 2\terminal64.exe"
             is_manual_request = (mode and mode.lower() == "manual") or (user and ("tom" in user.lower() or "manual" in user.lower()))
 
             if is_manual_request and os.path.exists(manual_mt5_path):
-                if not mt5.terminal_info() or getattr(mt5.account_info(), 'login', 0) != 257508244:
+                if not mt5.terminal_info() or prev_login != 257508244:
                     mt5.shutdown()
                     mt5.initialize(path=manual_mt5_path)
+                    switched = True
             else:
-                if not mt5.terminal_info():
-                    mt5.initialize()
+                if not mt5.terminal_info() or (prev_login != 159415028 and os.path.exists(bot_mt5_path)):
+                    mt5.shutdown()
+                    mt5.initialize(path=bot_mt5_path)
 
             acc_info = mt5.account_info()
             active_login = acc_info.login if acc_info else 0
@@ -547,6 +561,10 @@ class RealTradeAnalyticsManager:
 
         except Exception as e:
             logger.error(f"Error fetching trades for journal: {e}")
+        finally:
+            if switched and os.path.exists(bot_mt5_path):
+                mt5.shutdown()
+                mt5.initialize(path=bot_mt5_path)
 
         # Sort descending by close date
         journal_trades.sort(key=lambda x: x["closeDate"], reverse=True)
@@ -561,17 +579,23 @@ class RealTradeAnalyticsManager:
         if not MT5_AVAILABLE:
             return open_trades
 
+        bot_mt5_path = r"C:\Program Files\MetaTrader 5 EXNESS\terminal64.exe"
+        manual_mt5_path = r"C:\Users\Windows11\AppData\Local\Programs\MetaTrader 5 EXNESS 2\terminal64.exe"
+        prev_login = getattr(mt5.account_info(), 'login', 0) if (mt5.terminal_info() and mt5.account_info()) else 0
+        switched = False
+
         try:
-            manual_mt5_path = r"C:\Users\Windows11\AppData\Local\Programs\MetaTrader 5 EXNESS 2\terminal64.exe"
-            is_manual_request = (user and ("tom" in user.lower() or "manual" in user.lower())) or True # default to manual if available
+            is_manual_request = bool(user and ("tom" in user.lower() or "manual" in user.lower()))
 
             if is_manual_request and os.path.exists(manual_mt5_path):
-                if not mt5.terminal_info() or getattr(mt5.account_info(), 'login', 0) != 257508244:
+                if not mt5.terminal_info() or prev_login != 257508244:
                     mt5.shutdown()
                     mt5.initialize(path=manual_mt5_path)
+                    switched = True
             else:
-                if not mt5.terminal_info():
-                    mt5.initialize()
+                if not mt5.terminal_info() or (prev_login != 159415028 and os.path.exists(bot_mt5_path)):
+                    mt5.shutdown()
+                    mt5.initialize(path=bot_mt5_path)
 
             positions = mt5.positions_get()
             if not positions:
@@ -638,6 +662,10 @@ class RealTradeAnalyticsManager:
         except Exception as e:
             logger.error(f"Error fetching open positions for journal: {e}")
             return []
+        finally:
+            if switched and os.path.exists(bot_mt5_path):
+                mt5.shutdown()
+                mt5.initialize(path=bot_mt5_path)
 
     def _classify_deal_strategy(self, deal) -> str:
         """Classify deal into respective active strategy or retired setups."""

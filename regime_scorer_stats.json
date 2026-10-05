@@ -1,9 +1,72 @@
 {
   "threshold": 55,
   "is_enabled": true,
-  "saved_junk_trades": 37,
-  "last_updated": "2026-09-16T08:32:34.196329",
+  "saved_junk_trades": 46,
+  "last_updated": "2026-10-05T13:37:32.550379",
   "recent_evaluations": [
+    {
+      "time": "13:37:32",
+      "setup": "RTM_M4_CONSERVATIVE",
+      "score": 40,
+      "grade": "D",
+      "reason": "Score 40 < 55 | Low Volume Filter"
+    },
+    {
+      "time": "10:22:51",
+      "setup": "RTM_M4_CONSERVATIVE",
+      "score": 40,
+      "grade": "D",
+      "reason": "Score 40 < 55 | Low Volume Filter"
+    },
+    {
+      "time": "10:21:53",
+      "setup": "RTM_M4_CONSERVATIVE",
+      "score": 40,
+      "grade": "D",
+      "reason": "Score 40 < 55 | Low Volume Filter"
+    },
+    {
+      "time": "10:21:25",
+      "setup": "RTM_M4_CONSERVATIVE",
+      "score": 40,
+      "grade": "D",
+      "reason": "Score 40 < 55 | Low Volume Filter"
+    },
+    {
+      "time": "10:21:02",
+      "setup": "RTM_M4_CONSERVATIVE",
+      "score": 40,
+      "grade": "D",
+      "reason": "Score 40 < 55 | Low Volume Filter"
+    },
+    {
+      "time": "10:20:42",
+      "setup": "RTM_M4_CONSERVATIVE",
+      "score": 40,
+      "grade": "D",
+      "reason": "Score 40 < 55 | Low Volume Filter"
+    },
+    {
+      "time": "10:16:25",
+      "setup": "RTM_M4_CONSERVATIVE",
+      "score": 40,
+      "grade": "D",
+      "reason": "Score 40 < 55 | Low Volume Filter"
+    },
+    {
+      "time": "15:01:09",
+      "setup": "RTM_M4_CONSERVATIVE",
+      "score": 40,
+      "grade": "D",
+      "reason": "Score 40 < 55 | Low Volume Filter"
+    },
+    {
+      "time": "11:25:55",
+      "setup": "RTM_M4_CONSERVATIVE",
+      "score": 40,
+      "grade": "D",
+      "reason": "Score 40 < 55 | Low Volume Filter"
+    },
     {
       "time": "08:32:34",
       "setup": "RTM_M4_CONSERVATIVE",

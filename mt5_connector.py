@@ -31,6 +31,7 @@ class MT5Connector:
         self.magic_number = self.config.get("magic_number", 555888)
         self.is_connected = False
         self.simulation_mode = self.config.get("simulation_mode", False)
+        self.target_account = int(self.account) if self.account else 0
         
         # Real-time state cache
         self.live_currency = "USD"
@@ -44,56 +45,76 @@ class MT5Connector:
             return False
 
         try:
-            # 1. First, attempt to attach to already running visible MT5 GUI terminal
+            # Check if MT5 is already attached to our target account
+            curr_acc = mt5.account_info() if mt5.terminal_info() else None
+            if curr_acc is not None:
+                if self.target_account <= 0 or curr_acc.login == self.target_account:
+                    self.is_connected = True
+                    self.account = curr_acc.login
+                    self.server = curr_acc.server
+                    self.live_currency = curr_acc.currency
+                    logger.info(f"✅ Already attached to target MT5 #{curr_acc.login} ({curr_acc.server}) | Balance: {curr_acc.balance:,.2f} {curr_acc.currency}")
+                    return True
+                else:
+                    logger.warning(f"Active MT5 session is on #{curr_acc.login}, expected #{self.target_account}. Re-initializing with target path...")
+                    mt5.shutdown()
+
+            # 1. First, attempt to attach to target MT5 terminal by path
             if self.path and os.path.exists(self.path):
                 init_ok = mt5.initialize(path=self.path)
             else:
                 init_ok = mt5.initialize()
 
-            if init_ok and mt5.account_info() is not None:
-                acc_info = mt5.account_info()
-                # If target account is configured and differs from active GUI account, switch to target
-                if self.account > 0 and self.password and self.server and acc_info.login != int(self.account):
-                    logger.info(f"Active MT5 GUI is on #{acc_info.login}, switching to configured account #{self.account} ({self.server})...")
-                    if mt5.login(int(self.account), password=self.password, server=self.server):
-                        acc_info = mt5.account_info()
-
-                self.is_connected = True
-                self.account = acc_info.login
-                self.server = acc_info.server
-                self.live_currency = acc_info.currency
-                logger.info(f"✅ Successfully attached to active MT5 GUI Window #{acc_info.login} ({acc_info.server}) | Balance: {acc_info.balance:,.2f} {acc_info.currency}")
-                return True
-
-            # 2. Fallback explicit login
-            if not init_ok and self.account > 0 and self.password and self.server:
-                if self.path and os.path.exists(self.path):
-                    init_ok = mt5.initialize(
-                        path=self.path,
-                        login=int(self.account),
-                        password=self.password,
-                        server=self.server
-                    )
-                else:
-                    init_ok = mt5.initialize(
-                        login=int(self.account),
-                        password=self.password,
-                        server=self.server
-                    )
-
             if init_ok:
                 acc_info = mt5.account_info()
                 if acc_info is not None:
-                    self.is_connected = True
-                    self.account = acc_info.login
-                    self.server = acc_info.server
-                    self.live_currency = acc_info.currency
-                    logger.info(f"✅ Successfully attached to live MT5 Account #{acc_info.login} ({acc_info.server}) | Balance: {acc_info.balance:,.2f} {acc_info.currency}")
-                    return True
+                    # If target account differs from active account, login to target
+                    if self.target_account > 0 and acc_info.login != self.target_account:
+                        if self.password and self.server:
+                            logger.info(f"Switching MT5 #{acc_info.login} -> configured account #{self.target_account} ({self.server})...")
+                            if mt5.login(self.target_account, password=self.password, server=self.server):
+                                acc_info = mt5.account_info()
+
+                    if self.target_account <= 0 or (acc_info and acc_info.login == self.target_account):
+                        self.is_connected = True
+                        self.account = acc_info.login
+                        self.server = acc_info.server
+                        self.live_currency = acc_info.currency
+                        logger.info(f"✅ Successfully attached to active MT5 GUI Window #{acc_info.login} ({acc_info.server}) | Balance: {acc_info.balance:,.2f} {acc_info.currency}")
+                        return True
+                    else:
+                        logger.error(f"❌ Target account mismatch: expected #{self.target_account}, current MT5 is #{getattr(acc_info, 'login', None)}")
+
+            # 2. Fallback explicit login with credentials
+            if self.target_account > 0 and self.password and self.server:
+                mt5.shutdown()
+                if self.path and os.path.exists(self.path):
+                    init_ok = mt5.initialize(
+                        path=self.path,
+                        login=self.target_account,
+                        password=self.password,
+                        server=self.server
+                    )
                 else:
-                    logger.warning(f"Attached to MT5, but account_info() is None: {mt5.last_error()}")
-            else:
-                logger.warning(f"Could not initialize MT5: {mt5.last_error()}")
+                    init_ok = mt5.initialize(
+                        login=self.target_account,
+                        password=self.password,
+                        server=self.server
+                    )
+
+                if init_ok:
+                    acc_info = mt5.account_info()
+                    if acc_info is not None and (self.target_account <= 0 or acc_info.login == self.target_account):
+                        self.is_connected = True
+                        self.account = acc_info.login
+                        self.server = acc_info.server
+                        self.live_currency = acc_info.currency
+                        logger.info(f"✅ Successfully attached to live MT5 Account #{acc_info.login} ({acc_info.server}) | Balance: {acc_info.balance:,.2f} {acc_info.currency}")
+                        return True
+                    else:
+                        logger.warning(f"Attached to MT5, but account mismatch or account_info is None: {mt5.last_error()}")
+                else:
+                    logger.warning(f"Could not initialize MT5: {mt5.last_error()}")
 
         except Exception as e:
             logger.error(f"Error connecting to MT5: {e}")
@@ -102,14 +123,17 @@ class MT5Connector:
         return False
 
     def ensure_connected(self):
-        """Ensure connection is active, auto-reconnecting if MT5 was restarted."""
+        """Ensure connection is active and attached to target account."""
         if not MT5_AVAILABLE:
             return False
         try:
-            acc = mt5.account_info()
+            acc = mt5.account_info() if mt5.terminal_info() else None
             if acc is not None:
-                self.is_connected = True
-                return True
+                if self.target_account <= 0 or acc.login == self.target_account:
+                    self.is_connected = True
+                    return True
+                else:
+                    logger.warning(f"MT5 account drift detected! Expected #{self.target_account}, found #{acc.login}. Re-attaching...")
         except Exception:
             pass
         return self.connect()
