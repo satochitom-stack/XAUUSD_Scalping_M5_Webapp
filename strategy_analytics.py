@@ -253,8 +253,10 @@ class RealTradeAnalyticsManager:
         transactions = []
         if not MT5_AVAILABLE:
             return transactions
-        bot_mt5_path = r"C:\Program Files\MetaTrader 5 EXNESS\terminal64.exe"
-        manual_mt5_path = r"C:\Users\Windows11\AppData\Local\Programs\MetaTrader 5 EXNESS 2\terminal64.exe"
+        copy_p = r"C:\Program Files\MetaTrader 5 EXNESS - Copy\terminal64.exe"
+        bot_mt5_path = copy_p if os.path.exists(copy_p) else r"C:\Program Files\MetaTrader 5 EXNESS\terminal64.exe"
+        w11_p = r"C:\Users\Windows11\AppData\Local\Programs\MetaTrader 5 EXNESS 2\terminal64.exe"
+        manual_mt5_path = w11_p if os.path.exists(w11_p) else r"C:\Program Files\MetaTrader 5 EXNESS\terminal64.exe"
         prev_login = getattr(mt5.account_info(), 'login', 0) if (mt5.terminal_info() and mt5.account_info()) else 0
         switched = False
         try:
@@ -314,8 +316,10 @@ class RealTradeAnalyticsManager:
         if not MT5_AVAILABLE:
             return journal_trades
 
-        bot_mt5_path = r"C:\Program Files\MetaTrader 5 EXNESS\terminal64.exe"
-        manual_mt5_path = r"C:\Users\Windows11\AppData\Local\Programs\MetaTrader 5 EXNESS 2\terminal64.exe"
+        copy_p = r"C:\Program Files\MetaTrader 5 EXNESS - Copy\terminal64.exe"
+        bot_mt5_path = copy_p if os.path.exists(copy_p) else r"C:\Program Files\MetaTrader 5 EXNESS\terminal64.exe"
+        w11_p = r"C:\Users\Windows11\AppData\Local\Programs\MetaTrader 5 EXNESS 2\terminal64.exe"
+        manual_mt5_path = w11_p if os.path.exists(w11_p) else r"C:\Program Files\MetaTrader 5 EXNESS\terminal64.exe"
         prev_login = getattr(mt5.account_info(), 'login', 0) if (mt5.terminal_info() and mt5.account_info()) else 0
         switched = False
 
@@ -583,8 +587,10 @@ class RealTradeAnalyticsManager:
         if not MT5_AVAILABLE:
             return open_trades
 
-        bot_mt5_path = r"C:\Program Files\MetaTrader 5 EXNESS\terminal64.exe"
-        manual_mt5_path = r"C:\Users\Windows11\AppData\Local\Programs\MetaTrader 5 EXNESS 2\terminal64.exe"
+        copy_p = r"C:\Program Files\MetaTrader 5 EXNESS - Copy\terminal64.exe"
+        bot_mt5_path = copy_p if os.path.exists(copy_p) else r"C:\Program Files\MetaTrader 5 EXNESS\terminal64.exe"
+        w11_p = r"C:\Users\Windows11\AppData\Local\Programs\MetaTrader 5 EXNESS 2\terminal64.exe"
+        manual_mt5_path = w11_p if os.path.exists(w11_p) else r"C:\Program Files\MetaTrader 5 EXNESS\terminal64.exe"
         prev_login = getattr(mt5.account_info(), 'login', 0) if (mt5.terminal_info() and mt5.account_info()) else 0
         switched = False
 

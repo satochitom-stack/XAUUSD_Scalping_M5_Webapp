@@ -15,14 +15,14 @@
 ### 🤖 1. ระบบบอทเทรดทองคำอัตโนมัติ (Automated Scalping Bot)
 * **รันอยู่ที่**: บนคอมพิวเตอร์ของผู้ใช้โดยตรง (Local Python Daemon Server)
 * **พอร์ตบอท**: Exness Cent `#159415028` (`Exness-MT5Real20`)
-* **MT5 Terminal Path**: `C:\Program Files\MetaTrader 5 EXNESS\terminal64.exe`
+* **MT5 Terminal Path**: `C:\Program Files\MetaTrader 5 EXNESS - Copy\terminal64.exe` (สัญลักษณ์วงกลม 3 วงซ้อนกัน)
 * **Server Port**: `http://localhost:8000` (FastAPI + Uvicorn)
 * **Access Token**: `GOLD_VIP_2026`
 * **ตัวเปิดบอทอัตโนมัติ 1-Click**: ไฟล์ `START_BOT.bat` (มีคำสั่ง `git pull origin main` ซิงค์โค้ดอัตโนมัติก่อนรันบอทเสมอ)
 
 ### ✍️ 2. ระบบบันทึกการเทรดมือ (Manual Trading Journal - FXLOG PRO)
 * **พอร์ตเทรดมือ**: Exness Cent `#257508244` (`Exness-MT5Real36`)
-* **MT5 Terminal Path**: `C:\Users\Windows11\AppData\Local\Programs\MetaTrader 5 EXNESS 2\terminal64.exe`
+* **MT5 Terminal Path**: `C:\Program Files\MetaTrader 5 EXNESS\terminal64.exe` (สัญลักษณ์รูปสีเหลือง Exness)
 * **เว็บแอพบันทึก**: [https://trade-journal-1.vercel.app/](https://trade-journal-1.vercel.app/)
 * **Bridge Port แยกอิสระ**: ย้ายไปที่ Port `8001` (ไฟล์ `run_fxlog_bridge.py`) เพื่อป้องกันไม่ให้ทับซ้อนกับ Webapp หลัก Port `8000`
 

@@ -10,15 +10,13 @@ echo [1/4] ตรวจสอบและซิงค์อัปเดตระ
 git pull origin main
 
 echo.
-echo [2/4] ตรวจสอบโปรแกรม MT5 Terminal 1...
-tasklist /FI "IMAGENAME eq terminal64.exe" 2>NUL | find /I /N "terminal64.exe">NUL
-if "%ERRORLEVEL%"=="0" (
-    echo [OK] MT5 Terminal กำลังเปิดทำงานอยู่
-) else (
-    echo [INFO] กำลังเปิดโปรแกรม MT5 Terminal...
-    start "" "C:\Program Files\MetaTrader 5 EXNESS\terminal64.exe"
-    timeout /t 5 >nul
+echo [2/4] ตรวจสอบและเปิดโปรแกรม MT5 สำหรับบอท #159415028 (สัญลักษณ์ 3 วงกลม)...
+set "BOT_MT5_EXE=C:\Program Files\MetaTrader 5 EXNESS - Copy\terminal64.exe"
+if not exist "%BOT_MT5_EXE%" (
+    set "BOT_MT5_EXE=C:\Program Files\MetaTrader 5 EXNESS\terminal64.exe"
 )
+start "" "%BOT_MT5_EXE%"
+timeout /t 3 >nul
 
 echo [3/4] เคลียร์พอร์ต 8000 สำหรับ WebApp Dashboard...
 for /f "tokens=5" %%a in ('netstat -aon ^| findstr :8000') do taskkill /F /PID %%a >nul 2>&1
